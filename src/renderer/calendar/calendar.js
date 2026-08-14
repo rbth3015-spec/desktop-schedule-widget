@@ -453,7 +453,8 @@ function makeBar(seg, m, st, store) {
   bar.draggable = true;
   // title 속성은 HTML 파싱되지 않으므로 사용자 입력을 그대로 넣어도 안전
   bar.title = `${task.title} (${task.start} ~ ${task.end})`;
-  bar.style.background = store.COLORS[task.color] || store.COLORS.blue;
+  // 색은 CSS 변수로만 넘기고, 실제 칠하기(농도·획·완료 처리)는 calendar.css 가 맡는다
+  bar.style.setProperty('--bar-ink', store.COLORS[task.color] || store.COLORS.blue);
 
   const li = seg.contLeft ? 0 : 2;
   const ri = seg.contRight ? 0 : 2;
