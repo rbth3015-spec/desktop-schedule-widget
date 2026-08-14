@@ -215,8 +215,18 @@ export function createLauncher({ root, store }) {
     // 이모지도 사용자 입력이므로 textContent 로만 넣는다
     // 사용자가 이모지를 넣었으면 그대로, 아니면 종류별 선 아이콘
     rec.icon.textContent = '';
-    if (item.icon) rec.icon.textContent = item.icon;
-    else rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe'));
+    if (item.icon) {
+      rec.icon.textContent = item.icon;
+      rec.icon.classList.remove('is-monogram');
+    } else if (item.label) {
+      // 같은 종류가 여러 개면 아이콘이 전부 똑같아져 구분이 안 된다.
+      // 이름 첫 글자를 명조 이니셜로 찍어 책갈피에 새긴 것처럼 보이게 한다.
+      rec.icon.textContent = [...item.label.trim()][0] || '·';
+      rec.icon.classList.add('is-monogram');
+    } else {
+      rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe'));
+      rec.icon.classList.remove('is-monogram');
+    }
     rec.badge.textContent = '';
     rec.el.setAttribute('aria-label', `${rec.label} (${KIND_LABELS[item.kind] || item.kind})`);
     rec.el.classList.toggle('is-running', isRunning(item.id));

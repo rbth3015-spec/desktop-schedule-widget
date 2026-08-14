@@ -15,15 +15,26 @@ import { icon } from '../lib/icons.js';
 // 남은 일수(0~30일)를 hue 로 매핑한다. 구간 사이는 선형 보간이라 하루가 지날 때마다
 // 색이 '툭' 튀지 않고 조금씩 따뜻해진다.
 //
-//   30일 이상 → 196 (청록)   14일 → 145 (초록)   7일 → 45 (앰버)
-//    3일      →  24 (오렌지)  0일 →   4 (레드)   지난 항목 → var(--danger) (CSS 에서 처리)
+// 신호등(청록-초록-노랑-빨강) 램프는 종이/잉크 팔레트 위에서 혼자 튄다.
+// 그래서 hue 는 '잉크병' 범위(황토~버건디) 안에서만 움직이고,
+// 시급함은 주로 '채도'로 표현한다 — 멀면 옅은 세피아, 임박하면 진한 버건디.
+//
+//   30일 이상 → 38 (옅은 황토)  14일 → 32 (세피아)  7일 → 22 (적갈)
+//    3일      →  8 (적동)       0일 → 352 (버건디)  지난 항목 → var(--danger)
 const HUE_STOPS = [
-  [0, 4],
-  [3, 24],
-  [7, 45],
-  [14, 145],
-  [30, 196],
+  [0, 352],
+  [3, 8],
+  [7, 22],
+  [14, 32],
+  [30, 38],
 ];
+
+// 남은 날이 많을수록 채도를 떨어뜨려 '아직 멀었다'를 색의 옅음으로 표현한다.
+// 0일 = 1.0(진한 잉크), 30일 = 0.34(물 탄 잉크)
+function satScale(remaining) {
+  const d = Math.min(30, Math.max(0, remaining));
+  return 1 - 0.66 * (d / 30);
+}
 
 function hueFor(remaining) {
   const d = Math.min(30, Math.max(0, remaining));
@@ -105,8 +116,10 @@ function ddayColors(remaining) {
 
   const hue = hueFor(key);
   const dip = satDip(hue);
-  const satDark = 76 - dip;
-  const satLight = 82 - dip * 0.6;
+  const scale = satScale(key);
+  // 잉크 농도 — 임박할수록 진하게. 상한도 낮춰 형광빛이 되지 않게 한다.
+  const satDark = (58 - dip) * scale;
+  const satLight = (62 - dip * 0.6) * scale;
   const h = hue.toFixed(0);
 
   const lDark =

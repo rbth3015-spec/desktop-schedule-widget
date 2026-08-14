@@ -312,12 +312,12 @@
 
   /* 잉크가 번진 자국 — 진한 블록이 아니라 옅은 워시.
      글자는 같은 잉크의 진한 값이라 색을 잃지 않으면서 읽힌다. */
-  background: color-mix(in srgb, var(--bar-ink) 16%, transparent);
+  background: color-mix(in srgb, var(--bar-ink) 26%, transparent);
   border-left: 2.5px solid var(--bar-ink);
-  color: color-mix(in srgb, var(--bar-ink) 78%, var(--text));
+  color: color-mix(in srgb, var(--bar-ink) 55%, var(--text));
   transition: background .16s;
 }
-.cal-bar:hover { background: color-mix(in srgb, var(--bar-ink) 28%, transparent); }
+.cal-bar:hover { background: color-mix(in srgb, var(--bar-ink) 38%, transparent); }
 .cal-bar:active { cursor: grabbing; }
 
 /* 잘린 쪽은 여백과 획을 없애 '계속됨'을 보여준다 */
