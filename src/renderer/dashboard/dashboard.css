@@ -1,0 +1,337 @@
+/* Zone C — D-Day 대시보드 스타일.
+   - 모든 셀렉터는 .dash- 접두사로 시작한다 (전역 태그 셀렉터 금지).
+   - 색/반경/그림자는 base.css 변수만 사용. 예외는 두 가지뿐:
+       1) 태스크 색 점(store.COLORS) — JS 인라인
+       2) D-Day 색온도(--dash-c / --dash-c-lt) — JS 가 hsl() 로 계산해 인라인으로 넣는다
+   - 새 블러 레이어를 만들지 않는다. 배경은 셸의 .zone--dash(var(--pane)) 위에 얹는다.
+   - 패널 높이 = 콘텐츠 높이. 기본(카드 한 줄) 약 112px, 접으면 헤더만 약 34px. */
+
+.dash-root {
+  container-type: inline-size;
+  container-name: dash;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 10px 9px;
+}
+
+.dash-root [hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ 헤더 */
+
+.dash-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dash-label {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+}
+
+.dash-count {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  background: var(--pane-hover);
+}
+
+/* 접었을 때만 보이는 한 줄 요약 (가장 임박한 항목) */
+.dash-peek {
+  display: none;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+.dash-root.is-collapsed .dash-peek { display: flex; }
+
+.dash-peek__title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-peek__num {
+  flex: 0 0 auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--dash-c, var(--accent));
+}
+
+.dash-spacer { flex: 1 1 auto; min-width: 4px; }
+
+.dash-fold {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.dash-fold:hover {
+  background: var(--pane-hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.dash-fold:focus-visible { border-color: var(--accent); color: var(--accent); }
+
+.dash-fold__caret {
+  font-size: 9px;
+  line-height: 1;
+  transition: transform .14s ease;
+}
+.dash-root.is-collapsed .dash-fold__caret { transform: rotate(-90deg); }
+
+/* ------------------------------------------------------------ 본문 */
+
+/* 항목이 아주 많아도 패널이 무한정 커지지 않도록 두 줄에서 끊고 세로 스크롤로 넘긴다.
+   (가로 스크롤은 쓰지 않는다) */
+.dash-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.dash-root.is-collapsed .dash-body { display: none; }
+
+/* 벤토: 가로로 균등 분배되고, 좁아지면 최소 180px 을 지키며 줄바꿈된다 */
+.dash-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: stretch;
+}
+
+/* ------------------------------------------------------------ 카드 */
+
+.dash-card {
+  position: relative;
+  flex: 1 1 180px;
+  min-width: min(180px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--pane);
+  cursor: pointer;
+  outline: none;
+  transition: background .14s, border-color .14s, transform .14s;
+}
+.dash-card:hover {
+  background: var(--pane-hover);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.dash-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.dash-card__head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-right: 16px;   /* 우상단 고정 해제 버튼 자리 */
+}
+
+.dash-card__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dash-card__title {
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-card__num {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  color: var(--dash-c, var(--accent));
+}
+
+.dash-card__date {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-card__track {
+  margin-top: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--pane-hover);
+  box-shadow: inset 0 0 0 1px var(--border);
+  overflow: hidden;
+}
+
+.dash-card__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--dash-c, var(--accent));
+  /* 색은 전환하지 않는다 — 테마 전환처럼 변수 자체가 갈아끼워질 때
+     background-color 트랜지션이 중간값에 머무는 사고를 피한다. 길이만 부드럽게. */
+  transition: width .28s ease;
+}
+
+/* 고정 해제 — 호버(또는 키보드 포커스) 때만 노출 */
+.dash-unpin {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity .12s, color .12s, background .12s;
+}
+.dash-card:hover .dash-unpin { opacity: 1; }
+.dash-unpin:focus-visible { opacity: 1; color: var(--accent); }
+.dash-unpin:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+/* 지난 항목 — 점선 테두리 + danger 톤으로 확실히 구분한다 */
+.dash-card--over {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+}
+.dash-card--over:hover { border-color: var(--danger); }
+.dash-card--over .dash-card__num,
+.dash-card--over .dash-card__date { color: var(--danger); }
+.dash-card--over .dash-card__fill { background: var(--danger); }
+.dash-peek--over .dash-peek__num { color: var(--danger); }
+
+/* 완료한 고정 항목 */
+.dash-card.is-done { opacity: 0.52; }
+.dash-card.is-done .dash-card__title { text-decoration: line-through; }
+
+/* 임박(3일 이하) — 아주 은은한 맥박 */
+@keyframes dash-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.dash-card--urgent .dash-card__fill {
+  animation: dash-pulse 2.6s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------ 빈 상태 */
+
+/* 고정된 항목이 0개일 때 패널이 카드가 있을 때보다 커지면 우스꽝스럽다.
+   넓으면 한 줄로 눕고, 좁아지면 그때만 줄바꿈된다. */
+.dash-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.dash-empty__title {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.dash-empty__desc {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.dash-empty__how {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  opacity: 0.85;
+}
+
+/* ------------------------------------------------------------ 라이트 테마
+   hue 는 같지만 채도·명도가 다른 쌍을 JS 가 미리 계산해 둔다.
+   밝은 배경에서 노란/청록 바가 씻겨 내려가지 않도록 어두운 쪽 값을 쓴다. */
+
+:root[data-theme="light"] .dash-card__num,
+:root[data-theme="light"] .dash-peek__num { color: var(--dash-c-lt, var(--accent)); }
+
+:root[data-theme="light"] .dash-card__fill { background: var(--dash-c-lt, var(--accent)); }
+
+:root[data-theme="light"] .dash-card__track { box-shadow: inset 0 0 0 1px var(--border); }
+
+:root[data-theme="light"] .dash-card--over .dash-card__num,
+:root[data-theme="light"] .dash-card--over .dash-card__date { color: var(--danger); }
+:root[data-theme="light"] .dash-card--over .dash-card__fill { background: var(--danger); }
+:root[data-theme="light"] .dash-peek--over .dash-peek__num { color: var(--danger); }
+
+/* ------------------------------------------------------------ 좁은 폭 */
+
+@container dash (max-width: 420px) {
+  .dash-root { padding: 6px 8px 8px; }
+  .dash-card { padding: 6px 8px 7px; }
+  .dash-card__num { font-size: 19px; }
+  .dash-card__date { font-size: 10px; }
+  .dash-label { letter-spacing: 0.08em; }
+}
+
+/* ------------------------------------------------------------ 모션 축소 */
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-card--urgent .dash-card__fill { animation: none; }
+  .dash-card,
+  .dash-card__fill,
+  .dash-fold,
+  .dash-fold__caret,
+  .dash-unpin { transition: none; }
+  .dash-card:hover { transform: none; }
+}

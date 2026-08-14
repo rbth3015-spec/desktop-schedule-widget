@@ -1,0 +1,20 @@
+node_modules/
+dist/
+out/
+build/
+
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.vscode/
+.idea/
+
+# 사용자 로컬 데이터 (혹시 프로젝트 폴더에 생성될 경우)
+schedule-data.json
+schedule-data.corrupt-*.json
+window-state.json

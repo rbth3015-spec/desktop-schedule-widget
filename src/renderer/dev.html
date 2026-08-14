@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>일정관리 위젯 — 개발 미리보기</title>
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="calendar/calendar.css" />
+  <link rel="stylesheet" href="todo/todo.css" />
+  <link rel="stylesheet" href="dashboard/dashboard.css" />
+  <link rel="stylesheet" href="launcher/launcher.css" />
+  <style>
+    /* 개발 미리보기 전용: 바탕화면 대신 깔아두는 가짜 월페이퍼.
+       글래스모피즘은 뒤에 무언가 있어야 평가할 수 있다. */
+    html {
+      background:
+        radial-gradient(1200px 700px at 12% 18%, #3b5a8f 0%, transparent 60%),
+        radial-gradient(900px 800px at 88% 82%, #7a4570 0%, transparent 62%),
+        radial-gradient(700px 600px at 65% 25%, #2f7d74 0%, transparent 55%),
+        linear-gradient(150deg, #12161f 0%, #1b2030 55%, #241d2b 100%);
+      background-attachment: fixed;
+    }
+    /* 창 크기를 흉내 내기 위한 리사이즈 가능한 무대 */
+    body { padding: 0; display: grid; place-items: center; }
+    #stage {
+      width: min(980px, 96vw);
+      height: min(620px, 92vh);
+      resize: both;
+      overflow: hidden;
+      padding: 6px;
+      box-sizing: border-box;
+    }
+    #stage > .widget { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="widget" class="widget">
+      <header id="titlebar" class="titlebar">
+        <div class="titlebar__drag">
+          <span class="titlebar__dot"></span>
+          <span class="titlebar__title">일정관리 비서</span>
+        </div>
+        <div class="titlebar__actions">
+          <button id="btn-settings" class="iconbtn" title="설정">⚙</button>
+          <button id="btn-pin" class="iconbtn" title="항상 위">📌</button>
+          <button id="btn-min" class="iconbtn" title="최소화">─</button>
+          <button id="btn-close" class="iconbtn iconbtn--danger" title="숨기기">✕</button>
+        </div>
+      </header>
+
+      <main class="panes">
+        <section id="calendar-root" class="pane pane--calendar"></section>
+        <div id="splitter" class="splitter" title="드래그해서 비율 조절"></div>
+        <section id="todo-root" class="pane pane--todo"></section>
+      </main>
+
+      <section id="dash-root" class="zone zone--dash"></section>
+      <footer id="launcher-root" class="zone zone--launcher"></footer>
+
+      <div id="settings-root" class="settings" hidden></div>
+    </div>
+  </div>
+
+  <script src="dev-stub.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

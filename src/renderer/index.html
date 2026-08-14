@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>일정관리 위젯</title>
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="calendar/calendar.css" />
+  <link rel="stylesheet" href="todo/todo.css" />
+  <link rel="stylesheet" href="dashboard/dashboard.css" />
+  <link rel="stylesheet" href="launcher/launcher.css" />
+</head>
+<body>
+  <div id="widget" class="widget">
+    <!-- 드래그 핸들 겸 상단 바 -->
+    <header id="titlebar" class="titlebar">
+      <div class="titlebar__drag">
+        <span class="titlebar__dot"></span>
+        <span class="titlebar__title">일정관리 비서</span>
+      </div>
+      <div class="titlebar__actions">
+        <button id="btn-settings" class="iconbtn" title="설정">⚙</button>
+        <button id="btn-pin" class="iconbtn" title="항상 위">📌</button>
+        <button id="btn-min" class="iconbtn" title="최소화">─</button>
+        <button id="btn-close" class="iconbtn iconbtn--danger" title="숨기기">✕</button>
+      </div>
+    </header>
+
+    <main class="panes">
+      <section id="calendar-root" class="pane pane--calendar"></section>
+      <div id="splitter" class="splitter" title="드래그해서 비율 조절"></div>
+      <section id="todo-root" class="pane pane--todo"></section>
+    </main>
+
+    <!-- Zone C: D-Day 대시보드 -->
+    <section id="dash-root" class="zone zone--dash"></section>
+
+    <!-- Zone D: 퀵 런처 도크 -->
+    <footer id="launcher-root" class="zone zone--launcher"></footer>
+
+    <div id="settings-root" class="settings" hidden></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "schedule-widget",
+  "version": "0.1.0",
+  "description": "바탕화면 위젯형 일정관리 비서 (캘린더 + Todo)",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
