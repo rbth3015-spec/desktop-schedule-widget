@@ -123,6 +123,7 @@ export async function init() {
     : defaultLauncher();
   state.reminderLog = Array.isArray(data?.reminderLog) ? data.reminderLog.slice(0, LOG_MAX) : [];
   state.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
+  migrate();
   state.ready = true;
   // 메인 프로세스가 손상된 데이터 파일을 백업으로 격리했을 때만 채워진다
   state.loadNotice = data?.corrupted
@@ -152,6 +153,19 @@ function normalize(t) {
     remind: typeof t.remind === 'string' ? t.remind : '',
     remindedAt: t.remindedAt ?? null,   // 이미 알린 시각 (중복 알림 방지, 재시작해도 유지)
   };
+}
+
+/** 예전 버전이 남긴 값을 정리한다. 사용자가 직접 고른 값은 건드리지 않는다. */
+function migrate() {
+  // 'glass'(유리 강도)는 '배경 투명도' 슬라이더로 통합되면서 사라진 설정
+  delete state.settings.glass;
+
+  // 최초 실행 때 앱이 심어 둔 예시 런처의 이모지 → 종류별 선 아이콘으로.
+  // 사용자가 직접 넣은 아이콘은 그대로 둔다(id 와 이모지가 정확히 일치할 때만).
+  const SEEDED = { l_cal: '📅', l_mail: '✉️' };
+  for (const item of state.launcher) {
+    if (SEEDED[item.id] && item.icon === SEEDED[item.id]) item.icon = '';
+  }
 }
 
 const LAUNCHER_KINDS = ['url', 'script', 'app', 'folder'];
