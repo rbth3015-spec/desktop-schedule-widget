@@ -27,6 +27,21 @@ const api = {
     snapPreset: (preset) => ipcRenderer.send('window:snapPreset', String(preset)),
   },
 
+  // ------------------------------------------------------------ 리마인더 알림
+  reminder: {
+    /** OS 알림을 띄운다. {title, body, taskId} */
+    notify: (payload) => ipcRenderer.invoke('reminder:notify', {
+      title: String(payload?.title ?? ''),
+      body: String(payload?.body ?? ''),
+      taskId: String(payload?.taskId ?? ''),
+    }),
+    /** 알림을 클릭했을 때 해당 taskId 를 받는다 */
+    onClick: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('reminder:click', (_event, taskId) => cb(taskId));
+    },
+  },
+
   // ------------------------------------------------------------ 외부 링크
   // 일정에 붙은 링크를 기본 브라우저로 연다. 프로토콜 검증은 메인이 다시 한다.
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', String(url)),

@@ -69,6 +69,12 @@
       setSize: (w, h) => { win.width = w; win.height = h; console.log('[dev] setSize', w, h); },
       snapPreset: (p) => console.log('[dev] preset', p),
     },
+    // 브라우저에는 OS 알림을 띄울 수 없으므로 콘솔로만 확인한다
+    reminder: {
+      notify: async (payload) => { console.log('[dev] notify', payload); return { ok: true }; },
+      onClick: (cb) => { window.__devReminderClick = cb; },
+    },
+
     openExternal: async (url) => {
       console.log('[dev] openExternal', url);
       try {

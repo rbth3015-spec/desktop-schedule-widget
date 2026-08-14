@@ -335,3 +335,44 @@
   .dash-unpin { transition: none; }
   .dash-card:hover { transform: none; }
 }
+
+/* ============================================================ 다이어리 톤 보정 */
+
+.dash-label {
+  font-family: var(--font-serif);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  color: var(--text-faint);
+}
+
+.dash-count {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-card {
+  border-radius: 2px;
+  border: 1px solid var(--rule);
+}
+
+.dash-card__title { letter-spacing: .01em; }
+
+/* 남은 일수 — 이 패널의 주인공. 명조 큰 활자로. */
+.dash-card__num,
+.dash-peek__num {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+.dash-card__date {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-card__track,
+.dash-card__fill { border-radius: 1px; }
+
+.dash-unpin .icon { width: .8em; height: .8em; }
+.dash-peek { border-radius: 2px; }

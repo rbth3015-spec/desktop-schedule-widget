@@ -3,6 +3,7 @@
 // 상태는 store 액션으로만 바꾼다. root 안에만 그린다.
 
 import * as date from '../lib/date.js';
+import { icon } from '../lib/icons.js';
 
 /** 레인이 하나도 안 들어갈 때의 최소값 */
 const MIN_LANES = 1;
@@ -219,12 +220,12 @@ function buildSkeleton(root) {
   const header = div('cal-header');
   const prev = make('button', 'cal-navbtn');
   prev.dataset.nav = '-1';
-  prev.textContent = '‹';
+  prev.append(icon('chevronLeft'));
   prev.title = '이전 달';
   const title = div('cal-title');
   const next = make('button', 'cal-navbtn');
   next.dataset.nav = '1';
-  next.textContent = '›';
+  next.append(icon('chevronRight'));
   next.title = '다음 달';
 
   const spacer = div('cal-spacer');

@@ -22,20 +22,24 @@ let saveTimer = null;
  * @property {number|null} doneAt
  */
 
+// 안료 계열. 형광빛 원색은 종이/가죽 배경과 따로 놀아서 채도를 낮췄다.
+// 전부 어두운 값이라 위에 얹는 글자색(--on-color)은 밝은 아이보리로 고정한다.
 export const COLORS = {
-  blue:   '#5b9dff',
-  green:  '#4ec9a0',
-  amber:  '#f0b429',
-  rose:   '#f2698c',
-  violet: '#a78bfa',
-  slate:  '#8b98ad',
+  blue:   '#3e5c76',   // 청람
+  green:  '#5a7a58',   // 쑥
+  amber:  '#b0843f',   // 치자
+  rose:   '#a6544c',   // 다홍
+  violet: '#6f5b84',   // 자주
+  slate:  '#78736a',   // 회묵
 };
 
 export const PRIORITY_LABELS = ['보통', '중요', '긴급'];
 
 const DEFAULT_SETTINGS = {
-  theme: 'dark',          // 'dark' | 'light'
-  opacity: 0.92,          // 0.3 ~ 1
+  theme: 'light',         // 'light'(종이) | 'dark'(가죽)
+  // 배경 투명도(0.4~1). 창 전체가 아니라 배경 알파만 조절하므로 글자는 또렷하게 남는다.
+  // Windows 의 transparent 창에 setOpacity 를 걸면 합성이 불안정해 CSS 로 처리한다.
+  opacity: 0.9,
   splitRatio: 0.56,       // 캘린더가 차지하는 가로 비율
   alwaysOnTop: false,
   clickThroughLocked: false,
@@ -44,8 +48,7 @@ const DEFAULT_SETTINGS = {
   fontScale: 1,           // 0.8 ~ 1.4
   sortMode: 'manual',     // 'manual' = 드래그 순서 우선 | 'priority' = 우선순위 우선
 
-  // --- 외형 (글래스모피즘) ---
-  glass: 'normal',        // 'clear' | 'normal' | 'solid' — 유리 강도
+  // --- 외형 ---
   blurEnabled: true,      // 백드롭 블러. 저사양이면 끄는 폴백
   dimInactive: true,      // 창이 비활성일 때 배경으로 물러남 (macOS 위젯 방식)
 
@@ -68,6 +71,7 @@ const DEFAULT_SETTINGS = {
 const state = {
   tasks: /** @type {Task[]} */ ([]),
   launcher: /** @type {LauncherItem[]} */ ([]),
+  reminderLog: /** @type {{id:string,taskId:string,title:string,at:number}[]} */ ([]),
   settings: { ...DEFAULT_SETTINGS },
   // --- UI 상태(영속화 안 함) ---
   selectedDate: todayKey(),
@@ -98,6 +102,7 @@ function persist() {
     window.api.saveData({
       tasks: state.tasks,
       launcher: state.launcher,
+      reminderLog: state.reminderLog,
       settings: state.settings,
     });
   }, 250);
@@ -116,6 +121,7 @@ export async function init() {
   state.launcher = Array.isArray(data?.launcher)
     ? data.launcher.map(normalizeLauncher)
     : defaultLauncher();
+  state.reminderLog = Array.isArray(data?.reminderLog) ? data.reminderLog.slice(0, LOG_MAX) : [];
   state.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
   state.ready = true;
   // 메인 프로세스가 손상된 데이터 파일을 백업으로 격리했을 때만 채워진다
@@ -142,6 +148,9 @@ function normalize(t) {
     doneAt: t.doneAt ?? null,
     pinned: !!t.pinned,          // D-Day 대시보드에 고정
     link: typeof t.link === 'string' ? t.link : '',   // 관련 링크 (클릭 시 브라우저로 열림)
+    // 리마인더. '<며칠 전>@<HH:mm>' 형식 ('0@09:00' = 시작일 당일 9시). 빈 문자열이면 없음.
+    remind: typeof t.remind === 'string' ? t.remind : '',
+    remindedAt: t.remindedAt ?? null,   // 이미 알린 시각 (중복 알림 방지, 재시작해도 유지)
   };
 }
 
@@ -151,7 +160,7 @@ function normalizeLauncher(it) {
   return {
     id: it.id ?? 'l_' + cryptoId(),
     label: String(it.label ?? '바로가기'),
-    icon: String(it.icon ?? '🔗').slice(0, 4),
+    icon: String(it.icon ?? '').slice(0, 4),   // 비면 종류별 기본 선 아이콘
     kind: LAUNCHER_KINDS.includes(it.kind) ? it.kind : 'url',
     target: String(it.target ?? ''),
     args: Array.isArray(it.args) ? it.args.map(String) : [],
@@ -162,9 +171,9 @@ function normalizeLauncher(it) {
 /** 최초 실행 시 비어 있으면 허전하므로 예시 두 개만 넣어 둔다 */
 function defaultLauncher() {
   return [
-    normalizeLauncher({ id: 'l_cal', label: '구글 캘린더', icon: '📅', kind: 'url',
+    normalizeLauncher({ id: 'l_cal', label: '구글 캘린더', icon: '', kind: 'url',
       target: 'https://calendar.google.com', order: 0 }),
-    normalizeLauncher({ id: 'l_mail', label: '메일', icon: '✉️', kind: 'url',
+    normalizeLauncher({ id: 'l_mail', label: '메일', icon: '', kind: 'url',
       target: 'https://mail.google.com', order: 1 }),
   ];
 }
@@ -333,6 +342,56 @@ export function togglePinned(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
   t.pinned = !t.pinned;
+  commit();
+}
+
+// ---------------------------------------------------------------- 리마인더
+
+const LOG_MAX = 30;
+
+/** 'N@HH:mm' 을 해석한다. 잘못된 값이면 null */
+export function parseRemind(remind) {
+  const m = /^(\d{1,2})@([01]\d|2[0-3]):([0-5]\d)$/.exec(String(remind || ''));
+  if (!m) return null;
+  return { offsetDays: Number(m[1]), hour: Number(m[2]), minute: Number(m[3]) };
+}
+
+/**
+ * 이 태스크의 알림 예정 시각(epoch ms). 알림이 없거나 날짜가 없으면 null.
+ * 시작일에서 offsetDays 만큼 앞당긴 날의 지정 시각.
+ */
+export function remindTime(t) {
+  const r = parseRemind(t.remind);
+  if (!r || !t.start) return null;
+  const [y, mo, d] = t.start.split('-').map(Number);
+  const when = new Date(y, mo - 1, d, r.hour, r.minute, 0, 0);
+  when.setDate(when.getDate() - r.offsetDays);
+  return when.getTime();
+}
+
+/** 아직 알리지 않았고 시간이 된 태스크들 */
+export function dueReminders(now = Date.now()) {
+  return state.tasks.filter((t) => {
+    if (t.done || !t.remind || t.remindedAt) return false;
+    const at = remindTime(t);
+    return at !== null && at <= now;
+  });
+}
+
+/** 알림을 보냈다고 표시하고 기록에 남긴다 */
+export function markReminded(id, at = Date.now(), { log = true } = {}) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return;
+  t.remindedAt = at;
+  if (log) {
+    state.reminderLog.unshift({ id: `r_${id}_${at}`, taskId: id, title: t.title, at });
+    state.reminderLog = state.reminderLog.slice(0, LOG_MAX);
+  }
+  commit();
+}
+
+export function clearReminderLog() {
+  state.reminderLog = [];
   commit();
 }
 

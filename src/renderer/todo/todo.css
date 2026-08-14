@@ -730,3 +730,105 @@
 }
 .todo-detail__linkopen:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .todo-detail__linkopen:disabled { opacity: .4; cursor: default; }
+
+/* ============================================================ 다이어리 톤 보정 */
+
+/* 날짜 표제 — 다이어리 페이지 머리 */
+.todo-date {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.todo-badge--today {
+  font-family: var(--font-serif);
+  letter-spacing: .1em;
+  border-radius: 2px;
+}
+
+.todo-gotoday,
+.todo-toggle { border-radius: 2px; letter-spacing: .03em; }
+
+.todo-progress__text {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
+.todo-progress { border-radius: 1px; }
+.todo-progress__fill { border-radius: 1px; }
+
+/* 섹션 표제 — 자간 벌린 소제목 */
+.todo-section__title {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--text-dim);
+}
+.todo-section__count {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+.todo-section__head { border-bottom: 1px solid var(--rule); }
+
+/* 항목 사이는 괘선으로 — 줄 그어진 노트 */
+.todo-item + .todo-item { border-top: 1px solid var(--rule); }
+.todo-item { border-radius: 0; }
+
+.todo-check { border-radius: 2px; }
+.todo-check .icon { width: .8em; height: .8em; }
+
+/* 색 점 대신 얇은 세로 괘선 — 여백에 그은 표시선 */
+.todo-dot {
+  width: 2px !important;
+  height: 13px !important;
+  border-radius: 1px !important;
+}
+
+.todo-dday {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
+
+.todo-tag,
+.todo-tagchip,
+.todo-badge { border-radius: 2px; }
+
+.todo-link .icon { width: .95em; height: .95em; }
+.todo-del .icon { width: .85em; height: .85em; }
+
+.todo-add { border-radius: 2px; }
+.todo-add .icon { width: .8em; height: .8em; }
+.todo-add.is-open { transform: rotate(45deg); }
+
+.todo-search,
+.todo-quick__input { border-radius: 2px; }
+
+.todo-compose { border-radius: 0; }
+.todo-compose input[type="text"],
+.todo-compose input[type="date"],
+.todo-compose select,
+.todo-compose__save,
+.todo-compose__cancel { border-radius: 2px; }
+.todo-compose__save { letter-spacing: .06em; }
+
+.todo-detail__link,
+.todo-detail__linkopen,
+.todo-detail__date,
+.todo-detail__tags,
+.todo-detail__select { border-radius: 2px; }
+
+/* 알림 표시 */
+.todo-remind {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  font-size: 10.5px;
+  color: var(--accent);
+  opacity: .85;
+}
+.todo-remind.is-done { color: var(--text-faint); opacity: .55; }
+.todo-remind .icon { width: .95em; height: .95em; }

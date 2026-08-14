@@ -515,3 +515,40 @@
   .lnch-item__icon { font-size: 15px; }
   .lnch-add { width: 27px; height: 27px; }
 }
+
+/* ============================================================ 다이어리 톤 보정 */
+
+/* 도크 — 책갈피 띠처럼 얇고 낮게 */
+.lnch-dock {
+  border-radius: 3px;
+  border: 1px solid var(--rule);
+}
+
+.lnch-item { border-radius: 2px; }
+.lnch-item__icon .icon { width: 1.05em; height: 1.05em; }
+
+.lnch-tip__label {
+  font-family: var(--font-serif);
+  letter-spacing: .04em;
+}
+.lnch-tip { border-radius: 2px; }
+
+.lnch-add { border-radius: 2px; }
+.lnch-add .icon { width: .8em; height: .8em; }
+
+.lnch-pop { border-radius: 3px; }
+.lnch-pop__title {
+  font-family: var(--font-serif);
+  letter-spacing: .03em;
+}
+.lnch-pop__x .icon { width: .8em; height: .8em; }
+.lnch-pop__bar,
+.lnch-pop__fill { border-radius: 1px; }
+
+.lnch-input,
+.lnch-btn,
+.lnch-browse,
+.lnch-seg,
+.lnch-seg__btn { border-radius: 2px; }
+
+.lnch-empty { font-family: var(--font-serif); letter-spacing: .02em; }

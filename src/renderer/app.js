@@ -7,6 +7,8 @@ import { createTodoPanel } from './todo/todo.js';
 import { createDashboard } from './dashboard/dashboard.js';
 import { createLauncher } from './launcher/launcher.js';
 import { todayKey } from './lib/date.js';
+import { setIcon, icon } from './lib/icons.js';
+import { startReminders, timeAgo } from './reminders.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -18,6 +20,7 @@ const els = {
   dash: $('#dash-root'),
   launcher: $('#launcher-root'),
   settings: $('#settings-root'),
+  btnBell: $('#btn-bell'),
   btnSettings: $('#btn-settings'),
   btnPin: $('#btn-pin'),
   btnMin: $('#btn-min'),
@@ -29,6 +32,7 @@ let calendar = null;
 let todo = null;
 let dashboard = null;
 let launcher = null;
+let reminders = null;
 
 // ---------------------------------------------------------------- 부팅
 
@@ -44,6 +48,7 @@ async function boot() {
 
   wireTitlebar();
   wireDimming();
+  wireReminders();
   wireSplitter();
   wireSettings();
   wireMenuActions();
@@ -92,16 +97,15 @@ function applyChrome(s) {
     window.api.window.setAlwaysOnTop(s.alwaysOnTop);
   }
   if (s.opacity !== prev.opacity) {
-    window.api.window.setOpacity(s.opacity);
+    // 배경 알파만 조절한다. BrowserWindow.setOpacity 는 Windows 의 transparent 창에서
+    // 합성이 불안정해(영역별로 반영이 들쭉날쭉) 쓰지 않는다.
+    document.documentElement.style.setProperty('--glass-a', String(s.opacity));
   }
   if (s.clickThroughLocked !== prev.clickThroughLocked) {
     window.api.window.setIgnoreMouseEvents(s.clickThroughLocked);
   }
 
-  // --- 글래스모피즘 외형 ---
-  if (s.glass !== prev.glass) {
-    document.documentElement.dataset.glass = s.glass;
-  }
+  // --- 외형 ---
   if (s.blurEnabled !== prev.blurEnabled) {
     // 블러는 dwm.exe GPU 부하가 큰 연산이라 끌 수 있어야 한다
     document.documentElement.dataset.blur = s.blurEnabled ? 'on' : 'off';
@@ -134,12 +138,119 @@ function updateTitle(state) {
 // ---------------------------------------------------------------- 타이틀바
 
 function wireTitlebar() {
+  // 이모지는 OS/폰트마다 모양과 색이 달라 톤이 깨진다 — 선 아이콘으로 교체
+  setIcon(els.btnBell, 'bell');
+  setIcon(els.btnSettings, 'settings');
+  setIcon(els.btnPin, 'pin');
+  setIcon(els.btnMin, 'minimize');
+  setIcon(els.btnClose, 'close');
+
   els.btnMin.addEventListener('click', () => window.api.window.minimize());
   els.btnClose.addEventListener('click', () => window.api.window.hide());
   els.btnPin.addEventListener('click', () => {
     store.setSetting('alwaysOnTop', !store.getState().settings.alwaysOnTop);
   });
   els.btnSettings.addEventListener('click', toggleSettings);
+  els.btnBell.addEventListener('click', (e) => { e.stopPropagation(); toggleBell(); });
+}
+
+// ---------------------------------------------------------------- 리마인더
+
+function wireReminders() {
+  reminders = startReminders(store);
+
+  // 알림을 클릭하면 해당 일정으로 이동해 상세를 연다
+  window.api.reminder.onClick((taskId) => {
+    const task = store.getState().tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.start) store.selectDate(task.start);
+    store.setEditing(task.id);
+  });
+}
+
+let bellPopover = null;
+
+function toggleBell() {
+  if (bellPopover) { closeBell(); return; }
+
+  const log = store.getState().reminderLog;
+
+  const pop = document.createElement('div');
+  pop.className = 'bell';
+
+  const head = document.createElement('div');
+  head.className = 'bell__head';
+  head.append(labelEl('알림 기록'));
+
+  if (log.length) {
+    const clear = document.createElement('button');
+    clear.className = 'bell__clear';
+    clear.textContent = '지우기';
+    clear.addEventListener('click', () => { store.clearReminderLog(); closeBell(); });
+    head.append(clear);
+  }
+  pop.append(head);
+
+  if (!log.length) {
+    const empty = document.createElement('div');
+    empty.className = 'bell__empty';
+    empty.textContent =
+      '아직 받은 알림이 없습니다.\n일정 상세에서 알림 시각을 정해 두면 여기에 쌓입니다.';
+    pop.append(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'bell__list';
+    for (const entry of log) {
+      const row = document.createElement('button');
+      row.className = 'bell__row';
+      row.append(icon('bell'));
+
+      const t = document.createElement('span');
+      t.className = 'bell__title';
+      t.textContent = entry.title || '(제목 없음)';
+
+      const when = document.createElement('span');
+      when.className = 'bell__when';
+      when.textContent = timeAgo(entry.at);
+
+      row.append(t, when);
+      row.addEventListener('click', () => {
+        const task = store.getState().tasks.find((x) => x.id === entry.taskId);
+        if (task) {
+          if (task.start) store.selectDate(task.start);
+          store.setEditing(task.id);
+        }
+        closeBell();
+      });
+      list.append(row);
+    }
+    pop.append(list);
+  }
+
+  els.root.append(pop);
+  bellPopover = pop;
+  els.btnBell.classList.add('is-active');
+
+  // 바깥을 클릭하면 닫힌다
+  setTimeout(() => document.addEventListener('click', onDocClickForBell), 0);
+}
+
+function labelEl(text) {
+  const el = document.createElement('span');
+  el.className = 'bell__label';
+  el.textContent = text;
+  return el;
+}
+
+function onDocClickForBell(e) {
+  if (bellPopover && !bellPopover.contains(e.target)) closeBell();
+}
+
+function closeBell() {
+  document.removeEventListener('click', onDocClickForBell);
+  bellPopover?.remove();
+  bellPopover = null;
+  els.btnBell.classList.remove('is-active');
 }
 
 // ---------------------------------------------------------------- 스플리터
@@ -200,18 +311,15 @@ function renderSettings() {
 
   const frag = document.createDocumentFragment();
   frag.append(
-    row('테마', segmented([['dark', '다크'], ['light', '라이트']], s.theme, (v) =>
+    row('테마', segmented([['light', '종이'], ['dark', '가죽']], s.theme, (v) =>
       store.setSetting('theme', v))),
 
-    row('투명도', slider(0.3, 1, 0.02, s.opacity, (v) =>
-      store.setSetting('opacity', v), (v) => `${Math.round(v * 100)}%`)),
+    row('배경 투명도', slider(0.4, 1, 0.02, s.opacity, (v) =>
+      store.setSetting('opacity', v), (v) => `${Math.round(v * 100)}%`),
+      '배경만 투명해지고 글자는 또렷하게 남습니다. 월페이퍼가 복잡하면 100%에 가깝게 두세요.'),
 
     row('글자 크기', slider(0.8, 1.4, 0.05, s.fontScale, (v) =>
       store.setSetting('fontScale', v), (v) => `${Math.round(v * 100)}%`)),
-
-    row('유리 강도', segmented([['clear', '맑게'], ['normal', '보통'], ['solid', '진하게']],
-      s.glass, (v) => store.setSetting('glass', v)),
-      '월페이퍼가 복잡하면 진하게, 단순하면 맑게가 읽기 좋습니다.'),
 
     row('배경 흐림 효과', toggle(s.blurEnabled, (v) => store.setSetting('blurEnabled', v)),
       '끄면 GPU 사용량이 줄어듭니다. 저사양·배터리 모드에서 권장.'),
@@ -349,6 +457,7 @@ function wireShortcuts() {
       return;
     }
 
+    if (e.key === 'Escape' && bellPopover) { closeBell(); return; }
     if (e.key === 'Escape' && !els.settings.hidden) { toggleSettings(); return; }
     if (e.ctrlKey && e.key === ',') { toggleSettings(); e.preventDefault(); }
   });

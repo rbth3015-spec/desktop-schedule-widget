@@ -8,6 +8,8 @@
 //
 // 스크립트 출력과 항목 이름은 신뢰할 수 없는 문자열이므로 언제나 textContent 로만 넣는다.
 
+import { icon } from '../lib/icons.js';
+
 // ============================================================ 상수
 
 /** runner.js 의 INTERPRETERS 와 같은 목록. 편집 UI 힌트로만 쓴다. */
@@ -15,7 +17,8 @@ const SUPPORTED_EXT = '.py .pyw .ps1 .bat .cmd .js .exe';
 
 const KIND_ORDER = ['url', 'script', 'app', 'folder'];
 const KIND_LABELS = { url: '웹주소', script: '스크립트', app: '앱', folder: '폴더' };
-const KIND_ICONS = { url: '🔗', script: '🐍', app: '🚀', folder: '📁' };
+/** 사용자가 아이콘을 지정하지 않았을 때 쓰는 기본 선 아이콘 */
+const KIND_ICONS = { url: 'globe', script: 'terminal', app: 'plus', folder: 'folder' };
 const KIND_TARGET_LABELS = {
   url: '주소',
   script: '스크립트 경로',
@@ -144,7 +147,8 @@ export function createLauncher({ root, store }) {
 
   const emptyHint = h('div', 'lnch-empty', '+ 눌러 자주 쓰는 사이트나 파이썬 스크립트를 등록하세요');
 
-  const addBtn = h('button', 'lnch-add', '+');
+  const addBtn = h('button', 'lnch-add');
+  addBtn.append(icon('plus'));
   addBtn.type = 'button';
   addBtn.setAttribute('aria-label', '바로가기 추가');
 
@@ -209,7 +213,10 @@ export function createLauncher({ root, store }) {
     rec.label = item.label || '바로가기';
     rec.sub = item.target || '';
     // 이모지도 사용자 입력이므로 textContent 로만 넣는다
-    rec.icon.textContent = item.icon || KIND_ICONS[item.kind] || '🔗';
+    // 사용자가 이모지를 넣었으면 그대로, 아니면 종류별 선 아이콘
+    rec.icon.textContent = '';
+    if (item.icon) rec.icon.textContent = item.icon;
+    else rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe'));
     rec.badge.textContent = '';
     rec.el.setAttribute('aria-label', `${rec.label} (${KIND_LABELS[item.kind] || item.kind})`);
     rec.el.classList.toggle('is-running', isRunning(item.id));
@@ -336,7 +343,8 @@ export function createLauncher({ root, store }) {
   function flashOk(itemId) {
     const rec = itemEls.get(itemId);
     if (!rec) return;
-    rec.badge.textContent = '✓';
+    rec.badge.textContent = '';
+    rec.badge.append(icon('check'));
     rec.el.classList.add('is-ok');
     cancelLater(rec.flashTimer);
     rec.flashTimer = later(() => {
@@ -490,7 +498,8 @@ export function createLauncher({ root, store }) {
     const head = h('div', 'lnch-pop__head');
     const badge = h('span', 'lnch-pop__badge');
     const title = h('span', 'lnch-pop__title', titleText);
-    const x = h('button', 'lnch-pop__x', '✕');
+    const x = h('button', 'lnch-pop__x');
+    x.append(icon('close'));
     x.type = 'button';
     x.setAttribute('aria-label', '닫기');
     x.addEventListener('click', () => closePop());
@@ -698,7 +707,7 @@ export function createLauncher({ root, store }) {
       browseBtn.hidden = kind === 'url';
       argsField.hidden = !(kind === 'script' || kind === 'app');
 
-      if (!iconInput.value) iconInput.placeholder = KIND_ICONS[kind];
+      if (!iconInput.value) iconInput.placeholder = '비우면 기본 아이콘';
 
       hint.classList.remove('is-warn');
       hint.textContent = kind === 'script'
@@ -765,7 +774,8 @@ export function createLauncher({ root, store }) {
 
       const patch = {
         label: nameInput.value.trim() || guessLabel(kind, target),
-        icon: iconInput.value.trim() || KIND_ICONS[kind],
+        // 비워 두면 종류별 기본 선 아이콘이 쓰인다
+        icon: iconInput.value.trim(),
         kind,
         target,
         args: (kind === 'script' || kind === 'app') ? parseArgs(argsInput.value) : [],

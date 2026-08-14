@@ -8,6 +8,7 @@
 //   패널 높이는 콘텐츠 높이가 그대로 되므로(셸이 flex: 0 0 auto) 한 줄 기준으로 설계했다.
 
 import { fromKey, todayKey, WEEKDAY_LABELS } from '../lib/date.js';
+import { icon } from '../lib/icons.js';
 
 // ============================================================ 색온도 보간
 //
@@ -224,7 +225,8 @@ export function createDashboard({ root, store }) {
     const fill = h('div', 'dash-card__fill');
     track.append(fill);
 
-    const unpin = h('button', 'dash-unpin', '✕');
+    const unpin = h('button', 'dash-unpin');
+    unpin.append(icon('close'));
     unpin.type = 'button';
     unpin.title = '고정 해제';
     unpin.setAttribute('aria-label', '고정 해제');

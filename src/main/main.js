@@ -12,6 +12,7 @@ const {
   globalShortcut,
   shell,
   dialog,
+  Notification,
 } = electron;
 
 // screen 모듈은 app 'ready' 이후에만 접근 가능하므로 호출 시점에 가져온다.
@@ -371,6 +372,26 @@ function registerIpc() {
     const p = PRESETS[preset];
     if (!p) return;
     resizeTo(p.width, p.height);
+  });
+
+  // --- 리마인더 알림 ---
+  // 렌더러의 스케줄러가 시간이 된 일정을 알려 오면 OS 알림으로 띄운다.
+  ipcMain.handle('reminder:notify', (_e, payload) => {
+    if (!Notification.isSupported()) {
+      return { ok: false, error: '이 시스템에서는 알림을 지원하지 않습니다.' };
+    }
+    const title = String(payload?.title || '일정 알림').slice(0, 120);
+    const body = String(payload?.body || '').slice(0, 300);
+    const taskId = String(payload?.taskId || '');
+
+    const n = new Notification({ title, body, silent: false });
+    // 알림을 클릭하면 위젯을 띄우고 해당 일정을 열어 준다
+    n.on('click', () => {
+      showWidget();
+      if (win && !win.isDestroyed()) win.webContents.send('reminder:click', taskId);
+    });
+    n.show();
+    return { ok: true };
   });
 
   // --- 외부 링크 ---

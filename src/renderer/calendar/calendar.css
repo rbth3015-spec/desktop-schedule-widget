@@ -340,3 +340,81 @@
   .cal-todaybtn { padding: 2px 5px; font-size: 9px; }
   .cal-weekday { font-size: 9px; }
 }
+
+/* ============================================================ 다이어리 톤 보정
+   base.css 의 토큰 위에, 인쇄된 수첩에 가까운 활자·괘선 규칙을 덧입힌다. */
+
+.cal-title {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-navbtn { border-radius: 50%; }
+.cal-navbtn .icon { width: .85em; height: .85em; }
+
+.cal-todaybtn {
+  font-family: var(--font-serif);
+  letter-spacing: .08em;
+  border-radius: 2px;
+}
+
+/* 요일 머리글 — 작은 대문자처럼 자간을 벌린 표제 */
+.cal-weekday {
+  font-family: var(--font-serif);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--text-faint);
+}
+.cal-weekdays { border-bottom: 1px solid var(--rule); }
+
+/* 칸은 면이 아니라 괘선으로 나눈다 */
+.cal-week + .cal-week { border-top: 1px solid var(--rule); }
+.cal-day + .cal-day { border-left: 1px solid var(--rule); }
+.cal-day { border-radius: 0; }
+
+/* 날짜 숫자 — 명조 + 고정폭 숫자 */
+.cal-day__num {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+
+/* 오늘은 테두리 고리, 선택은 채운 사각 — 도장 찍은 느낌 */
+.cal-day--today .cal-day__num {
+  color: var(--accent);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1.2px var(--accent);
+  border-radius: 2px;
+  padding: 0 3px;
+}
+.cal-day--sel { background: var(--accent-soft); }
+.cal-day--sel .cal-day__num {
+  background: var(--accent);
+  color: var(--on-color);
+  border-radius: 2px;
+  padding: 0 3px;
+  box-shadow: none;
+}
+
+.cal-day__count {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+/* 기간 막대 — 모서리를 거의 없애 인쇄물처럼 */
+.cal-bar { border-radius: 2px; }
+.cal-bar__t { letter-spacing: .01em; }
+
+.cal-meter__label {
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+}
+.cal-meter__track { border-radius: 1px; }
+.cal-meter__fill { border-radius: 1px; background: var(--gold); }

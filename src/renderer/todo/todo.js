@@ -3,6 +3,31 @@
 // 외부 라이브러리 없음. 순수 ES 모듈 + DOM API. 사용자 입력은 항상 textContent 로만 넣는다.
 
 import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../lib/date.js';
+import { remindLabel } from '../reminders.js';
+import { icon } from '../lib/icons.js';
+
+/** 리마인더 프리셋. 값은 store 의 '<며칠 전>@<HH:mm>' 형식. */
+const REMIND_PRESETS = [
+  ['',        '알림 없음'],
+  ['0@09:00', '당일 오전 9시'],
+  ['0@12:00', '당일 정오'],
+  ['0@18:00', '당일 오후 6시'],
+  ['1@18:00', '하루 전 오후 6시'],
+  ['3@18:00', '3일 전 오후 6시'],
+  ['7@18:00', '일주일 전 오후 6시'],
+];
+
+function remindSelect(cls) {
+  const sel = document.createElement('select');
+  sel.className = cls;
+  for (const [value, label] of REMIND_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    sel.append(opt);
+  }
+  return sel;
+}
 
 // ============================================================ 빠른 입력 파서
 //
@@ -317,7 +342,8 @@ export function createTodoPanel({ root, store }) {
   goTodayBtn.type = 'button';
   goTodayBtn.title = '오늘 날짜로 이동';
   const progressText = h('span', 'todo-progress__text', '0/0');
-  const addBtn = h('button', 'todo-add', '+');
+  const addBtn = h('button', 'todo-add');
+  addBtn.append(icon('plus'));
   addBtn.type = 'button';
   addBtn.title = '일정 추가';
   dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, addBtn);
@@ -464,8 +490,10 @@ export function createTodoPanel({ root, store }) {
     const rowDates = h('div', 'todo-compose__row');
     rowDates.append(field('시작', startIn), endField, spanWrap);
 
+    const remindIn = remindSelect('todo-detail__select');
+
     const rowMeta = h('div', 'todo-compose__row');
-    rowMeta.append(field('우선순위', prio), field('색', swatches));
+    rowMeta.append(field('우선순위', prio), field('색', swatches), field('알림', remindIn));
 
     form.append(titleIn, rowDates, linkIn, tagsIn, rowMeta, actions);
 
@@ -488,6 +516,7 @@ export function createTodoPanel({ root, store }) {
       linkIn.value = '';
       tagsIn.value = '';
       prio.value = '0';
+      remindIn.value = '';
       spanChk.checked = false;
       endField.hidden = true;
       err.hidden = true;
@@ -529,6 +558,7 @@ export function createTodoPanel({ root, store }) {
         link,
         color: pickedColor,
         priority: Number(prio.value) || 0,
+        remind: remindIn.value,
         tags: tagsIn.value.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean),
       });
 
@@ -663,7 +693,8 @@ export function createTodoPanel({ root, store }) {
     const dot = h('span', 'todo-dot');
     const title = h('span', 'todo-title');
     const meta = h('span', 'todo-meta');           // 우선순위 뱃지 + 태그 + D-day
-    const del = h('button', 'todo-del', '✕');
+    const del = h('button', 'todo-del');
+    del.append(icon('close'));
     del.type = 'button';
     del.title = '삭제';
 
@@ -897,9 +928,18 @@ export function createTodoPanel({ root, store }) {
     const linkRow = h('div', 'todo-detail__linkrow');
     linkRow.append(linkIn, linkOpen);
 
-    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow));
+    // 리마인더 — 바꾸면 '이미 알림' 표시를 지워 새 시각에 다시 알리게 한다
+    const remindIn = remindSelect('todo-detail__select');
+    remindIn.addEventListener('change', () => {
+      store.updateTask(rec.id, { remind: remindIn.value, remindedAt: null });
+    });
 
-    rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen };
+    const rowExtra = h('div', 'todo-detail__row');
+    rowExtra.append(field('알림', remindIn));
+
+    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow), rowExtra);
+
+    rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen, remindIn };
     return rec.detail;
   }
 
@@ -922,6 +962,7 @@ export function createTodoPanel({ root, store }) {
     setValueSafe(d.tagsIn, task.tags.join(' '));
     setValueSafe(d.linkIn, task.link || '');
     d.linkOpen.disabled = !task.link;
+    setValueSafe(d.remindIn, task.remind || '');
     for (const key of Object.keys(d.swatchBtns)) {
       d.swatchBtns[key].classList.toggle('is-on', task.color === key);
     }
@@ -938,7 +979,8 @@ export function createTodoPanel({ root, store }) {
     li.classList.toggle('todo-item--p2', task.priority === 2);
 
     rec.check.classList.toggle('is-on', task.done);
-    rec.check.textContent = task.done ? '✓' : '';
+    rec.check.textContent = '';
+    if (task.done) rec.check.append(icon('check'));
     rec.dot.style.background = COLORS[task.color] || COLORS.blue;
 
     if (rec.titleInput) {
@@ -965,9 +1007,19 @@ export function createTodoPanel({ root, store }) {
       });
       meta.append(c);
     }
+    // 알림이 걸린 일정은 종 모양으로 표시 (이미 알린 건 흐리게)
+    if (task.remind) {
+      const bell = h('span', 'todo-remind');
+      bell.append(icon('bell'));
+      bell.title = `알림: ${remindLabel(task.remind)}${task.remindedAt ? ' (알림 완료)' : ''}`;
+      bell.classList.toggle('is-done', !!task.remindedAt);
+      meta.append(bell);
+    }
+
     // 관련 링크 — 클릭하면 기본 브라우저로 열린다
     if (task.link) {
-      const lk = h('button', 'todo-link', '🔗');
+      const lk = h('button', 'todo-link');
+      lk.append(icon('link'));
       lk.type = 'button';
       lk.title = `열기: ${linkLabel(task.link)}`;
       lk.addEventListener('click', (e) => {
