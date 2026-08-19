@@ -113,6 +113,57 @@ function commit({ save = true } = {}) {
   emit();
 }
 
+// ---------------------------------------------------------------- 되돌리기
+//
+// 액션마다 역연산을 짜는 대신 '바뀌기 직전 상태'를 통째로 찍어 둔다.
+// 일정 수가 수천 개가 되어도 스냅샷 하나는 수백 KB 수준이라 실사용에 문제가 없고,
+// 새 액션을 추가할 때 되돌리기 로직을 따로 안 짜도 된다는 점이 훨씬 크다.
+
+const UNDO_LIMIT = 50;
+const undoStack = [];
+const redoStack = [];
+
+function snapshot() {
+  return {
+    tasks: structuredClone(state.tasks),
+    launcher: structuredClone(state.launcher),
+  };
+}
+
+function restore(snap) {
+  state.tasks = snap.tasks;
+  state.launcher = snap.launcher;
+}
+
+/** 되돌릴 수 있는 변경 직전에 부른다. label 은 사용자에게 보여줄 문구. */
+function pushUndo(label) {
+  undoStack.push({ label, data: snapshot() });
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;   // 새 변경이 생기면 다시 실행 이력은 버린다
+}
+
+export function canUndo() { return undoStack.length > 0; }
+export function canRedo() { return redoStack.length > 0; }
+
+/** @returns {string|null} 되돌린 동작의 이름 (없으면 null) */
+export function undo() {
+  const entry = undoStack.pop();
+  if (!entry) return null;
+  redoStack.push({ label: entry.label, data: snapshot() });
+  restore(entry.data);
+  commit();
+  return entry.label;
+}
+
+export function redo() {
+  const entry = redoStack.pop();
+  if (!entry) return null;
+  undoStack.push({ label: entry.label, data: snapshot() });
+  restore(entry.data);
+  commit();
+  return entry.label;
+}
+
 // ---------------------------------------------------------------- 초기화
 
 export async function init() {
@@ -290,6 +341,7 @@ function byOrder(a, b) {
 // ---------------------------------------------------------------- 액션
 
 export function addTask(patch = {}) {
+  pushUndo('일정 추가');
   const start = patch.start !== undefined ? patch.start : state.selectedDate;
   const task = normalize({ ...patch, start, end: patch.end ?? start, createdAt: Date.now() });
   task.order = state.tasks.length;
@@ -301,6 +353,7 @@ export function addTask(patch = {}) {
 export function updateTask(id, patch) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+  pushUndo('일정 수정');
   Object.assign(t, patch);
   if (t.start && (!t.end || t.end < t.start)) t.end = t.start;
   commit();
@@ -309,18 +362,21 @@ export function updateTask(id, patch) {
 export function toggleDone(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+  pushUndo(t.done ? '완료 취소' : '완료 처리');
   t.done = !t.done;
   t.doneAt = t.done ? Date.now() : null;
   commit();
 }
 
 export function removeTask(id) {
+  pushUndo('일정 삭제');
   state.tasks = state.tasks.filter((t) => t.id !== id);
   commit();
 }
 
 /** 드래그 정렬: ids 순서대로 order 재부여 */
 export function reorder(ids) {
+  pushUndo('순서 변경');
   ids.forEach((id, i) => {
     const t = state.tasks.find((x) => x.id === id);
     if (t) t.order = i;
@@ -332,6 +388,7 @@ export function reorder(ids) {
 export function moveTask(id, newStart) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+  pushUndo('날짜 이동');
   if (!t.start) {
     t.start = newStart;
     t.end = newStart;
@@ -355,6 +412,7 @@ function shift(key, n) {
 export function togglePinned(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+  pushUndo(t.pinned ? '고정 해제' : 'D-Day 고정');
   t.pinned = !t.pinned;
   commit();
 }
@@ -416,6 +474,7 @@ export function launcherItems() {
 }
 
 export function addLauncherItem(patch) {
+  pushUndo('바로가기 추가');
   const item = normalizeLauncher({ ...patch, id: 'l_' + cryptoId() });
   item.order = state.launcher.length;
   state.launcher.push(item);
@@ -431,6 +490,7 @@ export function updateLauncherItem(id, patch) {
 }
 
 export function removeLauncherItem(id) {
+  pushUndo('바로가기 삭제');
   state.launcher = state.launcher.filter((x) => x.id !== id);
   commit();
 }

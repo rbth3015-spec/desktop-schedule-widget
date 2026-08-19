@@ -65,6 +65,22 @@ async function boot() {
   if (store.getState().loadNotice) showNotice(store.getState().loadNotice);
 }
 
+/** 짧은 확인 문구 — 되돌리기처럼 결과가 눈에 안 보일 수 있는 동작에 쓴다 */
+let toastEl = null;
+let toastTimer = null;
+
+function showToast(text) {
+  clearTimeout(toastTimer);
+  if (!toastEl) {
+    toastEl = document.createElement('div');
+    toastEl.className = 'toast';
+    els.root.append(toastEl);
+  }
+  toastEl.textContent = text;
+  toastEl.classList.add('is-on');
+  toastTimer = setTimeout(() => toastEl?.classList.remove('is-on'), 1600);
+}
+
 /** 데이터 손상 백업 등, 사용자가 알아야 할 일회성 안내 */
 function showNotice(text) {
   const el = document.createElement('div');
@@ -450,16 +466,39 @@ function wireMenuActions() {
 
 function wireShortcuts() {
   window.addEventListener('keydown', (e) => {
-    // 입력 중일 땐 앱 단축키를 가로채지 않는다
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) {
-      if (e.key === 'Escape') document.activeElement.blur();
-      return;
+    // 입력 중일 땐 앱 단축키를 가로채지 않는다.
+    // 다만 '입력창에 포커스가 있다'는 이유만으로 전부 막으면, 검색창에 커서가 놓인 순간
+    // Ctrl+Z 가 먹통이 된다. 내용이 빈 입력창은 네이티브 실행취소가 할 일이 없으므로
+    // 앱 단축키에 넘겨준다.
+    const active = document.activeElement;
+    const tag = active?.tagName;
+    const isField = tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable;
+    if (isField) {
+      if (e.key === 'Escape') { active.blur(); return; }
+      const hasText = active.isContentEditable ? !!active.textContent : !!active.value;
+      if (hasText) return;
     }
 
     if (e.key === 'Escape' && bellPopover) { closeBell(); return; }
     if (e.key === 'Escape' && !els.settings.hidden) { toggleSettings(); return; }
     if (e.ctrlKey && e.key === ',') { toggleSettings(); e.preventDefault(); }
+
+    // 되돌리기 / 다시 실행.
+    // 입력 중일 때는 위에서 이미 return 했으므로 여기까지 오지 않는다
+    // (텍스트 편집의 Ctrl+Z 를 가로채면 안 된다).
+    const z = e.key === 'z' || e.key === 'Z';
+    if (e.ctrlKey && z && !e.shiftKey) {
+      e.preventDefault();
+      const label = store.undo();
+      showToast(label ? `되돌렸습니다 — ${label}` : '되돌릴 작업이 없습니다');
+      return;
+    }
+    if ((e.ctrlKey && z && e.shiftKey) || (e.ctrlKey && (e.key === 'y' || e.key === 'Y'))) {
+      e.preventDefault();
+      const label = store.redo();
+      showToast(label ? `다시 실행했습니다 — ${label}` : '다시 실행할 작업이 없습니다');
+      return;
+    }
   });
 }
 
