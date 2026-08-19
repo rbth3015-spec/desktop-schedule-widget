@@ -20,6 +20,7 @@ const els = {
   dash: $('#dash-root'),
   launcher: $('#launcher-root'),
   settings: $('#settings-root'),
+  btnHelp: $('#btn-help'),
   btnBell: $('#btn-bell'),
   btnSettings: $('#btn-settings'),
   btnPin: $('#btn-pin'),
@@ -155,6 +156,7 @@ function updateTitle(state) {
 
 function wireTitlebar() {
   // 이모지는 OS/폰트마다 모양과 색이 달라 톤이 깨진다 — 선 아이콘으로 교체
+  setIcon(els.btnHelp, 'help');
   setIcon(els.btnBell, 'bell');
   setIcon(els.btnSettings, 'settings');
   setIcon(els.btnPin, 'pin');
@@ -168,6 +170,95 @@ function wireTitlebar() {
   });
   els.btnSettings.addEventListener('click', toggleSettings);
   els.btnBell.addEventListener('click', (e) => { e.stopPropagation(); toggleBell(); });
+  els.btnHelp.addEventListener('click', toggleHelp);
+}
+
+// ---------------------------------------------------------------- 도움말
+//
+// 기능이 늘어날수록 '있는 줄 몰라서 못 쓰는' 기능이 생긴다.
+// 조작법과 문법을 한 장에 모아 언제든 열어 볼 수 있게 한다.
+
+const HELP = [
+  ['기본 조작', [
+    ['날짜를 클릭', '그날의 일정을 오른쪽에 펼칩니다'],
+    ['날짜를 눌러 옆으로 끌기', '그 기간짜리 일정을 바로 만듭니다'],
+    ['목록 항목을 달력으로 끌기', '일정 날짜를 옮깁니다'],
+    ['항목을 클릭', '메모·링크·알림을 폅니다'],
+    ['제목을 더블클릭', '이름을 그 자리에서 고칩니다'],
+    ['목록 위 + 버튼', '날짜·기간·링크를 눌러서 지정합니다'],
+  ]],
+  ['단축키', [
+    ['Ctrl + Z', '되돌리기'],
+    ['Ctrl + Shift + Z', '다시 실행'],
+    ['Ctrl + ,', '설정 열기'],
+    ['← →', '하루씩 이동'],
+    ['↑ ↓', '일주일씩 이동'],
+    ['PageUp / PageDown', '한 달씩 이동'],
+    ['T', '오늘로'],
+    ['Esc', '열린 창 닫기'],
+    ['Alt + Shift + S', '위젯 보이기 · 잠금 해제 (어디서든)'],
+  ]],
+  ['빠른 입력 — 한 줄로 적기', [
+    ['! / !!', '중요 / 긴급'],
+    ['#태그', '태그 (여러 개 가능)'],
+    ['@내일  @금  @8/15', '시작일'],
+    ['~3d  ~8/20', '종료일 — 기간 일정이 됩니다'],
+    ['*파랑 *초록 *노랑 *빨강 *보라 *회색', '색'],
+  ]],
+];
+
+let helpSheet = null;
+
+function toggleHelp() {
+  if (helpSheet) { closeHelp(); return; }
+
+  const sheet = document.createElement('div');
+  sheet.className = 'help';
+
+  const head = document.createElement('div');
+  head.className = 'help__head';
+  const title = document.createElement('span');
+  title.className = 'help__title';
+  title.textContent = '사용법';
+  const close = document.createElement('button');
+  close.className = 'help__close';
+  close.append(icon('close'));
+  close.addEventListener('click', closeHelp);
+  head.append(title, close);
+  sheet.append(head);
+
+  const body = document.createElement('div');
+  body.className = 'help__body';
+  for (const [section, rows] of HELP) {
+    const h = document.createElement('div');
+    h.className = 'help__section';
+    h.textContent = section;
+    body.append(h);
+
+    const dl = document.createElement('div');
+    dl.className = 'help__list';
+    for (const [key, desc] of rows) {
+      const k = document.createElement('span');
+      k.className = 'help__key';
+      k.textContent = key;
+      const d = document.createElement('span');
+      d.className = 'help__desc';
+      d.textContent = desc;
+      dl.append(k, d);
+    }
+    body.append(dl);
+  }
+  sheet.append(body);
+
+  els.root.append(sheet);
+  helpSheet = sheet;
+  els.btnHelp.classList.add('is-active');
+}
+
+function closeHelp() {
+  helpSheet?.remove();
+  helpSheet = null;
+  els.btnHelp.classList.remove('is-active');
 }
 
 // ---------------------------------------------------------------- 리마인더
@@ -479,9 +570,11 @@ function wireShortcuts() {
       if (hasText) return;
     }
 
+    if (e.key === 'Escape' && helpSheet) { closeHelp(); return; }
     if (e.key === 'Escape' && bellPopover) { closeBell(); return; }
     if (e.key === 'Escape' && !els.settings.hidden) { toggleSettings(); return; }
     if (e.ctrlKey && e.key === ',') { toggleSettings(); e.preventDefault(); }
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) { toggleHelp(); e.preventDefault(); return; }
 
     // 되돌리기 / 다시 실행.
     // 입력 중일 때는 위에서 이미 return 했으므로 여기까지 오지 않는다

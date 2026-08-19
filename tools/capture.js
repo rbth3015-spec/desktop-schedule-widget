@@ -44,6 +44,8 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // 화면 밖 창은 Chromium 이 렌더링을 스로틀링해서 capturePage 가 빈 이미지를 준다
+      backgroundThrottling: false,
     },
   });
 
@@ -66,7 +68,12 @@ app.whenReady().then(async () => {
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  const image = await win.webContents.capturePage();
+  // 그래도 간헐적으로 0x0 이 나오므로 내용이 잡힐 때까지 몇 번 다시 찍는다
+  let image = await win.webContents.capturePage();
+  for (let i = 0; i < 6 && image.getSize().width === 0; i++) {
+    await new Promise((r) => setTimeout(r, 350));
+    image = await win.webContents.capturePage();
+  }
   const png = image.toPNG();
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
