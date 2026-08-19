@@ -508,17 +508,21 @@ export function createTodoPanel({ root, store }) {
       submit();
     });
 
-    function open() {
+    /** @param {{start:string,end:string}} [preset] 캘린더에서 끌어 만든 기간 */
+    function open(preset) {
       const sel = store.getState().selectedDate;
+      const start = preset?.start || sel;
+      const end = preset?.end || start;
       titleIn.value = '';
-      startIn.value = sel;
-      endIn.value = sel;
+      startIn.value = start;
+      endIn.value = end;
       linkIn.value = '';
       tagsIn.value = '';
       prio.value = '0';
       remindIn.value = '';
-      spanChk.checked = false;
-      endField.hidden = true;
+      // 끌어서 만든 기간이면 기간 모드로 열어 종료일을 바로 보여 준다
+      spanChk.checked = end > start;
+      endField.hidden = !spanChk.checked;
       err.hidden = true;
       pickedColor = 'blue';
       for (const k of Object.keys(swatchBtns)) {
@@ -1228,6 +1232,14 @@ export function createTodoPanel({ root, store }) {
 
   // ---------------------------------------------------------- 전체 렌더
   function render() {
+    // 캘린더에서 날짜를 끌어 놓으면 그 기간으로 추가 폼을 연다.
+    // 모듈끼리 직접 부르지 않고 store 의 요청 큐를 거친다.
+    const req = store.getState().composeRequest;
+    if (req) {
+      store.consumeCompose();
+      compose.open(req);
+    }
+
     if (destroyed) return;
     const st = store.getState();
     const key = st.selectedDate;

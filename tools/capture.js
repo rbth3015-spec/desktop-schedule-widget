@@ -4,6 +4,8 @@
 //   npx electron tools/capture.js --out shot.png [--theme light|dark]
 //                                 [--w 1100] [--h 700] [--delay 900]
 //                                 [--set '{"opacity":0.9}']
+//                                 [--exec script.js]   캡처 전에 페이지에서 실행할 JS 파일
+//                                                      (폼 열기·드래그 재현 등 상태 연출용)
 //
 // 창은 화면 밖(-4000)에 띄워 캡처하므로 사용자 화면에 나타나지 않는다.
 
@@ -50,6 +52,19 @@ app.whenReady().then(async () => {
   // 폰트 로딩과 첫 렌더가 끝날 때까지 기다린다
   await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)').catch(() => {});
   await new Promise((r) => setTimeout(r, DELAY));
+
+  // 특정 상태(폼이 열린 화면 등)를 찍으려면 페이지에서 스크립트를 돌린다
+  const execPath = arg('exec', '');
+  if (execPath) {
+    const code = fs.readFileSync(path.resolve(execPath), 'utf8');
+    try {
+      const result = await win.webContents.executeJavaScript(code, true);
+      if (result !== undefined) console.error('[exec] ' + JSON.stringify(result));
+    } catch (err) {
+      console.error('[exec] 실패: ' + (err && err.message));
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   const image = await win.webContents.capturePage();
   const png = image.toPNG();

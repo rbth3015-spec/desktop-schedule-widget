@@ -80,6 +80,8 @@ const state = {
   editingTaskId: null,
   ready: false,
   loadNotice: null,
+  // 캘린더에서 기간을 드래그하면 여기 담기고, 투두 패널이 추가 폼을 열면서 비운다.
+  composeRequest: /** @type {{start:string,end:string}|null} */ (null),
 };
 
 export function getState() {
@@ -519,6 +521,21 @@ export function setAnchorMonth(key) {
 export function setFilter(patch) {
   Object.assign(state.filter, patch);
   commit({ save: false });
+}
+
+/** 캘린더에서 끌어 만든 기간으로 추가 폼을 열도록 요청한다 */
+export function requestCompose(start, end) {
+  state.composeRequest = { start, end: end < start ? start : end };
+  state.selectedDate = start;
+  state.anchorMonth = start;
+  commit({ save: false });
+}
+
+/** 투두 패널이 폼을 연 뒤 호출해 요청을 비운다 */
+export function consumeCompose() {
+  const req = state.composeRequest;
+  state.composeRequest = null;
+  return req;
 }
 
 export function setEditing(id) {

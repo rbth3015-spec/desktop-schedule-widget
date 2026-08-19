@@ -73,6 +73,7 @@ export function createCalendar({ root, store }) {
 
   // ---------------------------------------------------------------- 이벤트
   function onClick(e) {
+    if (suppressClick) { suppressClick = false; return; }
     const t = e.target;
     if (!t || typeof t.closest !== 'function') return;
 
@@ -175,6 +176,65 @@ export function createCalendar({ root, store }) {
     });
   }
 
+  // ---------------------------------------------------------------- 기간 드래그
+  // 날짜 칸을 눌러 끌면 그 기간으로 새 일정을 만든다. 손으로 달력에 줄을 긋는 동작과 같다.
+  // 단순 클릭(끌지 않음)은 기존 onClick 이 날짜 선택으로 처리한다.
+  let rangeAnchor = null;
+  let rangeCurrent = null;
+  let rangeDragged = false;
+  let suppressClick = false;
+
+  function clearRangePreview() {
+    for (const c of els.cells) c.classList.remove('cal-day--range');
+  }
+
+  function paintRange(a, b) {
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    for (const c of els.cells) {
+      const k = c.dataset.key;
+      c.classList.toggle('cal-day--range', k >= lo && k <= hi);
+    }
+  }
+
+  function onMouseDown(e) {
+    if (e.button !== 0) return;
+    // 막대나 '+N' 위에서 시작한 드래그는 일정 이동이므로 건드리지 않는다
+    if (e.target.closest('.cal-bar') || e.target.closest('.cal-more')) return;
+    const cell = e.target.closest('.cal-day');
+    if (!cell) return;
+    rangeAnchor = cell.dataset.key;
+    rangeCurrent = rangeAnchor;
+    rangeDragged = false;
+  }
+
+  function onMouseOver(e) {
+    if (!rangeAnchor) return;
+    const cell = e.target.closest('.cal-day');
+    if (!cell || cell.dataset.key === rangeCurrent) return;
+    rangeCurrent = cell.dataset.key;
+    rangeDragged = true;
+    paintRange(rangeAnchor, rangeCurrent);
+  }
+
+  function onMouseUp() {
+    if (!rangeAnchor) return;
+    const a = rangeAnchor;
+    const b = rangeCurrent;
+    const dragged = rangeDragged;
+    rangeAnchor = null;
+    rangeCurrent = null;
+    rangeDragged = false;
+    clearRangePreview();
+    if (!dragged || a === b) return;   // 단순 클릭 — onClick 이 처리
+    suppressClick = true;              // 드래그 끝의 click 이벤트를 삼킨다
+    store.requestCompose(a < b ? a : b, a < b ? b : a);
+  }
+
+  els.grid.addEventListener('mousedown', onMouseDown);
+  els.grid.addEventListener('mouseover', onMouseOver);
+  window.addEventListener('mouseup', onMouseUp);
+
   els.root.addEventListener('click', onClick);
   els.root.addEventListener('keydown', onKeyDown);
   els.grid.addEventListener('dragstart', onDragStart);
@@ -199,6 +259,9 @@ export function createCalendar({ root, store }) {
       els.root.removeEventListener('click', onClick);
       els.root.removeEventListener('keydown', onKeyDown);
       els.grid.removeEventListener('dragstart', onDragStart);
+      els.grid.removeEventListener('mousedown', onMouseDown);
+      els.grid.removeEventListener('mouseover', onMouseOver);
+      window.removeEventListener('mouseup', onMouseUp);
       document.removeEventListener('dragstart', onDocDragStart, true);
       document.removeEventListener('dragend', onDocDragEnd, true);
       document.removeEventListener('drop', onDocDragEnd, true);
