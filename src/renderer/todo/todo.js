@@ -17,6 +17,27 @@ const REMIND_PRESETS = [
   ['7@18:00', '일주일 전 오후 6시'],
 ];
 
+/** 반복 프리셋 */
+const REPEAT_PRESETS = [
+  ['',        '반복 안 함'],
+  ['daily',   '매일'],
+  ['weekly',  '매주'],
+  ['monthly', '매월'],
+  ['yearly',  '매년'],
+];
+
+function repeatSelect(cls) {
+  const sel = document.createElement('select');
+  sel.className = cls;
+  for (const [value, label] of REPEAT_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    sel.append(opt);
+  }
+  return sel;
+}
+
 function remindSelect(cls) {
   const sel = document.createElement('select');
   sel.className = cls;
@@ -491,9 +512,19 @@ export function createTodoPanel({ root, store }) {
     rowDates.append(field('시작', startIn), endField, spanWrap);
 
     const remindIn = remindSelect('todo-detail__select');
+    const repeatIn = repeatSelect('todo-detail__select');
+
+    // 반복은 당일 일정만 지원한다 — 켜면 기간 설정을 잠근다
+    repeatIn.addEventListener('change', () => {
+      const on = !!repeatIn.value;
+      if (on) { spanChk.checked = false; endField.hidden = true; }
+      spanChk.disabled = on;
+      spanWrap.classList.toggle('is-disabled', on);
+    });
 
     const rowMeta = h('div', 'todo-compose__row');
-    rowMeta.append(field('우선순위', prio), field('색', swatches), field('알림', remindIn));
+    rowMeta.append(field('우선순위', prio), field('색', swatches),
+                   field('반복', repeatIn), field('알림', remindIn));
 
     form.append(titleIn, rowDates, linkIn, tagsIn, rowMeta, actions);
 
@@ -520,6 +551,9 @@ export function createTodoPanel({ root, store }) {
       tagsIn.value = '';
       prio.value = '0';
       remindIn.value = '';
+      repeatIn.value = '';
+      spanChk.disabled = false;
+      spanWrap.classList.remove('is-disabled');
       // 끌어서 만든 기간이면 기간 모드로 열어 종료일을 바로 보여 준다
       spanChk.checked = end > start;
       endField.hidden = !spanChk.checked;
@@ -563,6 +597,7 @@ export function createTodoPanel({ root, store }) {
         color: pickedColor,
         priority: Number(prio.value) || 0,
         remind: remindIn.value,
+        repeat: repeatIn.value ? { freq: repeatIn.value, interval: 1 } : null,
         tags: tagsIn.value.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean),
       });
 
@@ -710,14 +745,16 @@ export function createTodoPanel({ root, store }) {
     // 완료 토글
     check.addEventListener('click', (e) => {
       e.stopPropagation();
-      store.toggleDone(taskId);
+      // 반복 일정은 '이 회차'만 완료 처리한다
+      store.toggleDone(taskId, rec.task?.occDate);
     });
 
     // 삭제
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       if (store.getState().editingTaskId === taskId) store.setEditing(null);
-      store.removeTask(taskId);
+      // 반복 일정은 이 회차만 건너뛴다. 규칙째 지우려면 상세의 '반복 전체 삭제'.
+      store.removeTask(taskId, rec.task?.occDate);
     });
 
     // 클릭 → 상세 펼치기/접기.
@@ -938,12 +975,44 @@ export function createTodoPanel({ root, store }) {
       store.updateTask(rec.id, { remind: remindIn.value, remindedAt: null });
     });
 
+    // 반복 — 규칙을 바꾸면 이미 기록해 둔 예외/완료 회차는 store 가 정리한다
+    const repeatIn = repeatSelect('todo-detail__select');
+    const untilIn = h('input', 'todo-detail__date');
+    untilIn.type = 'date';
+    untilIn.title = '반복 종료일 (비우면 계속)';
+
+    const applyRepeat = () => {
+      if (!repeatIn.value) { store.setRepeat(rec.id, null); return; }
+      store.setRepeat(rec.id, {
+        freq: repeatIn.value,
+        interval: 1,
+        until: untilIn.value || null,
+      });
+    };
+    repeatIn.addEventListener('change', applyRepeat);
+    untilIn.addEventListener('change', applyRepeat);
+
+    const untilField = field('반복 종료', untilIn);
+
+    const dropSeries = h('button', 'todo-detail__series', '반복 전체 삭제');
+    dropSeries.type = 'button';
+    dropSeries.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (store.getState().editingTaskId === rec.id) store.setEditing(null);
+      store.removeSeries(rec.id);
+    });
+
     const rowExtra = h('div', 'todo-detail__row');
-    rowExtra.append(field('알림', remindIn));
+    rowExtra.append(field('알림', remindIn), field('반복', repeatIn), untilField);
 
-    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow), rowExtra);
+    const rowSeries = h('div', 'todo-detail__row');
+    rowSeries.append(dropSeries);
 
-    rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen, remindIn };
+    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
+             rowExtra, rowSeries);
+
+    rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen,
+                   remindIn, repeatIn, untilIn, untilField, rowSeries };
     return rec.detail;
   }
 
@@ -967,6 +1036,12 @@ export function createTodoPanel({ root, store }) {
     setValueSafe(d.linkIn, task.link || '');
     d.linkOpen.disabled = !task.link;
     setValueSafe(d.remindIn, task.remind || '');
+    setValueSafe(d.repeatIn, task.repeat?.freq || '');
+    setValueSafe(d.untilIn, task.repeat?.until || '');
+    d.untilField.hidden = !task.repeat;
+    d.rowSeries.hidden = !task.repeat;
+    // 반복 일정은 당일만 — 종료일 입력을 잠근다
+    d.endIn.disabled = !task.start || !!task.repeat;
     for (const key of Object.keys(d.swatchBtns)) {
       d.swatchBtns[key].classList.toggle('is-on', task.color === key);
     }
@@ -1011,6 +1086,16 @@ export function createTodoPanel({ root, store }) {
       });
       meta.append(c);
     }
+    // 반복 일정 표시
+    if (task.repeat) {
+      const rp = h('span', 'todo-repeat');
+      rp.append(icon('repeat'));
+      const every = task.repeat.interval > 1 ? `${task.repeat.interval}` : '';
+      rp.title = `반복: ${every}${store.REPEAT_LABELS[task.repeat.freq] || ''}` +
+                 (task.repeat.until ? ` (${task.repeat.until} 까지)` : '');
+      meta.append(rp);
+    }
+
     // 알림이 걸린 일정은 종 모양으로 표시 (이미 알린 건 흐리게)
     if (task.remind) {
       const bell = h('span', 'todo-remind');

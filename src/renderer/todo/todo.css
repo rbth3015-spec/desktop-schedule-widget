@@ -653,3 +653,24 @@
   color: var(--text-dim);
 }
 .todo-compose__cancel:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* 반복 표시 */
+.todo-repeat {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.todo-repeat .icon { width: .95em; height: .95em; }
+
+.todo-compose__span.is-disabled { opacity: .4; cursor: default; }
+
+.todo-detail__series {
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  transition: border-color .16s, color .16s;
+}
+.todo-detail__series:hover { border-color: var(--danger); color: var(--danger); }

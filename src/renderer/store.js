@@ -205,7 +205,93 @@ function normalize(t) {
     // 리마인더. '<며칠 전>@<HH:mm>' 형식 ('0@09:00' = 시작일 당일 9시). 빈 문자열이면 없음.
     remind: typeof t.remind === 'string' ? t.remind : '',
     remindedAt: t.remindedAt ?? null,   // 이미 알린 시각 (중복 알림 방지, 재시작해도 유지)
+
+    // --- 반복 일정 ---
+    // 규칙은 하나만 저장하고, 화면에 보이는 각 회차는 셀렉터가 그때그때 펼친다.
+    // 회차를 전부 레코드로 만들면 '10년 반복'에 수천 개가 쌓인다.
+    repeat: normalizeRepeat(t.repeat),
+    exceptions: Array.isArray(t.exceptions) ? t.exceptions.slice() : [],  // 건너뛴 회차 날짜
+    doneDates: Array.isArray(t.doneDates) ? t.doneDates.slice() : [],     // 완료한 회차 날짜
   };
+}
+
+const REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
+
+export const REPEAT_LABELS = {
+  daily: '매일',
+  weekly: '매주',
+  monthly: '매월',
+  yearly: '매년',
+};
+
+function normalizeRepeat(r) {
+  if (!r || !REPEAT_FREQS.includes(r.freq)) return null;
+  return {
+    freq: r.freq,
+    interval: Math.min(99, Math.max(1, Number(r.interval) || 1)),
+    until: typeof r.until === 'string' && r.until ? r.until : null,   // 없으면 무기한
+  };
+}
+
+/** 이 날짜에 반복 회차가 있는가 */
+export function occursOn(t, key) {
+  const r = t.repeat;
+  if (!r || !t.start) return false;
+  if (key < t.start) return false;
+  if (r.until && key > r.until) return false;
+  if (t.exceptions.includes(key)) return false;
+
+  const a = fromKeyLocal(t.start);
+  const b = fromKeyLocal(key);
+
+  if (r.freq === 'daily') {
+    return Math.round((b - a) / 86400000) % r.interval === 0;
+  }
+  if (r.freq === 'weekly') {
+    return Math.round((b - a) / 86400000) % (7 * r.interval) === 0;
+  }
+  if (r.freq === 'monthly') {
+    // 31일 반복은 31일이 없는 달을 건너뛴다 (임의로 말일에 붙이지 않는다 — 예측 가능성 우선)
+    if (a.getDate() !== b.getDate()) return false;
+    const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    return months >= 0 && months % r.interval === 0;
+  }
+  if (r.freq === 'yearly') {
+    if (a.getDate() !== b.getDate() || a.getMonth() !== b.getMonth()) return false;
+    const years = b.getFullYear() - a.getFullYear();
+    return years >= 0 && years % r.interval === 0;
+  }
+  return false;
+}
+
+/** 특정 날짜의 회차를 '그날짜짜리 일정'처럼 보이게 만든 사본.
+ *  id 는 원본 그대로라 기존 편집 경로(updateTask/setEditing)가 그대로 동작하고,
+ *  occDate 로 '몇 번째 회차인지'를 구분한다. */
+function occurrenceOf(t, key) {
+  return {
+    ...t,
+    start: key,
+    end: key,
+    occDate: key,
+    done: t.doneDates.includes(key),
+    doneAt: null,
+  };
+}
+
+/** 오늘 이전(포함)의 가장 가까운 회차. 반복 일정의 알림 기준일. */
+function lastOccurrenceOnOrBefore(t, key) {
+  if (!t.repeat || !t.start) return null;
+  if (key < t.start) return null;
+  // 하루씩 되짚는다. 최대 400일까지만 — 그보다 오래 지난 알림은 어차피 의미가 없다.
+  let cur = key;
+  for (let i = 0; i < 400; i++) {
+    if (occursOn(t, cur)) return cur;
+    if (cur <= t.start) return null;
+    const d = fromKeyLocal(cur);
+    d.setDate(d.getDate() - 1);
+    cur = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return null;
 }
 
 /** 예전 버전이 남긴 값을 정리한다. 사용자가 직접 고른 값은 건드리지 않는다. */
@@ -253,23 +339,29 @@ function cryptoId() {
 
 /** 해당 날짜에 걸쳐 있는 태스크 (기간 일정 포함) */
 export function tasksOnDate(key) {
-  return state.tasks
-    .filter((t) => t.start && key >= t.start && key <= (t.end || t.start))
-    .filter(passesFilter)
-    .sort(byOrder);
+  const out = [];
+  for (const t of state.tasks) {
+    if (t.repeat) {
+      if (occursOn(t, key)) out.push(occurrenceOf(t, key));
+    } else if (t.start && key >= t.start && key <= (t.end || t.start)) {
+      out.push(t);
+    }
+  }
+  return out.filter(passesFilter).sort(byOrder);
 }
 
 /** 날짜 없는 '언젠가' 목록 */
 export function inboxTasks() {
-  return state.tasks.filter((t) => !t.start).filter(passesFilter).sort(byOrder);
+  return state.tasks.filter((t) => !t.start && !t.repeat).filter(passesFilter).sort(byOrder);
 }
 
 /** 기간이 2일 이상인 장기 계획.
  *  tasksOnDate / inboxTasks 와 동일하게 검색·태그·완료표시 필터를 적용한다
  *  (뷰마다 필터 적용 여부가 달라지면 캘린더와 목록이 어긋난다). */
 export function spanningTasks() {
+  // 반복 일정은 당일 일정만 지원하므로 기간 막대 대상이 아니다
   return state.tasks
-    .filter((t) => t.start && t.end && t.end > t.start)
+    .filter((t) => !t.repeat && t.start && t.end && t.end > t.start)
     .filter(passesFilter);
 }
 
@@ -277,7 +369,7 @@ export function spanningTasks() {
 export function pinnedTasks() {
   const today = todayKey();
   return state.tasks
-    .filter((t) => t.pinned && t.end)
+    .filter((t) => t.pinned && t.end && !t.repeat)
     .map((t) => ({ ...t, ...ddayInfo(t, today) }))
     .sort((a, b) => a.remaining - b.remaining);
 }
@@ -361,18 +453,64 @@ export function updateTask(id, patch) {
   commit();
 }
 
-export function toggleDone(id) {
+export function toggleDone(id, occDate) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
+
+  // 반복 일정은 회차마다 완료 상태가 따로다 (이번 주는 했고 다음 주는 아직).
+  if (t.repeat && occDate) {
+    const i = t.doneDates.indexOf(occDate);
+    pushUndo(i === -1 ? '완료 처리' : '완료 취소');
+    if (i === -1) t.doneDates.push(occDate);
+    else t.doneDates.splice(i, 1);
+    commit();
+    return;
+  }
+
   pushUndo(t.done ? '완료 취소' : '완료 처리');
   t.done = !t.done;
   t.doneAt = t.done ? Date.now() : null;
   commit();
 }
 
-export function removeTask(id) {
+export function removeTask(id, occDate) {
+  const t = state.tasks.find((x) => x.id === id);
+
+  // 반복 일정에서 한 회차만 지우면 그날을 '예외'로 기록한다. 규칙은 그대로 남는다.
+  if (t && t.repeat && occDate) {
+    pushUndo('이 회차 건너뛰기');
+    if (!t.exceptions.includes(occDate)) t.exceptions.push(occDate);
+    commit();
+    return;
+  }
+
   pushUndo('일정 삭제');
-  state.tasks = state.tasks.filter((t) => t.id !== id);
+  state.tasks = state.tasks.filter((x) => x.id !== id);
+  commit();
+}
+
+/** 반복 일정을 규칙째 삭제 */
+export function removeSeries(id) {
+  pushUndo('반복 일정 전체 삭제');
+  state.tasks = state.tasks.filter((x) => x.id !== id);
+  commit();
+}
+
+/** 반복 규칙 설정/해제. patch 가 null 이면 반복을 끈다. */
+export function setRepeat(id, patch) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return;
+  pushUndo(patch ? '반복 설정' : '반복 해제');
+  t.repeat = normalizeRepeat(patch);
+  if (t.repeat) {
+    // 반복은 당일 일정만 지원한다 (기간 반복은 캘린더 막대 배치가 급격히 복잡해진다)
+    t.end = t.start;
+    t.done = false;
+    t.doneAt = null;
+  } else {
+    t.exceptions = [];
+    t.doneDates = [];
+  }
   commit();
 }
 
@@ -437,7 +575,11 @@ export function parseRemind(remind) {
 export function remindTime(t) {
   const r = parseRemind(t.remind);
   if (!r || !t.start) return null;
-  const [y, mo, d] = t.start.split('-').map(Number);
+  // 반복 일정은 '오늘 이전의 가장 가까운 회차'를 기준으로 삼는다.
+  // 기준일이 회차마다 앞으로 밀리므로 매번 새로 알림이 나간다.
+  const base = t.repeat ? lastOccurrenceOnOrBefore(t, todayKey()) : t.start;
+  if (!base) return null;
+  const [y, mo, d] = base.split('-').map(Number);
   const when = new Date(y, mo - 1, d, r.hour, r.minute, 0, 0);
   when.setDate(when.getDate() - r.offsetDays);
   return when.getTime();
@@ -446,9 +588,13 @@ export function remindTime(t) {
 /** 아직 알리지 않았고 시간이 된 태스크들 */
 export function dueReminders(now = Date.now()) {
   return state.tasks.filter((t) => {
-    if (t.done || !t.remind || t.remindedAt) return false;
+    if (!t.remind) return false;
+    if (!t.repeat && t.done) return false;
     const at = remindTime(t);
-    return at !== null && at <= now;
+    if (at === null || at > now) return false;
+    // 이미 '이번 회차' 알림을 보냈으면 건너뛴다.
+    // 반복 일정은 at 이 회차마다 앞으로 밀리므로 자연히 다시 대상이 된다.
+    return !t.remindedAt || t.remindedAt < at;
   });
 }
 
