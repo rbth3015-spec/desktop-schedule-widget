@@ -13,7 +13,7 @@
   --cal-top-pad: 16px;   /* 날짜 숫자 줄 높이 = 첫 레인의 top */
   --cal-bar-h: 13px;
   --cal-bar-gap: 2px;
-  --cal-dots-h: 8px;     /* 칸 아래쪽 점 영역 */
+  --cal-dots-h: 2px;     /* 점 표시를 없애고 막대로 통일 — 여백만 남긴다 */
   --cal-on-color: var(--on-color);
 
   container-type: inline-size;
@@ -271,6 +271,7 @@
 /* ------------------------------------------------------------ 단일 일정 점 */
 
 .cal-day__dots {
+  display: none;
   position: absolute;
   left: 5px;
   right: 5px;

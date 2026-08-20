@@ -56,16 +56,16 @@ export function createCalendar({ root, store }) {
       // 그날 걸쳐 있는 태스크(기간 포함) — 필터/정렬은 store 셀렉터가 처리
       const onDate = store.tasksOnDate(key);
 
-      // 우상단 미완료 개수 (0이면 표시 안 함)
-      const undone = onDate.reduce((n, t) => n + (t.done ? 0 : 1), 0);
-      cell.refs.count.textContent = undone > 0 ? String(undone) : '';
-
-      // 하단 점 — 기간 없는 단일 일정만
-      renderDots(cell.refs.dots, onDate, store);
+      // 우상단 개수는 막대가 넘칠 때만 의미가 있으므로 renderBars 가 '+N' 으로 처리한다.
+      // 날짜 옆에 상시로 붙어 있으면 숫자 두 개가 나란히 놓여 지저분하다.
+      cell.refs.count.textContent = '';
+      cell.refs.dots.replaceChildren();
     }
 
-    // --- 장기 계획 막대 ---
-    renderBars(els, keys, visibleSpanning(store, st), st, store);
+    // --- 일정 막대 ---
+    // 단일 일정도 하루짜리 막대로 그린다. 점만 찍으면 '무슨 일정인지'가 안 보여
+    // 달력이 정보 없이 비어 보인다.
+    renderBars(els, keys, visibleDated(store, st, keys), st, store);
 
     // --- 이번 달 완료율 ---
     renderMeter(els, st, anchor);
@@ -457,10 +457,25 @@ function laneFree(occupied, lane, seg) {
 function renderBars(els, keys, tasks, st, store) {
   const m = readMetrics(els.grid);
 
-  // 주 행 높이로 한 칸에 들어가는 레인 수를 계산 (6행은 1fr 로 모두 같은 높이)
-  const rowH = els.weekRows[0].clientHeight || Math.floor((els.grid.clientHeight || 0) / 6);
-  const usable = rowH > 0 ? rowH - m.top - m.dots : m.barH * 3;
-  const maxLanes = Math.max(MIN_LANES, Math.floor((usable + m.gap) / (m.barH + m.gap)));
+  // 6주를 똑같은 높이로 나누면, 아무것도 없는 주가 바쁜 주와 같은 자리를 차지한다.
+  // 결과적으로 위쪽 빈 줄은 허전하고 정작 일정이 몰린 날은 '+N' 으로 접힌다.
+  // 그래서 주마다 필요한 레인 수를 먼저 세고, 그 비율로 행 높이를 나눠 준다.
+  const gridH = els.grid.clientHeight || 0;
+  const need = weekLaneDemand(keys, tasks);           // 주별로 필요한 레인 수
+  const weights = need.map((n) => 1 + Math.min(n, 6) * 0.55);
+  const total = weights.reduce((a, b) => a + b, 0);
+  els.grid.style.gridTemplateRows = weights.map((v) => `${(v / total * 100).toFixed(3)}%`).join(' ');
+
+  // 레인 수는 주마다 다르므로 각 주의 실제 높이로 계산한다.
+  const lanesFor = (w) => {
+    const rowH = els.weekRows[w].clientHeight || Math.floor(gridH / 6);
+    const usable = rowH > 0 ? rowH - m.top - m.dots : m.barH * 3;
+    return Math.max(MIN_LANES, Math.floor((usable + m.gap) / (m.barH + m.gap)));
+  };
+
+  // 레인 배치는 주 전체에서 일관돼야 하므로 가장 여유 있는 주 기준으로 잡고,
+  // 실제로 보여 줄 개수만 주별로 잘라 낸다.
+  const maxLanes = Math.max(...keys.map((_, i) => (i % 7 === 0 ? lanesFor(i / 7) : 0)));
 
   const weeks = layoutLanes(keys, tasks, maxLanes);
 
@@ -470,11 +485,13 @@ function renderBars(els, keys, tasks, st, store) {
     layer.replaceChildren();
     if (!segs.length) continue;
 
+    const weekLanes = lanesFor(w);
+
     let used = 0;
     for (const s of segs) used = Math.max(used, s.lane + 1);
 
     // 넘치면 마지막 한 줄을 '+N' 자리로 양보한다.
-    const visibleLanes = used > maxLanes ? Math.max(0, maxLanes - 1) : maxLanes;
+    const visibleLanes = used > weekLanes ? Math.max(0, weekLanes - 1) : weekLanes;
     const hidden = new Array(7).fill(0);
 
     for (const seg of segs) {
@@ -499,6 +516,25 @@ function renderBars(els, keys, tasks, st, store) {
       layer.appendChild(more);
     }
   }
+}
+
+/** 주별로 몇 개의 레인이 필요한지 (겹치는 최대 개수) */
+function weekLaneDemand(keys, tasks) {
+  const out = new Array(6).fill(0);
+  for (let w = 0; w < 6; w++) {
+    let peak = 0;
+    for (let c = 0; c < 7; c++) {
+      const key = keys[w * 7 + c];
+      let n = 0;
+      for (const t of tasks) {
+        const end = t.end || t.start;
+        if (t.start && key >= t.start && key <= end) n++;
+      }
+      peak = Math.max(peak, n);
+    }
+    out[w] = peak;
+  }
+  return out;
 }
 
 function makeBar(seg, m, st, store) {
@@ -576,16 +612,32 @@ function renderMeter(els, st, anchor) {
 
 // ================================================================== 유틸
 
-/** 기간 태스크 중 현재 필터/완료표시 설정을 통과하는 것만 */
-function visibleSpanning(store, st) {
-  const q = st.filter.text ? st.filter.text.toLowerCase() : '';
-  const tag = st.filter.tag;
-  return store.spanningTasks().filter((t) => {
-    if (!st.settings.showCompleted && t.done) return false;
-    if (tag && !t.tags.includes(tag)) return false;
-    if (q && !t.title.toLowerCase().includes(q) && !t.notes.toLowerCase().includes(q)) return false;
-    return true;
-  });
+/**
+ * 이 달력 화면에 막대로 그릴 일정 전부.
+ * - 날짜가 있는 일정은 기간이든 하루짜리든 모두 막대로 그린다.
+ * - 반복 일정은 화면에 걸린 회차만 하루짜리로 펼친다.
+ * 필터는 store 셀렉터(tasksOnDate)가 이미 적용하므로 여기서 다시 걸지 않는다.
+ */
+function visibleDated(store, st, keys) {
+  const seen = new Set();
+  const out = [];
+
+  for (const key of keys) {
+    for (const t of store.tasksOnDate(key)) {
+      if (t.repeat) {
+        // 회차마다 별개의 하루짜리 막대. 같은 날 같은 일정은 한 번만.
+        const id = `${t.id}@${key}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({ ...t, start: key, end: key });
+        continue;
+      }
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push(t);
+    }
+  }
+  return out;
 }
 
 function findTask(store, id) {
