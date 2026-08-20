@@ -21,6 +21,13 @@ function getScreen() {
   return electron.screen;
 }
 
+// 데이터 저장 위치를 고정한다.
+// Electron 의 userData 경로는 app.getName() 을 따르는데, 설치본은 productName('일정관리 비서'),
+// 개발 실행은 package.json 의 name('schedule-widget') 이 되어 서로 다른 폴더를 쓴다.
+// 그러면 설치 직후 기존 일정이 사라진 것처럼 보인다. 이름을 못박아 한 곳만 쓰게 한다.
+// app.setPath 는 ready 이전에 호출해야 한다.
+app.setPath('userData', path.join(app.getPath('appData'), 'schedule-widget'));
+
 const storage = require('./storage');
 const windowState = require('./windowState');
 const runner = require('./runner');
