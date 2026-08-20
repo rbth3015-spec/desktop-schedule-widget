@@ -1,14 +1,63 @@
 {
   "name": "schedule-widget",
-  "version": "0.1.0",
-  "description": "바탕화면 위젯형 일정관리 비서 (캘린더 + Todo)",
+  "version": "0.2.0",
+  "description": "바탕화면 상주형 일정관리 위젯 — 캘린더(장기 계획) + 할 일 목록",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dev": "node tools/dev-server.js",
+    "icon": "electron tools/make-icon.js",
+    "dist": "electron-builder --win",
+    "pack": "electron-builder --win --dir"
   },
-  "author": "",
+  "author": {
+    "name": "rbth3015-spec"
+  },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.dongik.schedule-widget",
+    "productName": "일정관리 비서",
+    "executableName": "ScheduleWidget",
+    "artifactName": "ScheduleWidget-Setup-${version}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!src/renderer/dev.html",
+      "!src/renderer/dev-stub.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "일정관리 비서",
+      "installerLanguages": [
+        "ko-KR"
+      ],
+      "language": "1042",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    }
   }
 }

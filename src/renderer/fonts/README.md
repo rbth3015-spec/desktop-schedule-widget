@@ -8,11 +8,13 @@
 |---|---|---|
 | Pretendard Variable | 본문 산세리프 | SIL Open Font License 1.1 |
 | Nanum Myeongjo (400/700) | 날짜·표제 세리프 | SIL Open Font License 1.1 |
-| Gowun Batang (400) | 세리프 후보 2 — 비교용 | SIL Open Font License 1.1 |
 
 셋 다 OFL 1.1 이라 상업적 사용·재배포가 허용된다. 전문은 `OFL-NanumMyeongjo.txt` 참조.
 
 - Pretendard — https://github.com/orioncactus/pretendard
-- Nanum Myeongjo / Gowun Batang — Google Fonts (Fontsource 배포본)
+- Nanum Myeongjo — Google Fonts (Fontsource 배포본)
 
-Gowun Batang 은 최종 서체를 확정하면 제거할 예정이다.
+## 주의
+
+`index.html` 의 CSP 에 `font-src 'self'` 가 있어야 한다.
+`default-src 'none'` 만 있으면 @font-face 가 조용히 차단되어 시스템 폰트로 폴백된다.

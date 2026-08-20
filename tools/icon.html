@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>앱 아이콘</title>
+<style>
+  /* 앱 아이콘 원본. tools/make-icon.js 가 이 페이지를 512x512 PNG 로 굽는다.
+     32px 로 줄여도 형체가 남도록 요소를 크고 단순하게 잡는다. */
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { width: 512px; height: 512px; }
+
+  .mark {
+    position: relative;
+    width: 512px; height: 512px;
+    border-radius: 96px;
+    background: linear-gradient(160deg, #fdfbf7 0%, #f4efe4 100%);
+    box-shadow: inset 0 0 0 8px rgba(52, 58, 76, .10);
+    overflow: hidden;
+  }
+
+  /* 다이어리 상단 띠 — 표지의 가죽/천 부분 */
+  .band {
+    position: absolute; left: 0; right: 0; top: 0;
+    height: 118px;
+    background: #7d2b38;
+  }
+
+  /* 제본 링 두 개 */
+  .ring {
+    position: absolute; top: 34px;
+    width: 34px; height: 50px;
+    border-radius: 17px;
+    background: #f4efe4;
+    box-shadow: inset 0 0 0 7px rgba(52, 58, 76, .18);
+  }
+  .ring--l { left: 132px; }
+  .ring--r { right: 132px; }
+
+  /* 괘선 */
+  .rule {
+    position: absolute; left: 96px; right: 96px;
+    height: 11px; border-radius: 6px;
+    background: rgba(52, 58, 76, .16);
+  }
+  .rule--1 { top: 214px; }
+  .rule--2 { top: 288px; right: 168px; }
+  .rule--3 { top: 362px; }
+
+  /* 잉크 마름모 — 타이틀바의 표식과 같은 형태 */
+  .ink {
+    position: absolute;
+    right: 92px; bottom: 78px;
+    width: 92px; height: 92px;
+    transform: rotate(45deg);
+    background: #7d2b38;
+    border-radius: 12px;
+  }
+</style>
+<div class="mark">
+  <div class="band"></div>
+  <div class="ring ring--l"></div>
+  <div class="ring ring--r"></div>
+  <div class="rule rule--1"></div>
+  <div class="rule rule--2"></div>
+  <div class="rule rule--3"></div>
+  <div class="ink"></div>
+</div>

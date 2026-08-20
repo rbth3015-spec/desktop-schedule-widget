@@ -49,7 +49,13 @@ app.whenReady().then(async () => {
     },
   });
 
-  await win.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'index.html'));
+  // --html 로 다른 index.html 을 지정할 수 있다.
+  // 배포본(asar) 안의 화면을 그대로 찍어 검증할 때 쓴다.
+  const htmlArg = arg('html', '');
+  const htmlPath = htmlArg
+    ? path.resolve(htmlArg)
+    : path.join(__dirname, '..', 'src', 'renderer', 'index.html');
+  await win.loadFile(htmlPath);
 
   // 폰트 로딩과 첫 렌더가 끝날 때까지 기다린다
   await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)').catch(() => {});

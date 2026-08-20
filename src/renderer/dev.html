@@ -2,6 +2,11 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
+  <!-- 실제 앱(index.html)과 같은 CSP. 미리보기에만 없으면 여기서만 되는 것을
+       '된다'고 착각하게 된다 (번들 폰트가 실제로 그렇게 막혀 있었다). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
+                 font-src 'self'; img-src 'self' data:; connect-src 'self';" />
   <title>일정관리 위젯 — 개발 미리보기</title>
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="calendar/calendar.css" />

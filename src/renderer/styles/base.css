@@ -38,21 +38,6 @@
   font-display: block;
 }
 
-/* 세리프 후보 2 — 비교용. 최종 선택 후 하나는 제거한다. */
-@font-face {
-  font-family: 'Gowun Batang';
-  src: url('../fonts/GowunBatang-400-latin.woff2') format('woff2');
-  font-weight: 400;
-  font-display: block;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215;
-}
-@font-face {
-  font-family: 'Gowun Batang';
-  src: url('../fonts/GowunBatang-400-korean.woff2') format('woff2');
-  font-weight: 400;
-  font-display: block;
-}
-
 /* 공통 토큰 + 셸 레이아웃.
    calendar/todo/dashboard/launcher 모듈은 여기 정의된 변수만 쓰고,
    자기 CSS 파일 안에서만 규칙을 추가한다.
@@ -149,7 +134,7 @@
   /* 본문 — 작은 글씨에서 또렷한 산세리프 */
   --font: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
   /* 날짜·표제 — 앱에 포함한 명조. 시스템 폰트에 기대지 않는다. */
-  --font-serif: "Nanum Myeongjo", "Gowun Batang", Georgia, serif;
+  --font-serif: "Nanum Myeongjo", Georgia, serif;
 }
 
 /* 블러 끄기 — 저사양·배터리 절약용 폴백. 알파를 올려 가독성을 보전한다. */

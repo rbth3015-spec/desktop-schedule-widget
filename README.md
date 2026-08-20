@@ -131,6 +131,24 @@ npm install
 npm start
 ```
 
+### 설치 파일 만들기
+
+```bash
+npm run icon    # build/icon.png + icon.ico 생성 (tools/icon.html 을 구움)
+npm run dist    # dist/ScheduleWidget-Setup-<version>.exe
+```
+
+NSIS 설치 관리자를 만든다. 설치 위치를 고를 수 있고, 관리자 권한 없이 사용자 단위로 설치되며,
+제거해도 사용자 일정 데이터는 남긴다.
+
+> **코드 서명은 하지 않는다.** 인증서가 없으면 설치 시 Windows SmartScreen 경고가 뜬다.
+> 개인 배포·포트폴리오용으로는 그대로 써도 되고, 실제 판매 시에는 인증서가 필요하다.
+
+> `.ico` 는 `tools/make-icon.js` 가 직접 만든다. electron-builder 의 PNG→ICO 변환기가
+> 이 환경에서 WebAssembly 메모리 할당에 실패해서, ICO 컨테이너를 규격대로 직접 조립한다.
+
+### 브라우저 미리보기
+
 UI 만 빠르게 확인할 때는 Electron 없이 브라우저로 띄울 수 있다.
 
 ```bash
@@ -177,6 +195,11 @@ src/
   블러를 끄는 폴백이 있고, 끌 때는 배경 알파를 올려 가독성을 지킨다.
 - **렌더러를 신뢰하지 않는다.** 링크 프로토콜과 스크립트 경로/확장자는 메인 프로세스에서
   다시 검증하고, 프로세스는 항상 `shell:false` + 인자 배열로 spawn 한다.
+- **CSP 에 `font-src 'self'` 가 반드시 있어야 한다.** `default-src 'none'` 만 두면
+  `@font-face` 가 **조용히** 차단되어 시스템 폰트로 폴백된다. 에러도 안 나고 글자는 그대로
+  보여서 알아채기 어렵다. 실제로 이 함정에 빠져 번들 폰트가 한동안 무용지물이었다.
+  그래서 개발 미리보기(`dev.html`)도 실제 앱과 **같은 CSP** 를 쓴다 — 미리보기에서만
+  되는 것을 '된다'고 착각하지 않기 위해서다.
 
 ## 라이선스
 
