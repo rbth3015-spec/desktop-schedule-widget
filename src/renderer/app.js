@@ -9,6 +9,7 @@ import { createLauncher } from './launcher/launcher.js';
 import { todayKey } from './lib/date.js';
 import { setIcon, icon } from './lib/icons.js';
 import { startReminders, timeAgo } from './reminders.js';
+import { toBackupJSON, parseBackup, toICS, fileStamp } from './lib/exchange.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -445,6 +446,19 @@ function renderSettings() {
     row('정렬 기준', segmented([['manual', '직접 정렬'], ['priority', '우선순위']],
       s.sortMode, (v) => store.setSetting('sortMode', v))),
 
+    row('내보내기', actions([
+      ['백업 (.json)', exportBackup],
+      ['캘린더 (.ics)', exportICS],
+    ]), '백업은 이 앱으로 되돌릴 수 있고, .ics 는 구글·아웃룩 캘린더로 가져갈 수 있습니다.'),
+
+    row('가져오기', actions([
+      ['백업에서 합치기', () => importBackup('merge')],
+      ['덮어쓰기', () => importBackup('replace')],
+    ]), '합치기는 기존 일정을 건드리지 않고 없는 것만 더합니다. 되돌리기(Ctrl+Z)로 취소할 수 있습니다.'),
+
+    row('자동 백업', actions([['백업 폴더 열기', () => window.api.data.openBackups()]]),
+      '저장할 때 하루 한 번 백업을 떠 두고 최근 14일치를 보관합니다.'),
+
     row('항상 위에 표시', toggle(s.alwaysOnTop, (v) => store.setSetting('alwaysOnTop', v))),
 
     row('완료 항목 표시', toggle(s.showCompleted, (v) => store.setSetting('showCompleted', v))),
@@ -527,6 +541,60 @@ function toggle(value, onChange) {
   b.setAttribute('aria-checked', String(value));
   b.addEventListener('click', () => { onChange(!value); renderSettings(); });
   return b;
+}
+
+/** 설정 행에 놓는 작은 버튼 묶음 */
+function actions(items) {
+  const wrap = document.createElement('div');
+  wrap.className = 'settings__seg';
+  for (const [label, fn] of items) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    wrap.append(b);
+  }
+  return wrap;
+}
+
+async function exportBackup() {
+  const res = await window.api.data.saveAs({
+    title: '백업 내보내기',
+    defaultName: `일정관리-백업-${fileStamp()}.json`,
+    content: toBackupJSON(store.getState()),
+    filters: [{ name: 'JSON 백업', extensions: ['json'] }],
+  });
+  if (res?.ok) showToast('백업을 저장했습니다');
+  else if (res && !res.canceled) showToast(`저장 실패 — ${res.error || '알 수 없는 오류'}`);
+}
+
+async function exportICS() {
+  const tasks = store.getState().tasks;
+  const res = await window.api.data.saveAs({
+    title: '캘린더 내보내기',
+    defaultName: `일정관리-${fileStamp()}.ics`,
+    content: toICS(tasks),
+    filters: [{ name: 'iCalendar', extensions: ['ics'] }],
+  });
+  if (res?.ok) showToast('캘린더 파일을 저장했습니다');
+  else if (res && !res.canceled) showToast(`저장 실패 — ${res.error || '알 수 없는 오류'}`);
+}
+
+async function importBackup(mode) {
+  const picked = await window.api.data.openFile({
+    title: '백업 가져오기',
+    filters: [{ name: 'JSON 백업', extensions: ['json'] }],
+  });
+  if (!picked) return;                       // 사용자가 취소
+  if (!picked.ok) { showToast(`읽기 실패 — ${picked.error}`); return; }
+
+  const parsed = parseBackup(picked.text);
+  if (!parsed.ok) { showToast(`가져오기 실패 — ${parsed.error}`); return; }
+
+  const { added, total } = store.importData(parsed.data, mode);
+  showToast(mode === 'replace'
+    ? `${total}건으로 덮어썼습니다 (Ctrl+Z 로 취소)`
+    : `${added}건을 추가했습니다 (Ctrl+Z 로 취소)`);
+  renderSettings();
 }
 
 function presetButtons() {

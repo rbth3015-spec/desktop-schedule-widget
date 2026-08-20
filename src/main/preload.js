@@ -27,6 +27,23 @@ const api = {
     snapPreset: (preset) => ipcRenderer.send('window:snapPreset', String(preset)),
   },
 
+  // ------------------------------------------------------------ 데이터 내보내기/가져오기
+  data: {
+    /** 저장 위치를 묻고 문자열을 파일로 쓴다 */
+    saveAs: (opts) => ipcRenderer.invoke('data:saveAs', {
+      title: String(opts?.title ?? ''),
+      defaultName: String(opts?.defaultName ?? 'export.txt'),
+      content: String(opts?.content ?? ''),
+      filters: opts?.filters,
+    }),
+    /** 파일을 골라 텍스트로 읽는다. 취소하면 null */
+    openFile: (opts) => ipcRenderer.invoke('data:openFile', {
+      title: String(opts?.title ?? ''),
+      filters: opts?.filters,
+    }),
+    openBackups: () => ipcRenderer.invoke('data:openBackups'),
+  },
+
   // ------------------------------------------------------------ 리마인더 알림
   reminder: {
     /** OS 알림을 띄운다. {title, body, taskId} */

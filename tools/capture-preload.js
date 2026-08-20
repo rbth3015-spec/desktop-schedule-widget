@@ -46,6 +46,11 @@ SAMPLE.settings = { ...SAMPLE.settings, ...overrides };
 
 const noop = () => {};
 
+// contextBridge 로 노출된 객체는 동결되어 페이지에서 가로챌 수 없다.
+// 내보내기 내용을 검증할 수 있도록 별도 통로를 둔다.
+let lastSaveAs = null;
+let nextOpenFile = null;   // 다음 openFile 호출이 돌려줄 내용
+
 contextBridge.exposeInMainWorld('api', {
   loadData: async () => JSON.parse(JSON.stringify(SAMPLE)),
   saveData: async () => ({ ok: true }),          // 저장하지 않는다
@@ -55,6 +60,19 @@ contextBridge.exposeInMainWorld('api', {
     getBounds: async () => ({ x: 0, y: 0, width: 1100, height: 700 }),
   },
   reminder: { notify: async () => ({ ok: true }), onClick: noop },
+  // 캡처 환경에서는 파일을 쓰지 않는다. 마지막 요청은 captureProbe 로 확인할 수 있다.
+  data: {
+    saveAs: async (o) => {
+      lastSaveAs = { title: o?.title, defaultName: o?.defaultName, content: o?.content };
+      return { ok: true, path: o?.defaultName || '' };
+    },
+    openFile: async () => {
+      const t = nextOpenFile;
+      nextOpenFile = null;
+      return t === null ? null : { ok: true, path: 'test.json', text: t };
+    },
+    openBackups: async () => ({ ok: true, path: '' }),
+  },
   openExternal: async () => ({ ok: true }),
   launcher: {
     run: async () => ({ ok: true }),
@@ -63,4 +81,9 @@ contextBridge.exposeInMainWorld('api', {
     onStatus: noop,
   },
   onMenuAction: noop,
+});
+
+contextBridge.exposeInMainWorld('captureProbe', {
+  lastSaveAs: () => lastSaveAs,
+  setNextOpenFile: (text) => { nextOpenFile = text; },
 });

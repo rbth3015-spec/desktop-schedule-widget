@@ -69,6 +69,31 @@
       setSize: (w, h) => { win.width = w; win.height = h; console.log('[dev] setSize', w, h); },
       snapPreset: (p) => console.log('[dev] preset', p),
     },
+    // 브라우저에서는 파일 대화상자를 띄울 수 없으므로 다운로드/업로드로 흉내 낸다
+    data: {
+      saveAs: async ({ defaultName, content }) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+        a.download = defaultName || 'export.txt';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        return { ok: true, path: defaultName };
+      },
+      openFile: async () => new Promise((resolve) => {
+        const i = document.createElement('input');
+        i.type = 'file';
+        i.onchange = () => {
+          const f = i.files?.[0];
+          if (!f) return resolve(null);
+          const r = new FileReader();
+          r.onload = () => resolve({ ok: true, path: f.name, text: String(r.result) });
+          r.readAsText(f);
+        };
+        i.click();
+      }),
+      openBackups: async () => ({ ok: true, path: '(dev)' }),
+    },
+
     // 브라우저에는 OS 알림을 띄울 수 없으므로 콘솔로만 확인한다
     reminder: {
       notify: async (payload) => { console.log('[dev] notify', payload); return { ok: true }; },

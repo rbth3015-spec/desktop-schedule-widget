@@ -11,6 +11,43 @@ function dataFilePath() {
   return path.join(app.getPath('userData'), FILE_NAME);
 }
 
+/** 자동 백업 폴더 */
+function backupDir() {
+  return path.join(app.getPath('userData'), 'backups');
+}
+
+const BACKUP_KEEP = 14;   // 최근 14일치만 보관
+
+/**
+ * 하루 한 번, 저장 직전의 파일을 백업해 둔다.
+ * 데이터가 파일 하나뿐이면 실수로 지운 일정을 며칠 뒤에 알아차렸을 때 손쓸 방법이 없다.
+ * 저장 성공 경로에서만 부르며, 실패해도 본 저장을 방해하지 않는다.
+ */
+function rotateBackup(currentPath) {
+  try {
+    if (!fs.existsSync(currentPath)) return;
+    const dir = backupDir();
+    fs.mkdirSync(dir, { recursive: true });
+
+    const today = new Date();
+    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const dest = path.join(dir, `schedule-data-${stamp}.json`);
+    if (fs.existsSync(dest)) return;         // 오늘 백업은 이미 있다
+
+    fs.copyFileSync(currentPath, dest);
+
+    // 오래된 것 정리
+    const files = fs.readdirSync(dir)
+      .filter((f) => /^schedule-data-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort();
+    for (const f of files.slice(0, Math.max(0, files.length - BACKUP_KEEP))) {
+      try { fs.unlinkSync(path.join(dir, f)); } catch { /* 무시 */ }
+    }
+  } catch (err) {
+    console.error('[storage] 백업 실패(본 저장에는 영향 없음):', err);
+  }
+}
+
 /** 빈 데이터 기본형 */
 function emptyData() {
   return { version: 1, tasks: [], launcher: [], settings: {} };
@@ -136,6 +173,9 @@ function saveData(data) {
   try {
     ensureDir(filePath);
 
+    // 0) 덮어쓰기 전에 하루 한 번 백업을 떠 둔다
+    rotateBackup(filePath);
+
     // 1) 임시 파일에 완전히 기록하고 디스크까지 밀어 넣는다.
     const fd = fs.openSync(tmpPath, 'w');
     try {
@@ -175,4 +215,4 @@ function renameWithRetry(from, to, attempts = 5) {
   }
 }
 
-module.exports = { loadData, saveData, dataFilePath };
+module.exports = { loadData, saveData, dataFilePath, backupDir };

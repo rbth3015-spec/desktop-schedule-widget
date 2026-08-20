@@ -615,6 +615,48 @@ export function clearReminderLog() {
   commit();
 }
 
+// ---------------------------------------------------------------- 가져오기
+
+/**
+ * 백업 데이터를 현재 상태에 반영한다.
+ * @param {object} data  parseBackup 을 통과한 객체
+ * @param {'merge'|'replace'} mode
+ *   merge   — 없는 id 만 추가한다 (기존 일정은 절대 건드리지 않는다)
+ *   replace — 일정·바로가기를 통째로 교체한다
+ * @returns {{added:number, total:number}}
+ */
+export function importData(data, mode = 'merge') {
+  pushUndo(mode === 'replace' ? '데이터 덮어쓰기' : '데이터 가져오기');
+
+  const incoming = data.tasks.map(normalize);
+
+  if (mode === 'replace') {
+    state.tasks = incoming;
+    if (Array.isArray(data.launcher)) state.launcher = data.launcher.map(normalizeLauncher);
+    commit();
+    return { added: incoming.length, total: incoming.length };
+  }
+
+  const known = new Set(state.tasks.map((t) => t.id));
+  let added = 0;
+  for (const t of incoming) {
+    if (known.has(t.id)) continue;
+    state.tasks.push(t);
+    known.add(t.id);
+    added++;
+  }
+
+  if (Array.isArray(data.launcher)) {
+    const knownL = new Set(state.launcher.map((x) => x.id));
+    for (const it of data.launcher.map(normalizeLauncher)) {
+      if (!knownL.has(it.id)) state.launcher.push(it);
+    }
+  }
+
+  commit();
+  return { added, total: state.tasks.length };
+}
+
 // ---------------------------------------------------------------- 런처 액션
 
 export function launcherItems() {

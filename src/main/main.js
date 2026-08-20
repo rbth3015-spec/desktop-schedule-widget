@@ -1,6 +1,7 @@
 // Electron 메인 프로세스. 위젯 창 생성, 트레이 메뉴, 전역 단축키, IPC 라우팅을 담당한다.
 
 const path = require('path');
+const fs = require('fs');
 const electron = require('electron');
 const {
   app,
@@ -372,6 +373,51 @@ function registerIpc() {
     const p = PRESETS[preset];
     if (!p) return;
     resizeTo(p.width, p.height);
+  });
+
+  // --- 데이터 내보내기 / 가져오기 ---
+  // 파일 내용은 렌더러가 만들고(모델과 날짜 유틸이 거기 있다), 메인은 대화상자와 쓰기만 맡는다.
+  ipcMain.handle('data:saveAs', async (_e, opts) => {
+    const w = win && !win.isDestroyed() ? win : undefined;
+    const result = await dialog.showSaveDialog(w, {
+      title: String(opts?.title || '내보내기'),
+      defaultPath: String(opts?.defaultName || 'export.txt'),
+      filters: Array.isArray(opts?.filters) ? opts.filters : undefined,
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      fs.writeFileSync(result.filePath, String(opts?.content ?? ''), 'utf8');
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
+  });
+
+  ipcMain.handle('data:openFile', async (_e, opts) => {
+    const w = win && !win.isDestroyed() ? win : undefined;
+    const result = await dialog.showOpenDialog(w, {
+      title: String(opts?.title || '가져오기'),
+      properties: ['openFile'],
+      filters: Array.isArray(opts?.filters) ? opts.filters : undefined,
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    try {
+      const file = result.filePaths[0];
+      // 백업 파일이 수십 MB 가 될 일은 없다. 터무니없이 크면 거부한다.
+      const size = fs.statSync(file).size;
+      if (size > 64 * 1024 * 1024) return { ok: false, error: '파일이 너무 큽니다.' };
+      return { ok: true, path: file, text: fs.readFileSync(file, 'utf8') };
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
+  });
+
+  /** 자동 백업 폴더를 탐색기로 연다 */
+  ipcMain.handle('data:openBackups', () => {
+    const dir = storage.backupDir();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* 무시 */ }
+    shell.openPath(dir);
+    return { ok: true, path: dir };
   });
 
   // --- 리마인더 알림 ---
