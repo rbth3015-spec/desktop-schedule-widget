@@ -7,10 +7,13 @@
    값을 바꾸면 막대 배치가 그대로 따라오므로, 이름과 위치를 유지할 것. */
 
 .cal-root {
-  --cal-top-pad: 17px;   /* 날짜 숫자 줄 높이 = 첫 레인의 top */
-  --cal-bar-h: 15px;
-  --cal-bar-gap: 3px;
-  --cal-dots-h: 10px;    /* 칸 아래쪽 점 영역 */
+  /* 주 행 높이는 70px 안팎이라 여유가 없다. 겹치는 기간 일정이 3개만 되어도
+     레인이 모자라 '+N' 이 한 레인을 먹고 결국 막대 하나만 보였다.
+     막대를 얇게 잡아 같은 높이에서 3레인을 확보한다. */
+  --cal-top-pad: 16px;   /* 날짜 숫자 줄 높이 = 첫 레인의 top */
+  --cal-bar-h: 13px;
+  --cal-bar-gap: 2px;
+  --cal-dots-h: 8px;     /* 칸 아래쪽 점 영역 */
   --cal-on-color: var(--on-color);
 
   container-type: inline-size;
@@ -20,7 +23,7 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  padding: 12px 14px 10px;
+  padding: 10px 14px 8px;
   outline: none;
 }
 
@@ -37,7 +40,7 @@
   align-items: baseline;
   gap: 2px;
   min-width: 0;
-  padding: 0 0 12px;
+  padding: 0 0 10px;
 }
 
 .cal-navbtn {
@@ -198,18 +201,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 2px;
-  height: 17px;          /* --cal-top-pad 와 맞춘다 */
+  height: 16px;          /* --cal-top-pad 와 맞춘다 */
   pointer-events: none;
 }
 
 /* 날짜 숫자 — 명조, 고정폭 */
 .cal-day__num {
-  min-width: 17px;
-  height: 17px;
-  line-height: 17px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
   text-align: center;
   font-family: var(--font-serif);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -306,7 +309,7 @@
   padding: 0 6px;
   margin: 0 3px;                  /* 칸 안쪽으로 물리기 */
   border-radius: 1px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: -0.005em;
   cursor: pointer;

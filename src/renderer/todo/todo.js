@@ -5,6 +5,7 @@
 import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../lib/date.js';
 import { remindLabel } from '../reminders.js';
 import { icon } from '../lib/icons.js';
+import { createCompose } from './compose.js';
 
 /** 리마인더 프리셋. 값은 store 의 '<며칠 전>@<HH:mm>' 형식. */
 const REMIND_PRESETS = [
@@ -391,7 +392,7 @@ export function createTodoPanel({ root, store }) {
   const quick = h('div', 'todo-quick');
   const quickInput = h('input', 'todo-quick__input');
   quickInput.type = 'text';
-  quickInput.placeholder = '할 일 입력 후 Enter  (예: 장보기 @내일 #집안일 !)';
+  quickInput.placeholder = '할 일을 적고 Enter';
   quickInput.spellcheck = false;
   const preview = h('div', 'todo-preview');
   quick.append(quickInput, preview);
@@ -410,7 +411,7 @@ export function createTodoPanel({ root, store }) {
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
-  const compose = buildCompose();
+  const compose = createCompose({ store });
 
   el.append(header, quick, compose.el, body);
   root.append(el);
@@ -421,191 +422,6 @@ export function createTodoPanel({ root, store }) {
   });
 
   /** 날짜·기간·링크까지 한 번에 지정하는 추가 폼 */
-  function buildCompose() {
-    const form = h('form', 'todo-compose');
-    form.hidden = true;
-
-    const titleIn = h('input', 'todo-compose__title');
-    titleIn.type = 'text';
-    titleIn.placeholder = '일정 이름';
-    titleIn.required = true;
-    titleIn.spellcheck = false;
-
-    // 날짜 — 타이핑과 달력 선택이 모두 되는 네이티브 date 입력
-    const startIn = h('input', 'todo-compose__date');
-    startIn.type = 'date';
-
-    const endIn = h('input', 'todo-compose__date');
-    endIn.type = 'date';
-
-    // 기간 토글: 껐을 때는 당일 일정, 켜면 종료일이 나타나 캘린더에 막대로 표시된다
-    const spanWrap = h('label', 'todo-compose__span');
-    const spanChk = h('input', 'todo-compose__chk');
-    spanChk.type = 'checkbox';
-    spanWrap.append(spanChk, h('span', null, '기간으로 설정'));
-
-    const endField = field('종료', endIn);
-    endField.hidden = true;
-
-    spanChk.addEventListener('change', () => {
-      endField.hidden = !spanChk.checked;
-      if (spanChk.checked) {
-        if (!endIn.value || endIn.value < startIn.value) endIn.value = startIn.value;
-        endIn.focus();
-      }
-    });
-
-    // 시작일을 뒤로 밀면 종료일도 같이 따라간다 (기간이 뒤집히는 걸 막는다)
-    startIn.addEventListener('change', () => {
-      if (spanChk.checked && endIn.value && endIn.value < startIn.value) {
-        endIn.value = startIn.value;
-      }
-    });
-
-    const linkIn = h('input', 'todo-compose__link');
-    linkIn.type = 'text';
-    linkIn.placeholder = '관련 링크 (예: meet.google.com/abc)';
-    linkIn.spellcheck = false;
-
-    const tagsIn = h('input', 'todo-compose__tags');
-    tagsIn.type = 'text';
-    tagsIn.placeholder = '태그 (공백/쉼표 구분)';
-    tagsIn.spellcheck = false;
-
-    const prio = h('select', 'todo-detail__select');
-    PRIORITY_LABELS.forEach((label, i) => {
-      const opt = h('option', null, label);
-      opt.value = String(i);
-      prio.append(opt);
-    });
-
-    let pickedColor = 'blue';
-    const swatches = h('div', 'todo-swatches');
-    const swatchBtns = {};
-    for (const key of Object.keys(COLORS)) {
-      const b = h('button', 'todo-swatch');
-      b.type = 'button';
-      b.title = COLOR_NAMES[key] || key;
-      b.style.background = COLORS[key];
-      b.addEventListener('click', () => {
-        pickedColor = key;
-        for (const k of Object.keys(swatchBtns)) {
-          swatchBtns[k].classList.toggle('is-picked', k === key);
-        }
-      });
-      swatchBtns[key] = b;
-      swatches.append(b);
-    }
-
-    const err = h('div', 'todo-compose__err');
-    err.hidden = true;
-
-    const saveBtn = h('button', 'todo-compose__save', '추가');
-    saveBtn.type = 'submit';
-    const cancelBtn = h('button', 'todo-compose__cancel', '취소');
-    cancelBtn.type = 'button';
-
-    const actions = h('div', 'todo-compose__actions');
-    actions.append(err, cancelBtn, saveBtn);
-
-    const rowDates = h('div', 'todo-compose__row');
-    rowDates.append(field('시작', startIn), endField, spanWrap);
-
-    const remindIn = remindSelect('todo-detail__select');
-    const repeatIn = repeatSelect('todo-detail__select');
-
-    // 반복은 당일 일정만 지원한다 — 켜면 기간 설정을 잠근다
-    repeatIn.addEventListener('change', () => {
-      const on = !!repeatIn.value;
-      if (on) { spanChk.checked = false; endField.hidden = true; }
-      spanChk.disabled = on;
-      spanWrap.classList.toggle('is-disabled', on);
-    });
-
-    const rowMeta = h('div', 'todo-compose__row');
-    rowMeta.append(field('우선순위', prio), field('색', swatches),
-                   field('반복', repeatIn), field('알림', remindIn));
-
-    form.append(titleIn, rowDates, linkIn, tagsIn, rowMeta, actions);
-
-    cancelBtn.addEventListener('click', () => close());
-
-    form.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); close(); }
-    });
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      submit();
-    });
-
-    /** @param {{start:string,end:string}} [preset] 캘린더에서 끌어 만든 기간 */
-    function open(preset) {
-      const sel = store.getState().selectedDate;
-      const start = preset?.start || sel;
-      const end = preset?.end || start;
-      titleIn.value = '';
-      startIn.value = start;
-      endIn.value = end;
-      linkIn.value = '';
-      tagsIn.value = '';
-      prio.value = '0';
-      remindIn.value = '';
-      repeatIn.value = '';
-      spanChk.disabled = false;
-      spanWrap.classList.remove('is-disabled');
-      // 끌어서 만든 기간이면 기간 모드로 열어 종료일을 바로 보여 준다
-      spanChk.checked = end > start;
-      endField.hidden = !spanChk.checked;
-      err.hidden = true;
-      pickedColor = 'blue';
-      for (const k of Object.keys(swatchBtns)) {
-        swatchBtns[k].classList.toggle('is-picked', k === 'blue');
-      }
-      form.hidden = false;
-      addBtn.classList.add('is-open');
-      titleIn.focus();
-    }
-
-    function close() {
-      form.hidden = true;
-      addBtn.classList.remove('is-open');
-    }
-
-    function fail(message) {
-      err.textContent = message;
-      err.hidden = false;
-    }
-
-    function submit() {
-      const title = titleIn.value.trim();
-      if (!title) { fail('일정 이름을 입력하세요.'); titleIn.focus(); return; }
-
-      const start = startIn.value || store.getState().selectedDate;
-      // 기간을 켜지 않았으면 종료일 = 시작일 → 당일 일정
-      const end = spanChk.checked && endIn.value ? endIn.value : start;
-      if (end < start) { fail('종료일이 시작일보다 빠릅니다.'); endIn.focus(); return; }
-
-      const link = normalizeLink(linkIn.value);
-      if (link === null) { fail('링크 주소를 확인하세요.'); linkIn.focus(); return; }
-
-      store.addTask({
-        title,
-        start,
-        end,
-        link,
-        color: pickedColor,
-        priority: Number(prio.value) || 0,
-        remind: remindIn.value,
-        repeat: repeatIn.value ? { freq: repeatIn.value, interval: 1 } : null,
-        tags: tagsIn.value.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean),
-      });
-
-      close();
-    }
-
-    return { el: form, open, close };
-  }
 
   // ---------------------------------------------------------- 로컬 UI 상태
   const itemCache = new Map();   // taskId -> 아이템 레코드 (DOM 재사용 → 포커스/조합 보존)
@@ -1213,18 +1029,10 @@ export function createTodoPanel({ root, store }) {
     preview.textContent = '';
 
     if (!text.trim()) {
+      // 예전에는 여기에 문법표(! #태그 @내일 ~3d …)를 늘 띄워 뒀는데,
+      // 화면에서 가장 눈에 띄는 자리에 '외워야 할 것'이 놓여 있어 진입장벽이 됐다.
+      // 문법은 도움말(?)로 옮기고, 평소에는 비워 둔다.
       preview.classList.add('is-hint');
-      const hint = h('div', 'todo-preview__hint');
-      const parts = [
-        ['!', '중요'], ['!!', '긴급'], ['#태그', '태그'], ['@내일', '시작일'],
-        ['~3d', '기간'], ['*파랑', '색'],
-      ];
-      for (const [code, desc] of parts) {
-        const chip = h('span', 'todo-preview__syntax');
-        chip.append(h('code', null, code), h('em', null, desc));
-        hint.append(chip);
-      }
-      preview.append(hint);
       return;
     }
 
