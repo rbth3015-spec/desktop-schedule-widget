@@ -797,3 +797,28 @@
   color: var(--text-dim);
 }
 .cmp-btn--ghost:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* 빈 상태의 주 동작 — 처음 쓰는 사람이 다음에 뭘 해야 할지 바로 보이게 */
+.todo-empty__cta {
+  margin-top: 14px;
+  padding: 8px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  font-size: 12px;
+  letter-spacing: .04em;
+  color: var(--accent);
+  transition: background .16s, color .16s;
+}
+.todo-empty__cta:hover { background: var(--accent); color: var(--on-color); }
+
+/* D-Day 고정 */
+.todo-detail__pin {
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  transition: border-color .16s, color .16s;
+}
+.todo-detail__pin:hover { border-color: var(--accent); color: var(--accent); }
+.todo-detail__pin.is-on { border-color: var(--accent); color: var(--accent); }

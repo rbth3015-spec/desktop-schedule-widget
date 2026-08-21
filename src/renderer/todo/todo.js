@@ -810,6 +810,14 @@ export function createTodoPanel({ root, store }) {
 
     const untilField = field('반복 종료', untilIn);
 
+    // D-Day 대시보드 고정 — 이 버튼이 없어서 대시보드를 채울 방법이 아예 없었다
+    const pinBtn = h('button', 'todo-detail__pin');
+    pinBtn.type = 'button';
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      store.togglePinned(rec.id);
+    });
+
     const dropSeries = h('button', 'todo-detail__series', '반복 전체 삭제');
     dropSeries.type = 'button';
     dropSeries.addEventListener('click', (e) => {
@@ -822,13 +830,13 @@ export function createTodoPanel({ root, store }) {
     rowExtra.append(field('알림', remindIn), field('반복', repeatIn), untilField);
 
     const rowSeries = h('div', 'todo-detail__row');
-    rowSeries.append(dropSeries);
+    rowSeries.append(pinBtn, dropSeries);
 
     d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
              rowExtra, rowSeries);
 
     rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen,
-                   remindIn, repeatIn, untilIn, untilField, rowSeries };
+                   remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
     return rec.detail;
   }
 
@@ -855,7 +863,12 @@ export function createTodoPanel({ root, store }) {
     setValueSafe(d.repeatIn, task.repeat?.freq || '');
     setValueSafe(d.untilIn, task.repeat?.until || '');
     d.untilField.hidden = !task.repeat;
-    d.rowSeries.hidden = !task.repeat;
+    d.dropSeries.hidden = !task.repeat;
+    // 반복 일정은 '남은 기간' 개념이 없어 D-Day 고정 대상이 아니다
+    d.pinBtn.hidden = !!task.repeat || !task.end;
+    d.pinBtn.textContent = task.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정';
+    d.pinBtn.classList.toggle('is-on', !!task.pinned);
+    d.rowSeries.hidden = d.pinBtn.hidden && d.dropSeries.hidden;
     // 반복 일정은 당일만 — 종료일 입력을 잠근다
     d.endIn.disabled = !task.start || !!task.repeat;
     for (const key of Object.keys(d.swatchBtns)) {
@@ -996,24 +1009,17 @@ export function createTodoPanel({ root, store }) {
   }
 
   // ---------------------------------------------------------- 빈 상태
-  function exampleLine(text, desc) {
-    const line = h('button', 'todo-example');
-    line.type = 'button';
-    line.append(h('code', 'todo-example__code', text), h('span', 'todo-example__desc', desc));
-    line.addEventListener('click', () => {
-      quickInput.value = text;
-      quickInput.focus();
-      renderPreview();
-    });
-    return line;
-  }
 
   function buildDayEmpty() {
     const box = h('div', 'todo-empty');
     box.append(h('div', 'todo-empty__title', '이 날은 아직 비어 있어요'));
-    box.append(h('div', 'todo-empty__desc', '위 입력창에 한 줄 적고 Enter. 아래 예시를 눌러 문법을 볼 수 있어요.'));
-    box.append(exampleLine('장보기 @내일 #집안일 !', '내일 · 태그 · 중요'));
-    box.append(exampleLine('기획서 마감 @8/15 ~3d *빨강', '8월 15일부터 3일간 · 빨강'));
+    box.append(h('div', 'todo-empty__desc',
+      '오른쪽 위 + 를 눌러 일정을 추가하거나, 달력에서 날짜를 옆으로 끌어 기간을 잡아 보세요.'));
+
+    const cta = h('button', 'todo-empty__cta', '＋ 일정 추가');
+    cta.type = 'button';
+    cta.addEventListener('click', () => compose.open());
+    box.append(cta);
     return box;
   }
 

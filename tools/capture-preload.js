@@ -41,6 +41,12 @@ const SAMPLE = {
   ],
 };
 
+// --empty 로 '방금 설치한 상태'(일정 0건)를 찍을 수 있다
+if (process.env.CAPTURE_EMPTY === '1') {
+  SAMPLE.tasks = [];
+  SAMPLE.reminderLog = [];
+}
+
 const overrides = JSON.parse(process.env.CAPTURE_SETTINGS || '{}');
 SAMPLE.settings = { ...SAMPLE.settings, ...overrides };
 

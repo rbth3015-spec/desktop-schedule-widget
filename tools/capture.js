@@ -27,6 +27,7 @@ const DELAY = Number(arg('delay', 900));
 // 렌더러 설정 오버라이드를 preload 로 넘긴다
 const settings = { theme: THEME, ...JSON.parse(arg('set', '{}')) };
 process.env.CAPTURE_SETTINGS = JSON.stringify(settings);
+if (process.argv.includes('--empty')) process.env.CAPTURE_EMPTY = '1';
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
