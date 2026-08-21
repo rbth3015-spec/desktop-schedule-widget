@@ -4,6 +4,7 @@
 
 import * as date from '../lib/date.js';
 import { icon } from '../lib/icons.js';
+import { showContextMenu } from '../lib/menu.js';
 
 /** 레인이 하나도 안 들어갈 때의 최소값 */
 const MIN_LANES = 1;
@@ -231,6 +232,23 @@ export function createCalendar({ root, store }) {
     store.requestCompose(a < b ? a : b, a < b ? b : a);
   }
 
+  // 날짜 칸 우클릭 — 그 자리에서 바로 일정을 만든다
+  function onContextMenu(e) {
+    const cell = e.target.closest('.cal-day');
+    if (!cell) return;
+    e.preventDefault();
+    const key = cell.dataset.key;
+    store.selectDate(key);
+    showContextMenu(e.clientX, e.clientY, [
+      { label: '이 날짜에 일정 추가', onSelect: () => store.requestCompose(key, key) },
+      { label: '이 날부터 3일 일정', onSelect: () => store.requestCompose(key, date.addDays(key, 2)) },
+      { label: '이 주(7일) 일정', onSelect: () => store.requestCompose(key, date.addDays(key, 6)) },
+      { separator: true },
+      { label: '오늘로 이동', onSelect: () => store.selectDate(date.todayKey()) },
+    ]);
+  }
+
+  els.grid.addEventListener('contextmenu', onContextMenu);
   els.grid.addEventListener('mousedown', onMouseDown);
   els.grid.addEventListener('mouseover', onMouseOver);
   window.addEventListener('mouseup', onMouseUp);
@@ -259,6 +277,7 @@ export function createCalendar({ root, store }) {
       els.root.removeEventListener('click', onClick);
       els.root.removeEventListener('keydown', onKeyDown);
       els.grid.removeEventListener('dragstart', onDragStart);
+      els.grid.removeEventListener('contextmenu', onContextMenu);
       els.grid.removeEventListener('mousedown', onMouseDown);
       els.grid.removeEventListener('mouseover', onMouseOver);
       window.removeEventListener('mouseup', onMouseUp);

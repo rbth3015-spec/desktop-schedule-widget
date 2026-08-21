@@ -100,6 +100,11 @@
       onClick: (cb) => { window.__devReminderClick = cb; },
     },
 
+    app: {
+      getAutoLaunch: async () => ({ ok: true, enabled: false, dev: true }),
+      setAutoLaunch: async () => ({ ok: false, dev: true, error: '개발 실행 중에는 설정되지 않습니다.' }),
+    },
+
     openExternal: async (url) => {
       console.log('[dev] openExternal', url);
       try {

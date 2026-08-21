@@ -459,6 +459,9 @@ function renderSettings() {
     row('자동 백업', actions([['백업 폴더 열기', () => window.api.data.openBackups()]]),
       '저장할 때 하루 한 번 백업을 떠 두고 최근 14일치를 보관합니다.'),
 
+    row('부팅 시 자동 시작', autoLaunchToggle(),
+      '컴퓨터를 켜면 트레이에 조용히 올라옵니다. 창은 뜨지 않습니다.'),
+
     row('항상 위에 표시', toggle(s.alwaysOnTop, (v) => store.setSetting('alwaysOnTop', v))),
 
     row('완료 항목 표시', toggle(s.showCompleted, (v) => store.setSetting('showCompleted', v))),
@@ -554,6 +557,36 @@ function actions(items) {
     wrap.append(b);
   }
   return wrap;
+}
+
+/** 부팅 자동 시작 — 현재 상태를 메인에 물어보고 그린다 */
+function autoLaunchToggle() {
+  const b = document.createElement('button');
+  b.className = 'settings__toggle';
+  b.setAttribute('role', 'switch');
+
+  const paint = (on) => {
+    b.classList.toggle('is-on', !!on);
+    b.setAttribute('aria-checked', String(!!on));
+  };
+
+  window.api.app.getAutoLaunch().then((r) => {
+    paint(r?.enabled);
+    if (r?.dev) b.title = '개발 실행 중에는 적용되지 않습니다 (설치본에서 동작).';
+  });
+
+  b.addEventListener('click', async () => {
+    const next = !b.classList.contains('is-on');
+    const r = await window.api.app.setAutoLaunch(next);
+    if (r?.ok) {
+      paint(r.enabled);
+      showToast(r.enabled ? '부팅 시 자동으로 켜집니다' : '자동 시작을 껐습니다');
+    } else {
+      showToast(r?.error || '설정하지 못했습니다');
+    }
+  });
+
+  return b;
 }
 
 async function exportBackup() {

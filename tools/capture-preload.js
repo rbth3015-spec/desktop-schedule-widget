@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld('api', {
     },
     openBackups: async () => ({ ok: true, path: '' }),
   },
+  app: {
+    getAutoLaunch: async () => ({ ok: true, enabled: false, dev: true }),
+    setAutoLaunch: async () => ({ ok: true, enabled: false }),
+  },
   openExternal: async () => ({ ok: true }),
   launcher: {
     run: async () => ({ ok: true }),

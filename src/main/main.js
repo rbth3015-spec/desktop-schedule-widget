@@ -111,9 +111,13 @@ function createWindow() {
   windowState.manage(win);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
+  const startHidden = process.argv.includes('--hidden');
+
   win.once('ready-to-show', () => {
     windowState.applyMaximized(win);
-    win.show();
+    // 부팅 자동 시작(--hidden)일 때는 트레이에만 올라온다
+    if (!startHidden) win.show();
+    refreshTrayMenu();
   });
 
   // X 버튼(렌더러) 또는 OS 닫기 = 종료가 아니라 트레이로 숨김
@@ -380,6 +384,26 @@ function registerIpc() {
     const p = PRESETS[preset];
     if (!p) return;
     resizeTo(p.width, p.height);
+  });
+
+  // --- 부팅 시 자동 시작 ---
+  // 개발 실행(electron .)에서 등록하면 electron.exe 가 시작 프로그램에 박힌다.
+  // 설치본에서만 실제로 등록하고, 개발 중에는 상태만 흉내 낸다.
+  ipcMain.handle('app:getAutoLaunch', () => {
+    if (!app.isPackaged) return { ok: true, enabled: false, dev: true };
+    return { ok: true, enabled: app.getLoginItemSettings().openAtLogin };
+  });
+
+  ipcMain.handle('app:setAutoLaunch', (_e, on) => {
+    if (!app.isPackaged) {
+      return { ok: false, dev: true, error: '개발 실행 중에는 설정되지 않습니다(설치본에서 동작).' };
+    }
+    app.setLoginItemSettings({
+      openAtLogin: !!on,
+      // 부팅 직후 창이 튀어나오지 않고 트레이에만 올라오게 한다
+      args: ['--hidden'],
+    });
+    return { ok: true, enabled: !!on };
   });
 
   // --- 데이터 내보내기 / 가져오기 ---

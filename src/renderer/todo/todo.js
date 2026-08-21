@@ -6,6 +6,7 @@ import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../
 import { remindLabel } from '../reminders.js';
 import { icon } from '../lib/icons.js';
 import { createCompose } from './compose.js';
+import { showContextMenu } from '../lib/menu.js';
 
 /** 리마인더 프리셋. 값은 store 의 '<며칠 전>@<HH:mm>' 형식. */
 const REMIND_PRESETS = [
@@ -401,13 +402,15 @@ export function createTodoPanel({ root, store }) {
   const body = h('div', 'todo-body');
 
   const sections = {
+    search: makeSection('search', '검색 결과'),
     focus: makeSection('focus', '선택한 항목'),
     day: makeSection('day', '오늘 할 일'),
     span: makeSection('span', '진행 중인 장기 계획'),
     inbox: makeSection('inbox', '언젠가'),
   };
   sections.inbox.collapsed = false;
-  body.append(sections.focus.el, sections.day.el, sections.span.el, sections.inbox.el);
+  body.append(sections.search.el, sections.focus.el, sections.day.el,
+              sections.span.el, sections.inbox.el);
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
@@ -571,6 +574,51 @@ export function createTodoPanel({ root, store }) {
       if (store.getState().editingTaskId === taskId) store.setEditing(null);
       // 반복 일정은 이 회차만 건너뛴다. 규칙째 지우려면 상세의 '반복 전체 삭제'.
       store.removeTask(taskId, rec.task?.occDate);
+    });
+
+    // 우클릭 메뉴 — 자주 쓰는 동작을 손 가까이에 둔다
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const t = rec.task;
+      if (!t) return;
+      const st = store.getState();
+      showContextMenu(e.clientX, e.clientY, [
+        {
+          label: t.done ? '완료 취소' : '완료로 표시',
+          onSelect: () => store.toggleDone(t.id, t.occDate),
+        },
+        {
+          label: st.editingTaskId === t.id ? '자세히 닫기' : '자세히 보기',
+          onSelect: () => store.setEditing(st.editingTaskId === t.id ? null : t.id),
+        },
+        { separator: true },
+        {
+          label: '내일로 미루기',
+          disabled: !t.start,
+          onSelect: () => store.moveTask(t.id, addDays(t.occDate || t.start, 1)),
+        },
+        {
+          label: t.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정',
+          disabled: !!t.repeat || !t.end,
+          onSelect: () => store.togglePinned(t.id),
+        },
+        {
+          label: '복제',
+          onSelect: () => {
+            const copy = store.duplicateTask(t.id);
+            if (copy) store.setEditing(copy.id);
+          },
+        },
+        { separator: true },
+        {
+          label: t.repeat && t.occDate ? '이 회차 건너뛰기' : '삭제',
+          danger: true,
+          onSelect: () => {
+            if (store.getState().editingTaskId === t.id) store.setEditing(null);
+            store.removeTask(t.id, t.occDate);
+          },
+        },
+      ]);
     });
 
     // 클릭 → 상세 펼치기/접기.
@@ -1023,6 +1071,12 @@ export function createTodoPanel({ root, store }) {
     return box;
   }
 
+  function buildSearchEmpty() {
+    const box = h('div', 'todo-empty todo-empty--slim');
+    box.append(h('div', 'todo-empty__desc', '찾는 일정이 없습니다. 다른 낱말로 찾아보세요.'));
+    return box;
+  }
+
   function buildInboxEmpty() {
     const box = h('div', 'todo-empty todo-empty--slim');
     box.append(h('div', 'todo-empty__desc', '날짜를 정하지 않은 일은 여기 모입니다. 항목을 캘린더로 끌어다 놓으면 날짜가 잡혀요.'));
@@ -1145,10 +1199,22 @@ export function createTodoPanel({ root, store }) {
 
     renderHeader(st);
 
-    const onDate = store.tasksOnDate(key);
+    // 검색 중에는 고른 날짜를 무시하고 전체에서 찾는다.
+    // 예전에는 '그날 목록 안에서만' 걸러서, 다른 달의 일정은 검색해도 안 나왔다.
+    const searching = !!st.filter.text.trim();
+    const searchResults = searching ? store.searchTasks(st.filter.text) : [];
+
+    const onDate = searching ? [] : store.tasksOnDate(key);
     const spanTasks = onDate.filter(isSpanTask);
     const dayTasks = onDate.filter((t) => !isSpanTask(t));
-    const inboxTasks = store.inboxTasks();
+    const inboxTasks = searching ? [] : store.inboxTasks();
+
+    sections.search.el.hidden = !searching;
+    sections.day.el.hidden = searching;
+    sections.inbox.el.hidden = searching;
+    if (searching) {
+      sections.search.titleEl.textContent = `'${st.filter.text.trim()}' 검색 결과`;
+    }
 
     // 캘린더에서 막대를 클릭했는데 위 세 목록에 없는 항목이면 따로 띄워 준다
     const editingId = st.editingTaskId;
@@ -1161,10 +1227,11 @@ export function createTodoPanel({ root, store }) {
       }
     }
 
-    sections.focus.el.hidden = focusTasks.length === 0;
+    sections.focus.el.hidden = searching || focusTasks.length === 0;
     sections.day.titleEl.textContent = key === todayKey() ? '오늘 할 일' : `${formatDateLabel(key)} 할 일`;
-    sections.span.el.hidden = spanTasks.length === 0;
+    sections.span.el.hidden = searching || spanTasks.length === 0;
 
+    renderSection(sections.search, searchResults, key, searching ? buildSearchEmpty : null);
     renderSection(sections.focus, focusTasks, key, null);
     renderSection(sections.day, dayTasks, key, buildDayEmpty);
     renderSection(sections.span, spanTasks, key, null);

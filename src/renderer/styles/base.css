@@ -629,3 +629,68 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   line-height: 1.5;
   color: var(--text-dim);
 }
+
+/* ------------------------------------------------------------ 우클릭 메뉴 */
+
+.ctx {
+  position: fixed;
+  z-index: 200;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-solid);
+  box-shadow: var(--shadow);
+  animation: ctx-in .12s ease-out;
+}
+
+@keyframes ctx-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.ctx hr {
+  height: 0;
+  margin: 5px 6px;
+  border: none;
+  border-top: 1px solid var(--rule);
+}
+
+.ctx__item {
+  display: block;
+  width: 100%;
+  padding: 7px 11px;
+  border-radius: 2px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  transition: background .1s, color .1s;
+}
+.ctx__item:hover:not(:disabled) { background: var(--pane-hover); color: var(--text); }
+.ctx__item:disabled { opacity: .38; cursor: default; }
+.ctx__item--danger:hover:not(:disabled) { background: var(--accent-soft); color: var(--danger); }
+.ctx__item.is-on { color: var(--accent); }
+
+/* ------------------------------------------------------------ 상호작용 다듬기
+   버튼이 눌릴 때 아주 살짝 내려앉게 해서 '눌렸다'는 감각을 준다.
+   과한 모션은 위젯에 어울리지 않으므로 1px 이내로만. */
+
+.iconbtn:active,
+.cmp-chip:active,
+.cmp-btn:active,
+.todo-gotoday:active,
+.todo-toggle:active,
+.cal-todaybtn:active,
+.settings__seg button:active { transform: translateY(0.5px); }
+
+/* 키보드로 이동할 때 어디에 있는지 항상 보이게 */
+:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

@@ -615,6 +615,51 @@ export function clearReminderLog() {
   commit();
 }
 
+/** 일정 복제 — 같은 내용을 하루 뒤로 하나 더 */
+export function duplicateTask(id) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return null;
+  pushUndo('일정 복제');
+  const copy = normalize({
+    ...structuredClone(t),
+    id: cryptoId(),
+    title: t.title,
+    done: false,
+    doneAt: null,
+    remindedAt: null,
+    doneDates: [],
+    createdAt: Date.now(),
+  });
+  copy.order = state.tasks.length;
+  state.tasks.push(copy);
+  commit();
+  return copy;
+}
+
+/**
+ * 날짜와 무관한 전체 검색.
+ * 목록의 검색창은 그동안 '고른 날짜 안에서만' 걸러서, 다른 달에 있는 일정은
+ * 아무리 검색해도 안 나왔다.
+ */
+export function searchTasks(text) {
+  const q = String(text || '').trim().toLowerCase();
+  if (!q) return [];
+  return state.tasks
+    .filter((t) => {
+      if (!state.settings.showCompleted && t.done) return false;
+      if (state.filter.tag && !t.tags.includes(state.filter.tag)) return false;
+      return t.title.toLowerCase().includes(q)
+        || t.notes.toLowerCase().includes(q)
+        || t.tags.some((tag) => tag.toLowerCase().includes(q));
+    })
+    .sort((a, b) => {
+      // 날짜 있는 것 먼저, 가까운 날짜 순
+      if (!a.start !== !b.start) return a.start ? -1 : 1;
+      if (a.start && b.start && a.start !== b.start) return a.start < b.start ? -1 : 1;
+      return a.createdAt - b.createdAt;
+    });
+}
+
 // ---------------------------------------------------------------- 가져오기
 
 /**

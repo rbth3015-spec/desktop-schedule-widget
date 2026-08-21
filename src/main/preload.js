@@ -27,6 +27,12 @@ const api = {
     snapPreset: (preset) => ipcRenderer.send('window:snapPreset', String(preset)),
   },
 
+  // ------------------------------------------------------------ 앱 설정
+  app: {
+    getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
+    setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', !!on),
+  },
+
   // ------------------------------------------------------------ 데이터 내보내기/가져오기
   data: {
     /** 저장 위치를 묻고 문자열을 파일로 쓴다 */
