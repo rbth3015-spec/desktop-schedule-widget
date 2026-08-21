@@ -59,6 +59,20 @@ export function monthGrid(anchorKey) {
   return out;
 }
 
+/** 해당 날짜가 속한 주(일요일 시작) 7칸 */
+export function weekGrid(anchorKey) {
+  const d = fromKey(anchorKey);
+  const start = new Date(d);
+  start.setDate(d.getDate() - d.getDay());
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const cur = new Date(start);
+    cur.setDate(start.getDate() + i);
+    out.push(toKey(cur));
+  }
+  return out;
+}
+
 export function sameMonth(a, b) {
   return a.slice(0, 7) === b.slice(0, 7);
 }

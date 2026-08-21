@@ -459,6 +459,9 @@ function renderSettings() {
     row('자동 백업', actions([['백업 폴더 열기', () => window.api.data.openBackups()]]),
       '저장할 때 하루 한 번 백업을 떠 두고 최근 14일치를 보관합니다.'),
 
+    row('캘린더 보기', segmented([['month', '월간'], ['week', '주간']],
+      s.calendarView, (v) => store.setSetting('calendarView', v))),
+
     row('부팅 시 자동 시작', autoLaunchToggle(),
       '컴퓨터를 켜면 트레이에 조용히 올라옵니다. 창은 뜨지 않습니다.'),
 
@@ -471,6 +474,15 @@ function renderSettings() {
       if (v) toggleSettings();   // 잠그면 더 이상 클릭이 안 되므로 패널을 닫는다
     }), '켜면 위젯이 마우스를 통과시켜 배경처럼 됩니다. Alt+Shift+S 로 해제하세요.'),
   );
+
+  // 자동 업데이트는 붙이지 않았다. 배포판에 서명이 없으면 업데이트 과정에서
+  // Windows 경고가 반복되고, 릴리스를 실제로 올려야만 동작한다.
+  // 대신 새 버전이 있는지 직접 확인할 수 있는 통로만 둔다.
+  frag.append(row('새 버전 확인',
+    actions([['릴리스 페이지 열기', () => {
+      window.api.openExternal('https://github.com/rbth3015-spec/desktop-schedule-widget/releases');
+    }]]),
+    '자동 업데이트는 아직 없습니다. 새 버전은 위 페이지에서 받아 설치하세요.'));
 
   const close = document.createElement('button');
   close.className = 'settings__close';

@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS = {
   clickThroughLocked: false,
   showCompleted: true,
   weekStart: 0,           // 0=일요일
+  calendarView: 'month',  // 'month' | 'week' — 주간 뷰는 좁은 위젯에서 유용하다
   fontScale: 1,           // 0.8 ~ 1.4
   sortMode: 'manual',     // 'manual' = 드래그 순서 우선 | 'priority' = 우선순위 우선
 

@@ -36,16 +36,27 @@ export function createCalendar({ root, store }) {
   function render() {
     const st = store.getState();
     const anchor = st.anchorMonth || date.todayKey();
-    const keys = date.monthGrid(anchor);
+    // 주간 뷰는 7칸만 쓴다. 남는 행·칸은 숨겨서 뼈대를 그대로 재사용한다.
+    const weekView = st.settings.calendarView === 'week';
+    const keys = weekView ? date.weekGrid(st.selectedDate || anchor) : date.monthGrid(anchor);
+    const weekCount = weekView ? 1 : 6;
+    els.root.classList.toggle('cal-root--week', weekView);
+    els.viewBtn.textContent = weekView ? '월간' : '주간';
     const today = date.todayKey();
     const selected = st.selectedDate;
 
-    els.title.textContent = date.monthLabel(anchor);
+    els.title.textContent = weekView
+      ? weekTitle(keys)
+      : date.monthLabel(anchor);
 
     // --- 날짜 칸 갱신 (뼈대는 재사용, 내용만 교체) ---
+    for (let w = 0; w < 6; w++) els.weekRows[w].hidden = w >= weekCount;
+
     for (let i = 0; i < 42; i++) {
-      const key = keys[i];
       const cell = els.cells[i];
+      if (i >= keys.length) { cell.hidden = true; continue; }
+      cell.hidden = false;
+      const key = keys[i];
 
       cell.dataset.key = key;
       cell.classList.toggle('cal-day--out', !date.sameMonth(key, anchor));
@@ -66,10 +77,11 @@ export function createCalendar({ root, store }) {
     // --- 일정 막대 ---
     // 단일 일정도 하루짜리 막대로 그린다. 점만 찍으면 '무슨 일정인지'가 안 보여
     // 달력이 정보 없이 비어 보인다.
-    renderBars(els, keys, visibleDated(store, st, keys), st, store);
+    renderBars(els, keys, visibleDated(store, st, keys), st, store, weekCount);
 
-    // --- 이번 달 완료율 ---
-    renderMeter(els, st, anchor);
+    // --- 이번 달 완료율 --- (주간 뷰에서는 의미가 약해 숨긴다)
+    els.meterFill.parentElement.parentElement.hidden = weekView;
+    if (!weekView) renderMeter(els, st, anchor);
   }
 
   // ---------------------------------------------------------------- 이벤트
@@ -82,6 +94,12 @@ export function createCalendar({ root, store }) {
     if (nav) {
       const st = store.getState();
       store.setAnchorMonth(date.addMonths(st.anchorMonth || date.todayKey(), Number(nav.dataset.nav)));
+      return;
+    }
+
+    if (t.closest('.cal-viewbtn')) {
+      const cur = store.getState().settings.calendarView;
+      store.setSetting('calendarView', cur === 'week' ? 'month' : 'week');
       return;
     }
 
@@ -320,11 +338,16 @@ function buildSkeleton(root) {
   const meterLabel = div('cal-meter__label');
   meter.append(track, meterLabel);
 
+  const viewBtn = make('button', 'cal-viewbtn');
+  viewBtn.type = 'button';
+  viewBtn.dataset.view = '1';
+  viewBtn.title = '월간 / 주간 전환';
+
   const todayBtn = make('button', 'cal-todaybtn');
   todayBtn.textContent = '오늘';
   todayBtn.title = '오늘로 이동 (T)';
 
-  header.append(prev, title, next, spacer, meter, todayBtn);
+  header.append(prev, title, next, spacer, meter, viewBtn, todayBtn);
 
   // --- 요일 머리글 ---
   const weekdays = div('cal-weekdays');
@@ -370,7 +393,7 @@ function buildSkeleton(root) {
 
   root.append(header, weekdays, grid);
 
-  return { root, title, grid, cells, barLayers, weekRows, meterFill: fill, meterLabel };
+  return { root, title, grid, cells, barLayers, weekRows, viewBtn, meterFill: fill, meterLabel };
 }
 
 // ================================================================== 막대
@@ -397,7 +420,7 @@ function layoutLanes(keys, tasks, maxLanes) {
   const lastLane = new Map();
   const weeks = [];
 
-  for (let w = 0; w < 6; w++) {
+  for (let w = 0; w < weeksCount(keys); w++) {
     const weekStart = keys[w * 7];
     const weekEnd = keys[w * 7 + 6];
     const segs = [];
@@ -473,14 +496,14 @@ function laneFree(occupied, lane, seg) {
   return true;
 }
 
-function renderBars(els, keys, tasks, st, store) {
+function renderBars(els, keys, tasks, st, store, weekCount = 6) {
   const m = readMetrics(els.grid);
 
   // 6주를 똑같은 높이로 나누면, 아무것도 없는 주가 바쁜 주와 같은 자리를 차지한다.
   // 결과적으로 위쪽 빈 줄은 허전하고 정작 일정이 몰린 날은 '+N' 으로 접힌다.
   // 그래서 주마다 필요한 레인 수를 먼저 세고, 그 비율로 행 높이를 나눠 준다.
   const gridH = els.grid.clientHeight || 0;
-  const need = weekLaneDemand(keys, tasks);           // 주별로 필요한 레인 수
+  const need = weekLaneDemand(keys, tasks, weekCount);   // 주별로 필요한 레인 수
   const weights = need.map((n) => 1 + Math.min(n, 6) * 0.55);
   const total = weights.reduce((a, b) => a + b, 0);
   els.grid.style.gridTemplateRows = weights.map((v) => `${(v / total * 100).toFixed(3)}%`).join(' ');
@@ -494,11 +517,11 @@ function renderBars(els, keys, tasks, st, store) {
 
   // 레인 배치는 주 전체에서 일관돼야 하므로 가장 여유 있는 주 기준으로 잡고,
   // 실제로 보여 줄 개수만 주별로 잘라 낸다.
-  const maxLanes = Math.max(...keys.map((_, i) => (i % 7 === 0 ? lanesFor(i / 7) : 0)));
+  const maxLanes = Math.max(...Array.from({ length: weekCount }, (_, w) => lanesFor(w)));
 
   const weeks = layoutLanes(keys, tasks, maxLanes);
 
-  for (let w = 0; w < 6; w++) {
+  for (let w = 0; w < weekCount; w++) {
     const layer = els.barLayers[w];
     const segs = weeks[w];
     layer.replaceChildren();
@@ -538,9 +561,9 @@ function renderBars(els, keys, tasks, st, store) {
 }
 
 /** 주별로 몇 개의 레인이 필요한지 (겹치는 최대 개수) */
-function weekLaneDemand(keys, tasks) {
-  const out = new Array(6).fill(0);
-  for (let w = 0; w < 6; w++) {
+function weekLaneDemand(keys, tasks, weekCount = 6) {
+  const out = new Array(weekCount).fill(0);
+  for (let w = 0; w < weekCount; w++) {
     let peak = 0;
     for (let c = 0; c < 7; c++) {
       const key = keys[w * 7 + c];
@@ -627,6 +650,22 @@ function renderMeter(els, st, anchor) {
   const rate = total ? Math.round((done / total) * 100) : 0;
   els.meterFill.style.width = `${rate}%`;
   els.meterLabel.textContent = total ? `${done}/${total}` : '–';
+}
+
+/** keys 길이로 주 수를 구한다 (월 6주 / 주간 1주) */
+function weeksCount(keys) {
+  return Math.max(1, Math.round(keys.length / 7));
+}
+
+/** 주간 뷰 표제 — '8월 16일 – 22일' */
+function weekTitle(keys) {
+  const a = date.fromKey(keys[0]);
+  const b = date.fromKey(keys[keys.length - 1]);
+  const left = `${a.getFullYear()}년 ${a.getMonth() + 1}월 ${a.getDate()}일`;
+  const right = a.getMonth() === b.getMonth()
+    ? `${b.getDate()}일`
+    : `${b.getMonth() + 1}월 ${b.getDate()}일`;
+  return `${left} – ${right}`;
 }
 
 // ================================================================== 유틸
