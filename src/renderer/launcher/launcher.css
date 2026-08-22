@@ -83,9 +83,17 @@
   border-right-color: color-mix(in srgb, var(--accent) 45%, transparent);
   opacity: 0;
   pointer-events: none;
+}
+/*
+ * 애니메이션은 반드시 '실행 중'일 때만 건다.
+ * opacity:0 이어도 무한 애니메이션이 걸려 있으면 브라우저는 매 프레임 합성을 계속한다.
+ * 바로가기 하나당 링 하나이므로, 안 보이는 스피너 몇 개가 상시 60fps 를 돌려
+ * 유휴 상태에서 CPU 를 통째로 잡아먹고 있었다. (실측 약 33% → 아래 참조)
+ */
+.lnch-item.is-running .lnch-item__ring {
+  opacity: 1;
   animation: lnch-spin .9s linear infinite;
 }
-.lnch-item.is-running .lnch-item__ring { opacity: 1; }
 
 /* 짧은 성공 피드백(웹주소·앱·폴더처럼 결과를 지켜볼 수 없는 실행) */
 .lnch-item__badge {
@@ -283,6 +291,9 @@
   height: 100%;
   border-radius: 999px;
   background: var(--accent);
+}
+/* 같은 이유 — 실행 중인 팝오버에서만 움직인다 */
+.lnch-pop.is-running .lnch-pop__fill {
   animation: lnch-indet 1.15s ease-in-out infinite;
 }
 

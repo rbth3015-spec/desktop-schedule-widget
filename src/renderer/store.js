@@ -745,6 +745,21 @@ export function moveTasksTo(ids, newStart, label) {
   return targets.length;
 }
 
+/**
+ * D-Day 고정을 켜거나 끈다. 토글이 아니라 값을 지정한다.
+ * 드롭처럼 '결과가 정해진' 동작에서 토글을 쓰면, 이미 고정된 일정을 떨어뜨렸을 때
+ * 오히려 풀려 버린다.
+ * @returns {boolean} 실제로 상태가 바뀌었는지
+ */
+export function setPinned(id, on) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t || t.pinned === !!on) return false;
+  pushUndo(on ? 'D-Day 고정' : '고정 해제');
+  t.pinned = !!on;
+  commit();
+  return true;
+}
+
 export function togglePinned(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;

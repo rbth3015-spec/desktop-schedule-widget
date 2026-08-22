@@ -14,6 +14,7 @@
 
 import { todayKey, addDays, diffDays, fromKey, WEEKDAY_LABELS } from '../lib/date.js';
 import { icon } from '../lib/icons.js';
+import { parseQuickInput, resolveRange } from './parse.js';
 
 function h(tag, cls, text) {
   const el = document.createElement(tag);
@@ -138,6 +139,83 @@ export function createCompose({ store }) {
   titleIn.placeholder = '무엇을 할 예정인가요?';
   titleIn.required = true;
   titleIn.spellcheck = false;
+
+  // 제목칸이 한 줄 문법을 그대로 알아듣는다.
+  //
+  // 전용 입력칸을 없애면서 문법까지 버릴 이유는 없다. 다만 '문법이 남아 있다'와
+  // '문법을 외워야 한다'는 다르므로, **띄어쓰기로 토큰이 끝나는 순간 그 토큰을
+  // 제목에서 걷어내고 해당 컨트롤로 옮긴다.** 무슨 일이 일어났는지 눈으로 보이고,
+  // 텍스트에 흔적이 남지 않으니 나중에 날짜를 손으로 고쳐도 다시 덮이지 않는다.
+  const consumedTag = h('div', 'cmp-consumed');
+  consumedTag.setAttribute('aria-live', 'polite');
+
+  /** 방금 옮긴 항목을 잠깐 보여 준다 */
+  let consumedTimer = 0;
+  function flashConsumed(parts) {
+    if (!parts.length) return;
+    consumedTag.replaceChildren();
+    for (const [label, value] of parts) {
+      const chip = h('span', 'cmp-consumed__chip');
+      chip.append(h('em', null, label), h('span', null, value));
+      consumedTag.append(chip);
+    }
+    clearTimeout(consumedTimer);
+    consumedTimer = setTimeout(() => consumedTag.replaceChildren(), 2600);
+  }
+
+  /**
+   * 완결된 토큰만 걷어낸다. 마지막 낱말은 아직 타이핑 중일 수 있으므로 건드리지 않는다
+   * (한글 조합 중에 글자를 빼앗기면 입력이 망가진다).
+   */
+  function consumeTokens() {
+    const raw = titleIn.value;
+    if (!/\s$/.test(raw)) return;          // 띄어쓰기로 끝날 때만 = 토큰이 확정된 순간
+    const parsed = parseQuickInput(raw, todayKey());
+
+    const moved = [];
+    if (parsed.start || parsed.end || parsed.endDays != null) {
+      const { start, end } = resolveRange(parsed, startIn.value || todayKey());
+      if (start) { startIn.value = start; dayChips.set(null); }
+      if (end && start) endIn.value = end;
+      moved.push(['언제', pretty(startIn.value)]);
+    }
+    if (parsed.startTime) {
+      startTimeIn.value = parsed.startTime;
+      if (parsed.endTime) endTimeIn.value = parsed.endTime;
+      moved.push(['시각', parsed.endTime ? `${parsed.startTime}–${parsed.endTime}` : parsed.startTime]);
+    }
+    if (parsed.priority > 0) {
+      prio.set(String(parsed.priority));
+      moved.push(['중요도', PRIORITY_OPTIONS[parsed.priority][1]]);
+    }
+    if (parsed.color) {
+      pickedColor = parsed.color;
+      for (const k of Object.keys(swatchBtns)) swatchBtns[k].classList.toggle('is-on', k === parsed.color);
+      moved.push(['색', COLOR_NAMES[parsed.color] || parsed.color]);
+    }
+    if (parsed.tags.length) {
+      const have = new Set(tagsIn.value.split(/[\s,]+/).filter(Boolean));
+      for (const t of parsed.tags) have.add(t);
+      tagsIn.value = [...have].join(' ');
+      moved.push(['태그', parsed.tags.map((t) => `#${t}`).join(' ')]);
+    }
+
+    if (!moved.length) return;
+    // 해석된 토큰을 걷어낸 나머지만 제목으로 남긴다
+    titleIn.value = parsed.title + ' ';
+    syncWhen();
+    flashConsumed(moved);
+  }
+
+  titleIn.addEventListener('input', () => {
+    if (titleIn.dataset.composing === '1') return;   // 한글 조합 중에는 손대지 않는다
+    consumeTokens();
+  });
+  titleIn.addEventListener('compositionstart', () => { titleIn.dataset.composing = '1'; });
+  titleIn.addEventListener('compositionend', () => {
+    titleIn.dataset.composing = '0';
+    consumeTokens();
+  });
 
   // 반복 칩은 아래에서 만들지만 '언제' 블록이 먼저 참조한다(반복이면 종료를 잠근다).
   // const 로 두면 시간대 오류(TDZ)가 나므로 let 으로 미리 선언해 둔다.
@@ -384,6 +462,7 @@ export function createCompose({ store }) {
   form.append(
     head,
     titleIn,
+    consumedTag,
     whenBox,
     field('색', swatches),
     field('중요도', prio.el),
@@ -405,6 +484,8 @@ export function createCompose({ store }) {
     const end = preset?.end || start;
 
     titleIn.value = '';
+    consumedTag.replaceChildren();
+    clearTimeout(consumedTimer);
     startIn.value = start;
     endIn.value = end;
     startTimeIn.value = '';
@@ -454,6 +535,11 @@ export function createCompose({ store }) {
   }
 
   function submit() {
+    // 마지막 낱말이 토큰이면(띄어쓰기 없이 Enter) 여기서 걷어낸다
+    if (titleIn.value.trim()) {
+      titleIn.value = titleIn.value.trim() + ' ';
+      consumeTokens();
+    }
     const title = titleIn.value.trim();
     if (!title) { fail('일정 이름을 적어 주세요.', titleIn); return; }
 
