@@ -149,6 +149,9 @@
   min-height: 0;
   display: grid;
   grid-template-rows: repeat(6, minmax(0, 1fr));
+  /* 기간 배지와 추가 버튼이 이 안에서 절대 위치를 잡는다.
+     둘 다 position:absolute 라 그리드 트랙을 차지하지 않는다. */
+  position: relative;
 }
 
 /* 주(週)는 괘선으로만 나눈다 — 칸을 면으로 채우지 않는다 */
@@ -390,6 +393,62 @@
   background: var(--accent-soft);
   box-shadow: inset 0 -1.5px 0 var(--accent);
 }
+/* 양 끝은 조금 더 진하게 — 어디서 시작해 어디서 끝나는지 눈으로 짚인다 */
+.cal-day--range-end {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* 기간을 끄는 동안에는 막대가 마우스를 먹지 않게 한다.
+   막대는 칸의 자식이 아니라 형제 레이어라, 막지 않으면 일정이 있는 칸을 지날 때
+   범위 계산이 끊긴다. */
+.cal-grid--ranging .cal-bar,
+.cal-grid--ranging .cal-more { pointer-events: none; }
+.cal-grid--ranging { cursor: crosshair; }
+
+/* --- 기간 배지 — '며칠부터 며칠까지 몇 일간' --- */
+.cal-rangetag {
+  position: absolute;
+  z-index: 12;
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--bg-solid);
+  box-shadow: var(--shadow);
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--accent);
+  pointer-events: none;
+}
+.cal-rangetag[hidden] { display: none; }
+
+/* --- 칸 위 추가 버튼 — 커서를 올린 날짜에만 나타난다 --- */
+.cal-addbtn {
+  position: absolute;
+  z-index: 11;
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-solid);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: .75;
+  transition: opacity .12s, color .12s, border-color .12s, transform .12s;
+}
+.cal-addbtn:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.12);
+}
+.cal-addbtn .icon { width: 9px; height: 9px; }
+.cal-addbtn[hidden] { display: none; }
 
 /* 월간 / 주간 전환 */
 .cal-viewbtn {

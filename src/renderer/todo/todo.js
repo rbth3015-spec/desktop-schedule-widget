@@ -6,6 +6,7 @@ import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../
 import { remindLabel } from '../reminders.js';
 import { icon } from '../lib/icons.js';
 import { createCompose, whenSummary } from './compose.js';
+import { COLOR_NAMES } from './parse.js';
 import { showContextMenu } from '../lib/menu.js';
 
 /**
@@ -65,284 +66,6 @@ function syncRemindOptions(sel, hasTime) {
   for (const opt of sel.options) {
     if (opt.dataset.needsTime) opt.hidden = !hasTime;
   }
-}
-
-// ============================================================ 빠른 입력 파서
-//
-// 문법 요약
-//   !  / !!        우선순위 1(중요) / 2(긴급)
-//   #태그          태그 (여러 개 가능)
-//   @날짜          시작일   (오늘/내일/모레/글피/요일/8/15/2026-08-15/15일)
-//   ~종료          종료일   (3d, 3일 = 시작일 +N일 / 8/20 / 2026-08-20)
-//   *색            파랑 초록 노랑 빨강 보라 회색
-//
-// 예시 입출력 (baseKey = '2026-08-10' 월요일 기준)
-//
-//   parseQuickInput('장보기 @내일 #집안일 !', '2026-08-10')
-//   → { title: '장보기', start: '2026-08-11', end: null,
-//       tags: ['집안일'], priority: 1, color: null }
-//
-//   parseQuickInput('기획서 마감 @8/15 ~3d *빨강 !!', '2026-08-10')
-//   → { title: '기획서 마감', start: '2026-08-15', end: null, endDays: 3,
-//       tags: [], priority: 2, color: 'rose' }
-//     endDays 는 resolveRange() 에서 start + 3일 = '2026-08-18' 로 확정된다.
-//
-//   parseQuickInput('!!긴급 회의 #업무 #팀 @금', '2026-08-10')
-//   → { title: '긴급 회의', start: '2026-08-14', end: null,
-//       tags: ['업무', '팀'], priority: 2, color: null }
-//
-//   parseQuickInput('보고서 @2026-09-01 ~5일 *초록 #회사', '2026-08-10')
-//   → { title: '보고서', start: '2026-09-01', endDays: 5, tags: ['회사'], color: 'green' }
-//
-//   parseQuickInput('운동하기!!', '2026-08-10')
-//   → { title: '운동하기', priority: 2 }   // 첫/마지막 토큰에 붙여 쓴 ! 도 인식
-//
-//   parseQuickInput('치과 @15일', '2026-08-10')
-//   → { title: '치과', start: '2026-08-15' }   // 이미 지난 날이면 다음 달
-//
-//   parseQuickInput('이상한거 @없는날짜 *분홍 ~zzz', '2026-08-10')
-//   → { title: '이상한거', unknown: ['@없는날짜', '*분홍', '~zzz'] }
-//     해석 실패한 조각은 제목에서 빼되 unknown 에 담아 미리보기에서 경고로 보여 준다.
-//
-//   parseQuickInput('그냥 할일', '2026-08-10')
-//   → { title: '그냥 할일', start: null, end: null, tags: [], priority: 0, color: null }
-//     start 가 null(미지정)이면 store.addTask 가 selectedDate 를 넣는다.
-//
-//   parseQuickInput('   ', '2026-08-10')
-//   → { title: '', ... }  (빈 제목이면 추가하지 않는다)
-
-/** 한글/영문 색 이름 → store.COLORS 키 */
-const COLOR_ALIASES = {
-  파랑: 'blue', 파란: 'blue', 파란색: 'blue', 블루: 'blue', blue: 'blue',
-  초록: 'green', 초록색: 'green', 녹색: 'green', 그린: 'green', green: 'green',
-  노랑: 'amber', 노란: 'amber', 노란색: 'amber', 앰버: 'amber', amber: 'amber', yellow: 'amber',
-  빨강: 'rose', 빨간: 'rose', 빨간색: 'rose', 레드: 'rose', red: 'rose', rose: 'rose',
-  보라: 'violet', 보라색: 'violet', 퍼플: 'violet', violet: 'violet', purple: 'violet',
-  회색: 'slate', 그레이: 'slate', gray: 'slate', grey: 'slate', slate: 'slate',
-};
-
-/** 색 키 → 한글 표시명 (미리보기용) */
-const COLOR_NAMES = {
-  blue: '파랑', green: '초록', amber: '노랑', rose: '빨강', violet: '보라', slate: '회색',
-};
-
-const WEEKDAY_INDEX = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
-
-function pad2(n) {
-  return String(n).padStart(2, '0');
-}
-
-/** y-m-d 를 키로 만들되 실제로 존재하는 날짜인지 검증 (2/30 같은 건 null) */
-function makeKey(y, m, d) {
-  if (!(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
-  const key = `${y}-${pad2(m)}-${pad2(d)}`;
-  return toKey(fromKey(key)) === key ? key : null;
-}
-
-/**
- * '@' / '~' 뒤에 오는 낱말을 날짜 키로 해석한다.
- * @param {string} word  마커를 뗀 문자열
- * @param {string} baseKey 상대 날짜의 기준일
- * @returns {string|null}
- */
-function resolveDateWord(word, baseKey) {
-  const w = word.trim();
-  if (!w) return null;
-
-  // 상대 날짜
-  const RELATIVE = { 오늘: 0, today: 0, 내일: 1, tomorrow: 1, 모레: 2, 글피: 3, 어제: -1 };
-  if (w in RELATIVE) return addDays(baseKey, RELATIVE[w]);
-
-  // 요일 — 기준일 다음의 해당 요일 (기준일과 같은 요일이면 다음 주)
-  const weekday = w.match(/^([일월화수목금토])(요일)?$/);
-  if (weekday) {
-    const target = WEEKDAY_INDEX[weekday[1]];
-    const cur = fromKey(baseKey).getDay();
-    let delta = (target - cur + 7) % 7;
-    if (delta === 0) delta = 7;
-    return addDays(baseKey, delta);
-  }
-
-  // 2026-08-15 / 2026.8.15
-  const full = w.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/);
-  if (full) return makeKey(Number(full[1]), Number(full[2]), Number(full[3]));
-
-  // 8/15 · 8.15 · 8-15 → 올해 기준, 이미 지났으면 내년
-  const md = w.match(/^(\d{1,2})[-./](\d{1,2})$/);
-  if (md) {
-    const year = fromKey(baseKey).getFullYear();
-    const key = makeKey(year, Number(md[1]), Number(md[2]));
-    if (!key) return null;
-    return key >= baseKey ? key : makeKey(year + 1, Number(md[1]), Number(md[2]));
-  }
-
-  // 15일 → 이번 달, 이미 지났으면 다음 달
-  const dayOnly = w.match(/^(\d{1,2})일$/);
-  if (dayOnly) {
-    const base = fromKey(baseKey);
-    const key = makeKey(base.getFullYear(), base.getMonth() + 1, Number(dayOnly[1]));
-    if (key && key >= baseKey) return key;
-    const next = new Date(base.getFullYear(), base.getMonth() + 1, 1);
-    return makeKey(next.getFullYear(), next.getMonth() + 1, Number(dayOnly[1]));
-  }
-
-  return null;
-}
-
-/**
- * 시각처럼 생긴 낱말을 'HH:mm' 으로. 아니면 null.
- *
- *   15:00  9:30        그대로
- *   15시  9시  9시30분  시 단위
- *   오후3시  오전9:30    오전/오후를 붙였을 때만 12시간제로 읽는다
- *
- * **오전/오후를 안 붙이면 적힌 그대로 읽는다.** '3시'를 15:00 으로 넘겨짚지 않는다.
- * 반복 규칙에서 31일을 말일에 붙이지 않은 것과 같은 이유 — 예측 가능성이 먼저다.
- */
-function resolveTimeWord(w) {
-  const m = /^(오전|오후)?(\d{1,2})(?::(\d{1,2})|시(?:(\d{1,2})분?)?)$/.exec(String(w || ''));
-  if (!m) return null;
-
-  let hour = Number(m[2]);
-  const min = Number(m[3] ?? m[4] ?? 0);
-  if (min > 59) return null;
-
-  if (m[1]) {
-    // 오전/오후를 붙였으면 12시간제. '오후 12시'는 정오, '오전 12시'는 자정.
-    if (hour < 1 || hour > 12) return null;
-    if (m[1] === '오후' && hour !== 12) hour += 12;
-    if (m[1] === '오전' && hour === 12) hour = 0;
-  } else if (hour > 23) {
-    return null;
-  }
-
-  return `${pad2(hour)}:${pad2(min)}`;
-}
-
-/** '15:00~16:30' / '15:00-16:30' → 시작·종료 시각. 아니면 null */
-function resolveTimeRange(w) {
-  const parts = String(w || '').split(/[~-]/);
-  if (parts.length !== 2) return null;
-  const startTime = resolveTimeWord(parts[0]);
-  const endTime = resolveTimeWord(parts[1]);
-  if (!startTime || !endTime) return null;
-  return { startTime, endTime };
-}
-
-/**
- * 빠른 입력 문자열을 태스크 조각으로 파싱한다. 순수 함수.
- * @param {string} text
- * @param {string} [baseKey] 상대 날짜 기준일 (기본: 오늘)
- * @returns {{title:string, start:string|null, end:string|null, endDays:number|null,
- *            startTime:string|null, endTime:string|null,
- *            tags:string[], priority:number, color:string|null, unknown:string[]}}
- */
-export function parseQuickInput(text, baseKey = todayKey()) {
-  const out = {
-    title: '',
-    start: null,
-    end: null,
-    endDays: null,   // ~3d 처럼 '시작일 + N일' 로 들어온 경우 N (미리보기에서 안내)
-    startTime: null, // '15:00' 처럼 시각만 적은 토큰
-    endTime: null,
-    tags: [],
-    priority: 0,
-    color: null,
-    unknown: [],     // 마커는 붙었는데 해석 못 한 조각 (미리보기에서 경고)
-  };
-
-  const raw = String(text ?? '');
-  const tokens = raw.split(/\s+/).filter(Boolean);
-  const words = [];
-
-  tokens.forEach((token, i) => {
-    // 단독 '!' / '!!'
-    if (/^!{1,2}$/.test(token)) {
-      out.priority = Math.max(out.priority, token.length);
-      return;
-    }
-
-    // #태그
-    if (token.length > 1 && token[0] === '#') {
-      const tag = token.slice(1).replace(/[,]+$/, '');
-      if (tag && !out.tags.includes(tag)) out.tags.push(tag);
-      return;
-    }
-
-    // *색
-    if (token.length > 1 && token[0] === '*') {
-      const key = COLOR_ALIASES[token.slice(1).toLowerCase()];
-      if (key) out.color = key;
-      else out.unknown.push(token);
-      return;
-    }
-
-    // @시작일
-    if (token.length > 1 && token[0] === '@') {
-      const key = resolveDateWord(token.slice(1), baseKey);
-      if (key) out.start = key;
-      else out.unknown.push(token);
-      return;
-    }
-
-    // ~종료일 / ~3d
-    if (token.length > 1 && token[0] === '~') {
-      const body = token.slice(1);
-      const dur = body.match(/^(\d{1,3})\s*(d|일|day|days)$/i);
-      if (dur) {
-        out.endDays = Number(dur[1]);
-        return;
-      }
-      const key = resolveDateWord(body, baseKey);
-      if (key) out.end = key;
-      else out.unknown.push(token);
-      return;
-    }
-
-    // 시각 — '15:00', '오후3시', '15:00~16:30'.
-    // 마커(@ ~ # *)가 없어도 알아본다. 무엇으로 읽혔는지는 미리보기가 바로 보여 준다.
-    const range = resolveTimeRange(token);
-    if (range) {
-      out.startTime = range.startTime;
-      out.endTime = range.endTime;
-      return;
-    }
-    const time = resolveTimeWord(token);
-    if (time) {
-      out.startTime = time;
-      return;
-    }
-
-    // 붙여 쓴 '!!긴급' (첫 토큰) / '장보기!!' (마지막 토큰)
-    let word = token;
-    if (i === 0) {
-      const lead = word.match(/^(!{1,2})(?=\S)/);
-      if (lead) {
-        out.priority = Math.max(out.priority, lead[1].length);
-        word = word.slice(lead[1].length);
-      }
-    }
-    if (i === tokens.length - 1) {
-      const tail = word.match(/(!{1,2})$/);
-      if (tail && word.length > tail[1].length) {
-        out.priority = Math.max(out.priority, tail[1].length);
-        word = word.slice(0, -tail[1].length);
-      }
-    }
-    if (word) words.push(word);
-  });
-
-  out.title = words.join(' ').trim();
-  return out;
-}
-
-/** 파싱 결과 + 기준 시작일로 최종 start/end 를 계산 (미리보기와 추가 시 동일 로직) */
-function resolveRange(parsed, fallbackStart) {
-  const start = parsed.start || fallbackStart || null;
-  let end = parsed.end || null;
-  if (parsed.endDays != null && start) end = addDays(start, parsed.endDays);
-  if (start && end && end < start) end = start;
-  return { start, end };
 }
 
 // ============================================================ DOM 헬퍼
@@ -445,11 +168,17 @@ export function createTodoPanel({ root, store }) {
   goTodayBtn.type = 'button';
   goTodayBtn.setAttribute('aria-label', '오늘 날짜로 이동');
   const progressText = h('span', 'todo-progress__text', '0/0');
+  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText);
+
+  // 일정을 만드는 유일한 입구다. 머리글 구석의 22px 아이콘으로 두면
+  // '여기서 추가한다'는 걸 알아채는 데 시간이 걸린다 — 이름을 달고 크게 둔다.
+  // 자리는 예전 빠른 입력칸이 있던 곳. 목록 바로 위, 가장 먼저 눈이 가는 줄이다.
   const addBtn = h('button', 'todo-add');
-  addBtn.append(icon('plus'));
   addBtn.type = 'button';
-  addBtn.setAttribute('aria-label', '일정 추가');
-  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, addBtn);
+  addBtn.append(icon('plus'), h('span', 'todo-add__text', '일정 추가'));
+
+  const addBar = h('div', 'todo-addbar');
+  addBar.append(addBtn);
 
   const progressBar = h('div', 'todo-progress');
   const progressFill = h('div', 'todo-progress__fill');
@@ -470,14 +199,6 @@ export function createTodoPanel({ root, store }) {
 
   header.append(dateRow, progressBar, filterRow, tagBar);
 
-  // 빠른 입력 --------------------------------------------------
-  const quick = h('div', 'todo-quick');
-  const quickInput = h('input', 'todo-quick__input');
-  quickInput.type = 'text';
-  quickInput.placeholder = '할 일을 적고 Enter';
-  quickInput.spellcheck = false;
-  const preview = h('div', 'todo-preview');
-  quick.append(quickInput, preview);
 
   // 목록 -------------------------------------------------------
   const body = h('div', 'todo-body');
@@ -513,15 +234,26 @@ export function createTodoPanel({ root, store }) {
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
-  const compose = createCompose({ store });
+  // 폼이 열리고 닫힐 때마다 추가 버튼 줄을 맞춘다(취소·Esc·제출 모두 포함).
+  const compose = createCompose({ store, onToggle: () => syncAddBar() });
 
-  el.append(header, quick, compose.el, body);
+  // 일정을 만드는 입구는 헤더의 '+' 하나뿐이다.
+  // 전용 입력칸이 따로 있으면 같은 일을 하는 길이 둘로 갈려 매번 어느 쪽인지 고민하게 된다.
+  // 한 줄 문법은 버리지 않았다 — 추가 폼의 제목칸이 그대로 이해한다.
+  el.append(header, addBar, compose.el, body);
   root.append(el);
 
   addBtn.addEventListener('click', () => {
     if (compose.el.hidden) compose.open();
     else compose.close();
   });
+
+  /** 폼이 열려 있는 동안에는 버튼을 감춘다.
+   *  폼 안에 이미 '취소 / 일정 추가' 가 있어서, 위에 같은 뜻의 버튼이 하나 더 있으면
+   *  어느 쪽을 눌러야 하는지 다시 헷갈린다. */
+  function syncAddBar() {
+    addBar.hidden = !compose.el.hidden;
+  }
 
   /** 날짜·기간·링크까지 한 번에 지정하는 추가 폼 */
 
@@ -672,14 +404,21 @@ export function createTodoPanel({ root, store }) {
     time.hidden = true;
     const title = h('span', 'todo-title');
     const meta = h('span', 'todo-meta');           // 우선순위 뱃지 + 태그 + D-day
+    // 내일로 미루기.
+    // 그동안 우클릭 메뉴 안에만 있어서 '있는 줄 몰라 못 쓰는' 대표 기능이었다.
+    // 오늘 못 할 일을 미는 건 매일 하는 동작이라 손 닿는 곳에 둔다.
+    const defer = h('button', 'todo-defer');
+    defer.append(icon('chevronRight'));
+    defer.type = 'button';
+
     const del = h('button', 'todo-del');
     del.append(icon('close'));
     del.type = 'button';
 
-    row.append(check, dot, time, title, meta, del);
+    row.append(check, dot, time, title, meta, defer, del);
     li.append(row);
 
-    const rec = { id: taskId, el: li, row, check, dot, time, title, meta, del,
+    const rec = { id: taskId, el: li, row, check, dot, time, title, meta, defer, del,
                   detail: null, task: null };
 
     // 완료 토글
@@ -687,6 +426,15 @@ export function createTodoPanel({ root, store }) {
       e.stopPropagation();
       // 반복 일정은 '이 회차'만 완료 처리한다
       store.toggleDone(taskId, rec.task?.occDate);
+    });
+
+    // 내일로 미루기
+    defer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const t = rec.task;
+      if (!t || !t.start || t.repeat) return;
+      store.moveTask(t.id, addDays(t.start, 1));
+      notify(`'${t.title || '일정'}' 을(를) 내일로 미뤘습니다`);
     });
 
     // 삭제
@@ -714,9 +462,11 @@ export function createTodoPanel({ root, store }) {
         },
         { separator: true },
         {
+          // 반복 일정은 규칙 하나를 공유하므로 한 회차만 밀 수 없다.
+          // 예전에는 눌리기는 하는데 아무 일도 일어나지 않았다.
           label: '내일로 미루기',
-          disabled: !t.start,
-          onSelect: () => store.moveTask(t.id, addDays(t.occDate || t.start, 1)),
+          disabled: !t.start || !!t.repeat,
+          onSelect: () => store.moveTask(t.id, addDays(t.start, 1)),
         },
         {
           label: t.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정',
@@ -1120,6 +870,11 @@ export function createTodoPanel({ root, store }) {
     rec.del.setAttribute('aria-label',
       task.repeat && task.occDate ? `${readable} 이 회차 건너뛰기` : `${readable} 삭제`);
 
+    // 날짜가 없으면 밀 곳이 없고, 반복 일정은 규칙째 움직이면 안 된다
+    const canDefer = !!task.start && !task.repeat;
+    rec.defer.hidden = !canDefer;
+    if (canDefer) rec.defer.setAttribute('aria-label', `${readable} 내일로 미루기`);
+
     // 시각 — 있으면 제목 앞
     const hasTime = !!task.startTime;
     rec.time.hidden = !hasTime;
@@ -1278,56 +1033,6 @@ export function createTodoPanel({ root, store }) {
     const box = h('div', 'todo-empty todo-empty--slim');
     box.append(h('div', 'todo-empty__desc', '날짜를 정하지 않은 일은 여기 모입니다. 항목을 캘린더로 끌어다 놓으면 날짜가 잡혀요.'));
     return box;
-  }
-
-  // ---------------------------------------------------------- 미리보기
-  function renderPreview() {
-    const text = quickInput.value;
-    preview.textContent = '';
-
-    if (!text.trim()) {
-      // 예전에는 여기에 문법표(! #태그 @내일 ~3d …)를 늘 띄워 뒀는데,
-      // 화면에서 가장 눈에 띄는 자리에 '외워야 할 것'이 놓여 있어 진입장벽이 됐다.
-      // 문법은 도움말(?)로 옮기고, 평소에는 비워 둔다.
-      preview.classList.add('is-hint');
-      return;
-    }
-
-    preview.classList.remove('is-hint');
-    const st = store.getState();
-    const parsed = parseQuickInput(text, todayKey());
-    const { start, end } = resolveRange(parsed, st.selectedDate);
-
-    const add = (cls, label, value, colorHex) => {
-      const chip = h('span', `todo-chip ${cls}`);
-      if (colorHex) {
-        const dot = h('span', 'todo-chip__dot');
-        dot.style.background = colorHex;
-        chip.append(dot);
-      }
-      if (label) chip.append(h('em', 'todo-chip__label', label));
-      chip.append(h('span', 'todo-chip__value', value));
-      preview.append(chip);
-    };
-
-    if (parsed.title) add('todo-chip--title', '제목', parsed.title);
-    else add('todo-chip--warn', '', '제목이 비었습니다');
-
-    if (start) {
-      const isDefault = !parsed.start;
-      add('todo-chip--date', isDefault ? '시작(선택한 날)' : '시작', formatShort(start));
-    }
-    if (end && start && end > start) {
-      add('todo-chip--date', '종료', `${formatShort(end)} · ${diffDays(start, end) + 1}일간`);
-    }
-    if (parsed.startTime) {
-      add('todo-chip--date', '시각',
-        parsed.endTime ? `${parsed.startTime}–${parsed.endTime}` : parsed.startTime);
-    }
-    if (parsed.priority > 0) add(`todo-chip--p${parsed.priority}`, '', PRIORITY_LABELS[parsed.priority]);
-    for (const tag of parsed.tags) add('todo-chip--tag', '', `#${tag}`);
-    if (parsed.color) add('todo-chip--color', '', COLOR_NAMES[parsed.color], COLORS[parsed.color]);
-    for (const u of parsed.unknown) add('todo-chip--warn', '해석 못 함', u);
   }
 
   // ---------------------------------------------------------- 헤더 렌더
@@ -1556,7 +1261,7 @@ export function createTodoPanel({ root, store }) {
     lastEditingId = editingId;
 
     syncRovingTabindex();
-    renderPreview();
+    syncAddBar();
   }
 
   function scheduleRender() {
@@ -1584,44 +1289,6 @@ export function createTodoPanel({ root, store }) {
       store.setFilter({ text: '' });
     }
   });
-
-  quickInput.addEventListener('input', renderPreview);
-  quickInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      quickInput.value = '';
-      renderPreview();
-      return;
-    }
-    if (e.key !== 'Enter') return;
-    if (e.isComposing || e.keyCode === 229) return;   // 한글 조합 중 Enter 는 확정용
-    e.preventDefault();
-    submitQuick();
-  });
-
-  function submitQuick() {
-    const st = store.getState();
-    const parsed = parseQuickInput(quickInput.value, todayKey());
-    if (!parsed.title) return;
-
-    const { start, end } = resolveRange(parsed, st.selectedDate);
-    const patch = {
-      title: parsed.title,
-      tags: parsed.tags,
-      priority: parsed.priority,
-    };
-    if (parsed.color) patch.color = parsed.color;
-    // start 를 넘기지 않으면 store 가 selectedDate 를 넣는다
-    if (parsed.start) patch.start = parsed.start;
-    if (end && start) patch.end = end;
-    if (parsed.startTime) patch.startTime = parsed.startTime;
-    if (parsed.endTime) patch.endTime = parsed.endTime;
-
-    store.addTask(patch);
-    quickInput.value = '';
-    quickInput.focus();
-    renderPreview();
-  }
 
   const unsubscribe = store.subscribe(scheduleRender);
 

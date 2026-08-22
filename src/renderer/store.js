@@ -55,6 +55,10 @@ const DEFAULT_SETTINGS = {
   weekStart: 0,           // 0=일요일
   calendarView: 'month',  // 'month' | 'week' — 주간 뷰는 좁은 위젯에서 유용하다
   fontScale: 1,           // 0.8 ~ 1.4
+  // 글꼴. 값은 base.css 의 [data-font] / [data-font-serif] 선택자 키와 같다.
+  // 'default' 면 손대지 않고 기본(Pretendard / 나눔명조)을 쓴다.
+  font: 'default',        // 본문 산세리프
+  fontSerif: 'default',   // 날짜·표제 명조
   sortMode: 'manual',     // 'manual' = 드래그 순서 우선 | 'priority' = 우선순위 우선
 
   // --- 외형 ---
@@ -743,6 +747,21 @@ export function moveTasksTo(ids, newStart, label) {
   }
   commit();
   return targets.length;
+}
+
+/**
+ * D-Day 고정을 켜거나 끈다. 토글이 아니라 값을 지정한다.
+ * 드롭처럼 '결과가 정해진' 동작에서 토글을 쓰면, 이미 고정된 일정을 떨어뜨렸을 때
+ * 오히려 풀려 버린다.
+ * @returns {boolean} 실제로 상태가 바뀌었는지
+ */
+export function setPinned(id, on) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t || t.pinned === !!on) return false;
+  pushUndo(on ? 'D-Day 고정' : '고정 해제');
+  t.pinned = !!on;
+  commit();
+  return true;
 }
 
 export function togglePinned(id) {

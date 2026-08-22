@@ -232,6 +232,9 @@ function applyChrome(s) {
   if (s.fontScale !== prev.fontScale) {
     document.documentElement.style.setProperty('--fs', `${(13 * s.fontScale).toFixed(1)}px`);
   }
+  // 'default' 면 속성을 아예 지운다 — base.css 의 기본 토큰이 그대로 살아 있게.
+  if (s.font !== prev.font) setPick('font', s.font);
+  if (s.fontSerif !== prev.fontSerif) setPick('fontSerif', s.fontSerif);
   if (s.splitRatio !== prev.splitRatio) {
     els.calendar.style.flex = `0 0 ${(s.splitRatio * 100).toFixed(2)}%`;
   }
@@ -265,6 +268,13 @@ function applyChrome(s) {
   appliedChrome = { ...s };
 }
 
+/** data-font / data-font-serif 심기. 'default' 면 속성을 지운다. */
+function setPick(key, value) {
+  const attr = key === 'fontSerif' ? 'fontSerif' : 'font';
+  if (!value || value === 'default') delete document.documentElement.dataset[attr];
+  else document.documentElement.dataset[attr] = value;
+}
+
 /** 창이 비활성이면 위젯을 배경으로 물린다 (macOS 데스크톱 위젯의 틴팅/디밍 방식).
  *  마우스를 올리면 CSS 가 즉시 원래 질감으로 복원한다. */
 function wireDimming() {
@@ -272,6 +282,14 @@ function wireDimming() {
   window.addEventListener('blur', () => setInactive(true));
   window.addEventListener('focus', () => setInactive(false));
   setInactive(!document.hasFocus());
+
+  // 트레이로 내려가 화면에 없을 때는 애니메이션을 멈춘다(CSS 가 이 값을 본다).
+  // 아무도 안 보는 화면을 계속 다시 그리는 것은 배터리만 쓰는 일이다.
+  const setHidden = () => {
+    document.documentElement.dataset.hidden = document.hidden ? '1' : '0';
+  };
+  document.addEventListener('visibilitychange', setHidden);
+  setHidden();
 }
 
 function updateTitle(state) {
@@ -318,7 +336,11 @@ const HELP = [
     ['목록 항목을 달력으로 끌기', '일정 날짜를 옮깁니다'],
     ['항목을 클릭', '메모·시각·링크·알림을 폅니다'],
     ['제목을 더블클릭', '이름을 그 자리에서 고칩니다'],
-    ['목록 위 + 버튼', '시작·종료를 눌러서 지정합니다'],
+    ['오른쪽 + 버튼', '일정을 만드는 유일한 입구입니다 (시작·종료를 눌러서 지정)'],
+    ['달력에서 날짜에 커서', '그 칸에 + 가 떠요. 누르면 그 날짜로 만듭니다'],
+    ['달력 막대를 다른 날로 끌기', '일정을 옮깁니다 (기간은 그대로)'],
+    ['일정을 D-Day 칸으로 끌기', 'D-Day 에 고정합니다'],
+    ['트랙패드 두 손가락 좌우', '달을 넘깁니다 (주간 보기에서는 주 단위)'],
     ['반복 일정의 체크', '그 회차만 완료됩니다 (다음 회차는 그대로)'],
     ['반복 일정의 ✕', '그 회차만 건너뜁니다. 규칙째 지우려면 상세의 “반복 전체 삭제”'],
   ]],
@@ -353,7 +375,7 @@ const HELP = [
     ['Esc', '열린 창 닫기'],
     ['Alt + Shift + S', '위젯 보이기 · 잠금 해제 (어디서든)'],
   ]],
-  ['빠른 입력 — 한 줄로 적기', [
+  ['한 줄로 적기 — 추가 폼의 제목칸', [
     ['! / !!', '중요 / 긴급'],
     ['#태그', '태그 (여러 개 가능)'],
     ['@내일  @금  @8/15', '시작일'],
@@ -361,6 +383,7 @@ const HELP = [
     ['15:00  14시  오후3시', '시각'],
     ['15:00~18:00', '시작·종료 시각'],
     ['*파랑 *초록 *노랑 *빨강 *보라 *회색', '색'],
+    ['띄어쓰기를 치면', '그 토큰이 제목에서 빠지고 아래 칸으로 옮겨 갑니다'],
   ]],
 ];
 
@@ -968,6 +991,20 @@ function renderSettings() {
     row('글자 크기', slider(0.8, 1.4, 0.05, s.fontScale, (v) =>
       store.setSetting('fontScale', v), (v) => `${Math.round(v * 100)}%`)),
 
+    row('본문 글꼴', fontPicker('font', s.font, [
+      ['default',     'Pretendard'],
+      ['gowun-dodum', '고운돋움'],
+      ['malgun',      '맑은 고딕'],
+      ['system',      '시스템'],
+    ]), '목록·버튼처럼 작은 글씨에 쓰입니다.'),
+
+    row('표제 글꼴', fontPicker('fontSerif', s.fontSerif, [
+      ['default',      '나눔명조'],
+      ['gowun-batang', '고운바탕'],
+      ['batang',       '바탕'],
+      ['gungsuh',      '궁서'],
+    ]), '날짜·D-Day 처럼 큰 글씨에 쓰입니다. 고른 글꼴로 바로 미리 보여 줍니다.'),
+
     row('배경 흐림 효과', toggle(s.blurEnabled, (v) => store.setSetting('blurEnabled', v)),
       '끄면 GPU 사용량이 줄어듭니다. 저사양·배터리 모드에서 권장.'),
 
@@ -1089,6 +1126,39 @@ function row(label, control, hint) {
     el.append(h);
   }
   return el;
+}
+
+/**
+ * 글꼴 고르기. 각 버튼을 그 글꼴로 그려서 고르기 전에 생김새를 보여 준다 —
+ * 이름만 늘어놓으면 '고운바탕'이 어떻게 생겼는지 눌러 봐야만 알 수 있다.
+ */
+function fontPicker(key, value, options) {
+  const wrap = document.createElement('div');
+  wrap.className = 'settings__fonts';
+
+  // base.css 의 선택자 키 → 실제 font-family. 미리보기에만 쓴다.
+  const FAMILY = {
+    'default':      key === 'fontSerif' ? '"Nanum Myeongjo", Georgia, serif' : '"Pretendard", sans-serif',
+    'gowun-dodum':  '"Gowun Dodum", sans-serif',
+    'gowun-batang': '"Gowun Batang", serif',
+    'malgun':       '"Malgun Gothic", sans-serif',
+    'system':       'system-ui, sans-serif',
+    'batang':       '"Batang", serif',
+    'gungsuh':      '"Gungsuh", serif',
+  };
+
+  for (const [val, label] of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'settings__font';
+    b.style.fontFamily = FAMILY[val] || 'inherit';
+    b.textContent = label;
+    b.classList.toggle('is-active', val === value);
+    b.setAttribute('aria-pressed', String(val === value));
+    b.addEventListener('click', () => { store.setSetting(key, val); renderSettings(); });
+    wrap.append(b);
+  }
+  return wrap;
 }
 
 function segmented(options, value, onChange) {

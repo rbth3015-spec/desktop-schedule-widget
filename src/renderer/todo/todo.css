@@ -75,26 +75,46 @@
   color: var(--text-faint);
 }
 
-.todo-add {
+/* ------------------------------------------------------------ 일정 추가 */
+/*
+ * 이 앱에서 일정을 만드는 유일한 입구다.
+ * 머리글 구석의 22px 아이콘이던 시절에는 '어디서 추가하지'가 매번 물음이었다.
+ * 이름을 달고, 목록 바로 위 한 줄을 통째로 준다.
+ */
+
+.todo-addbar {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  align-self: center;
-  border: 1px solid var(--rule);
+  padding: 9px 14px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.todo-addbar[hidden] { display: none; }
+
+.todo-add {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent);
   border-radius: 2px;
-  color: var(--text-dim);
-  transition: background .16s, color .16s, border-color .16s, transform .18s;
-}
-.todo-add:hover { border-color: var(--accent); color: var(--accent); }
-.todo-add.is-open {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--on-color);
-  transform: rotate(45deg);
+  font-family: var(--font-serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  cursor: pointer;
+  transition: filter .16s, box-shadow .16s;
 }
-.todo-add .icon { width: .78em; height: .78em; }
+.todo-add:hover { filter: brightness(1.12); }
+.todo-add:active { filter: brightness(.94); }
+.todo-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent);
+}
+.todo-add .icon { width: 12px; height: 12px; }
+.todo-add__text { white-space: nowrap; }
 
 /* 진행률 — 잉크가 차오르는 가는 선 */
 .todo-progress {
@@ -165,65 +185,6 @@
 .todo-tagchip.is-on {
   color: var(--accent);
   border-bottom: 1px solid var(--accent);
-}
-
-/* ============================================================ 빠른 입력 */
-
-.todo-quick {
-  flex: 0 0 auto;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.todo-quick__input {
-  width: 100%;
-  padding: 6px 0;
-  border: none;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: transparent;
-  font-size: 12.5px;
-  outline: none;
-  transition: border-color .16s;
-}
-.todo-quick__input::placeholder { color: var(--text-faint); }
-.todo-quick__input:focus { border-bottom-color: var(--accent); }
-
-.todo-preview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  margin-top: 7px;
-  min-height: 15px;
-}
-
-.todo-chip__label {
-  font-size: 10px;
-  letter-spacing: .06em;
-  color: var(--text-faint);
-}
-.todo-chip__value { font-size: 11px; color: var(--text-dim); }
-.todo-chip__dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-[class*="todo-chip--"] {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.todo-chip--title .todo-chip__value { color: var(--text); font-weight: 600; }
-.todo-chip--date .todo-chip__value { font-family: var(--font-serif); font-variant-numeric: tabular-nums; }
-.todo-chip--warn .todo-chip__value { color: var(--danger); }
-
-.todo-preview__hint {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px 11px;
-  font-size: 10.5px;
-  color: var(--text-faint);
 }
 
 /* ============================================================ 목록 */
@@ -449,17 +410,38 @@
 .todo-link:hover { color: var(--accent); transform: scale(1.12); }
 .todo-link .icon { width: 1em; height: 1em; }
 
+/* 행 위의 동작 버튼 — 커서를 올렸을 때만 나타난다.
+ *
+ * 18px 에 --text-faint 로 두었더니 나타나도 눈에 안 띄어서, 누를 수 있는 것인지
+ * 알아보기 어려웠다. 크기를 키우고 색을 올리고, 버튼 자리에 옅은 판을 깔아
+ * '여기를 누른다'가 보이게 한다.
+ *
+ * 미루기(→)와 삭제(✕) 는 같은 규격이라 한 곳에서 다룬다.
+ */
+.todo-defer,
 .todo-del {
   flex: 0 0 auto;
-  width: 18px; height: 18px;
+  width: 24px; height: 24px;
   display: grid; place-items: center;
-  color: var(--text-faint);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
   opacity: 0;
-  transition: opacity .14s, color .14s;
+  transition: opacity .14s, color .14s, background .14s;
 }
+.todo-item__row:hover .todo-defer,
 .todo-item__row:hover .todo-del { opacity: 1; }
-.todo-del:hover { color: var(--danger); }
-.todo-del .icon { width: .75em; height: .75em; }
+
+/* 키보드로 짚었을 때도 보여야 한다 */
+.todo-defer:focus-visible,
+.todo-del:focus-visible { opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px; }
+
+.todo-defer:hover { background: var(--accent-soft); color: var(--accent); }
+.todo-del:hover   { background: var(--accent-soft); color: var(--danger); }
+
+.todo-defer .icon { width: 12px; height: 12px; }
+.todo-del .icon   { width: 12px; height: 12px; }
+.todo-defer[hidden] { display: none; }
 
 /* 드래그 놓을 자리 — 기본은 숨김.
    JS 가 드래그 중에만 style.display 로 켠다(엘리먼트는 항상 DOM 에 있다). */
@@ -615,7 +597,6 @@
   overflow-y: auto;
 }
 .todo-panel:has(.cmp:not([hidden])) .todo-body,
-.todo-panel:has(.cmp:not([hidden])) .todo-quick { display: none; }
 
 .cmp-head__title {
   font-family: var(--font-serif);
@@ -672,6 +653,39 @@
   font-weight: 600;
 }
 
+/* --- 제목칸이 걷어간 토큰 --- */
+/* '@내일' 을 치면 그 자리에서 날짜칸으로 옮겨 간다. 무엇이 옮겨졌는지 잠깐 보여 준다. */
+.cmp-consumed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 0;
+}
+.cmp-consumed:empty { display: none; }
+
+.cmp-consumed__chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  font-size: 10.5px;
+  color: var(--accent);
+  animation: cmp-consumed-in .18s ease-out;
+}
+.cmp-consumed__chip em {
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  opacity: .75;
+}
+@keyframes cmp-consumed-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ------------------------------------------------------------ 언제(날짜·시각) */
 /*
  * 시작과 종료가 늘 나란히 있고, 둘이 같으면 하루짜리다.
@@ -716,10 +730,15 @@
   outline: none;
   transition: border-color .16s, opacity .16s;
 }
-.cmp-date { flex: 1 1 auto; min-width: 0; }
-/* 한국어 로케일의 time 입력은 '오후 03:00' + 시계 아이콘까지 그린다.
-   좁게 잡으면 Chromium 이 분 자리를 말없이 잘라 낸다 — overflow 로 보고되지도 않는다. */
-.cmp-time { flex: 0 0 auto; width: 9.8em; }
+/*
+ * 날짜·시각 칸은 네이티브 컨트롤이라 좁아지면 내용을 스스로 잘라 낸다.
+ * 잘려도 overflow 로 보고되지 않아 코드로는 알 수 없으므로, 최소 폭을 못박고
+ * 그래도 모자라면 줄을 바꾼다. 좁은 위젯에서 '2026-08-22' 가 '2026-0…' 이 되면
+ * 무슨 날짜인지 읽을 수 없다.
+ */
+.cmp-when__row { flex-wrap: wrap; }
+.cmp-date { flex: 1 1 9em; min-width: 8.6em; }
+.cmp-time { flex: 0 1 auto; width: 9.8em; min-width: 8.4em; }
 .cmp-date:focus,
 .cmp-time:focus { border-color: var(--accent); }
 
@@ -923,8 +942,9 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  flex-wrap: wrap;
 }
-.todo-detail__whenrow .todo-detail__date { flex: 1 1 auto; min-width: 0; }
+.todo-detail__whenrow .todo-detail__date { flex: 1 1 9em; min-width: 8.4em; }
 
 .todo-detail__whenkey {
   flex: 0 0 auto;
@@ -936,8 +956,9 @@
 }
 
 .todo-detail__time {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   width: 9.8em;   /* '오후 03:00' + 시계 아이콘이 잘리지 않는 최소 폭 */
+  min-width: 8.2em;
   padding: 4px 6px;
   border: 1px solid var(--rule);
   border-radius: 2px;

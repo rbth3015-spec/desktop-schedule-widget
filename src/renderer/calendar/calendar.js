@@ -198,15 +198,24 @@ export function createCalendar({ root, store }) {
   }
 
   // ---------------------------------------------------------------- 기간 드래그
+  //
   // 날짜 칸을 눌러 끌면 그 기간으로 새 일정을 만든다. 손으로 달력에 줄을 긋는 동작과 같다.
   // 단순 클릭(끌지 않음)은 기존 onClick 이 날짜 선택으로 처리한다.
+  //
+  // 막대(.cal-bar)는 날짜 칸의 자식이 아니라 형제 레이어(.cal-bars)에 있다.
+  // 그래서 일정이 있는 칸을 지나는 순간 e.target.closest('.cal-day') 가 null 이 되어
+  // 범위가 첫 칸에서 멈춰 있었다 — 일정이 있는 사람에게는 기능이 아예 없는 것과 같았다.
+  // 끄는 동안에는 막대가 마우스를 먹지 않게 막는다(HTML5 드래그의 --dnd 와 같은 처리).
+
   let rangeAnchor = null;
   let rangeCurrent = null;
   let rangeDragged = false;
   let suppressClick = false;
 
   function clearRangePreview() {
-    for (const c of els.cells) c.classList.remove('cal-day--range');
+    for (const c of els.cells) c.classList.remove('cal-day--range', 'cal-day--range-end');
+    els.grid.classList.remove('cal-grid--ranging');
+    els.rangeTag.hidden = true;
   }
 
   function paintRange(a, b) {
@@ -214,25 +223,54 @@ export function createCalendar({ root, store }) {
     const hi = a < b ? b : a;
     for (const c of els.cells) {
       const k = c.dataset.key;
-      c.classList.toggle('cal-day--range', k >= lo && k <= hi);
+      const inside = !c.hidden && k >= lo && k <= hi;
+      c.classList.toggle('cal-day--range', inside);
+      c.classList.toggle('cal-day--range-end', inside && (k === lo || k === hi));
     }
+    showRangeTag(lo, hi);
+  }
+
+  /** 며칠부터 며칠까지 몇 일짜리인지 — 끄는 동안 끝 칸 옆에 띄운다 */
+  function showRangeTag(lo, hi) {
+    const days = date.diffDays(lo, hi) + 1;
+    els.rangeTag.textContent = lo === hi
+      ? `${shortLabel(lo)} · 하루`
+      : `${shortLabel(lo)} → ${shortLabel(hi)} · ${days}일간`;
+
+    const target = els.cells.find((c) => !c.hidden && c.dataset.key === hi);
+    if (!target) { els.rangeTag.hidden = true; return; }
+
+    const g = els.grid.getBoundingClientRect();
+    const r = target.getBoundingClientRect();
+    els.rangeTag.hidden = false;
+    // 배지가 그리드 밖으로 나가지 않게 가둔다
+    const w = els.rangeTag.offsetWidth || 120;
+    const left = Math.min(Math.max(0, r.left - g.left), Math.max(0, g.width - w));
+    els.rangeTag.style.left = `${left}px`;
+    els.rangeTag.style.top = `${Math.max(0, r.bottom - g.top - 26)}px`;
   }
 
   function onMouseDown(e) {
     if (e.button !== 0) return;
-    // 막대나 '+N' 위에서 시작한 드래그는 일정 이동이므로 건드리지 않는다
-    if (e.target.closest('.cal-bar') || e.target.closest('.cal-more')) return;
+    // 막대나 '+N', 추가 버튼 위에서 시작한 드래그는 다른 동작이므로 건드리지 않는다
+    if (e.target.closest('.cal-bar') || e.target.closest('.cal-more')
+        || e.target.closest('.cal-addbtn')) return;
     const cell = e.target.closest('.cal-day');
     if (!cell) return;
+    // 기본 동작(텍스트 선택)이 끌기와 겹치면 칸이 파랗게 반전된다
+    e.preventDefault();
     rangeAnchor = cell.dataset.key;
     rangeCurrent = rangeAnchor;
     rangeDragged = false;
+    // 끄는 동안 막대가 마우스를 가리지 않게 한다
+    els.grid.classList.add('cal-grid--ranging');
+    hideAddButton();
   }
 
-  function onMouseOver(e) {
+  function onMouseMove(e) {
     if (!rangeAnchor) return;
-    const cell = e.target.closest('.cal-day');
-    if (!cell || cell.dataset.key === rangeCurrent) return;
+    const cell = e.target.closest?.('.cal-day');
+    if (!cell || cell.hidden || cell.dataset.key === rangeCurrent) return;
     rangeCurrent = cell.dataset.key;
     rangeDragged = true;
     paintRange(rangeAnchor, rangeCurrent);
@@ -250,6 +288,87 @@ export function createCalendar({ root, store }) {
     if (!dragged || a === b) return;   // 단순 클릭 — onClick 이 처리
     suppressClick = true;              // 드래그 끝의 click 이벤트를 삼킨다
     store.requestCompose(a < b ? a : b, a < b ? b : a);
+  }
+
+  // ---------------------------------------------------------------- 칸 위 추가 버튼
+  //
+  // 일정을 만드는 길이 여기저기 흩어져 있으면 '이 앱에서는 어떻게 추가하지'가
+  // 매번 물음이 된다. 캘린더 쪽 입구는 이 버튼 하나로 모은다.
+
+  let addKey = null;
+
+  function showAddButton(cell) {
+    if (rangeAnchor) return;               // 기간을 끄는 중에는 방해하지 않는다
+    addKey = cell.dataset.key;
+    const g = els.grid.getBoundingClientRect();
+    const r = cell.getBoundingClientRect();
+    els.addBtn.hidden = false;
+    els.addBtn.style.left = `${r.right - g.left - 20}px`;
+    els.addBtn.style.top = `${r.bottom - g.top - 20}px`;
+    els.addBtn.setAttribute('aria-label', `${shortLabel(addKey)}에 일정 추가`);
+  }
+
+  function hideAddButton() {
+    addKey = null;
+    els.addBtn.hidden = true;
+  }
+
+  els.addBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!addKey) return;
+    store.requestCompose(addKey, addKey);
+  });
+
+  els.grid.addEventListener('mouseover', (e) => {
+    const cell = e.target.closest?.('.cal-day');
+    // 버튼 자신 위에 올라갔을 때는 그대로 둔다
+    if (!cell) {
+      if (!e.target.closest?.('.cal-addbtn')) hideAddButton();
+      return;
+    }
+    if (cell.hidden) { hideAddButton(); return; }
+    if (cell.dataset.key !== addKey) showAddButton(cell);
+  });
+  els.grid.addEventListener('mouseleave', hideAddButton);
+
+  // ---------------------------------------------------------------- 가로 스와이프
+  //
+  // 노트북 트랙패드에서 두 손가락으로 옆으로 밀면 달을 넘긴다.
+  // 관성 스크롤은 이벤트가 수십 번 쏟아지므로 누적량이 문턱을 넘을 때만 한 달 움직이고,
+  // 손을 뗀 뒤 잠깐은 무시해서 한 번의 스와이프가 석 달씩 넘어가지 않게 한다.
+
+  const SWIPE_THRESHOLD = 90;   // 누적 deltaX
+  const SWIPE_COOLDOWN = 320;   // ms
+  let swipeAccum = 0;
+  let swipeUntil = 0;
+  let swipeResetTimer = 0;
+
+  function onWheel(e) {
+    // 세로 스크롤이 주된 제스처면 건드리지 않는다 (대각선 오인 방지)
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    if (e.ctrlKey) return;      // 확대/축소 제스처
+
+    e.preventDefault();
+
+    const now = Date.now();
+    if (now < swipeUntil) return;      // 방금 넘겼다 — 관성 잔여분 무시
+
+    swipeAccum += e.deltaX;
+    clearTimeout(swipeResetTimer);
+    swipeResetTimer = setTimeout(() => { swipeAccum = 0; }, 200);
+
+    if (Math.abs(swipeAccum) < SWIPE_THRESHOLD) return;
+
+    const dir = swipeAccum > 0 ? 1 : -1;   // 왼쪽으로 밀면(+) 다음 달
+    swipeAccum = 0;
+    swipeUntil = now + SWIPE_COOLDOWN;
+
+    const st = store.getState();
+    if (st.settings.calendarView === 'week') {
+      store.selectDate(date.addDays(st.selectedDate || date.todayKey(), dir * 7));
+    } else {
+      store.setAnchorMonth(date.addMonths(st.anchorMonth || date.todayKey(), dir));
+    }
   }
 
   // 날짜 칸 우클릭 — 그 자리에서 바로 일정을 만든다
@@ -270,8 +389,11 @@ export function createCalendar({ root, store }) {
 
   els.grid.addEventListener('contextmenu', onContextMenu);
   els.grid.addEventListener('mousedown', onMouseDown);
-  els.grid.addEventListener('mouseover', onMouseOver);
+  // mouseover 가 아니라 mousemove 를 쓴다. 막대를 가려 둬도 같은 칸 안에서
+  // 움직이는 동안 갱신이 필요하고, 칸 경계를 스칠 때 mouseover 를 놓치는 일이 있다.
+  els.grid.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
+  els.root.addEventListener('wheel', onWheel, { passive: false });
 
   els.root.addEventListener('click', onClick);
   els.root.addEventListener('keydown', onKeyDown);
@@ -299,8 +421,10 @@ export function createCalendar({ root, store }) {
       els.grid.removeEventListener('dragstart', onDragStart);
       els.grid.removeEventListener('contextmenu', onContextMenu);
       els.grid.removeEventListener('mousedown', onMouseDown);
-      els.grid.removeEventListener('mouseover', onMouseOver);
+      els.grid.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      els.root.removeEventListener('wheel', onWheel);
+      clearTimeout(swipeResetTimer);
       document.removeEventListener('dragstart', onDocDragStart, true);
       document.removeEventListener('dragend', onDocDragEnd, true);
       document.removeEventListener('drop', onDocDragEnd, true);
@@ -395,9 +519,23 @@ function buildSkeleton(root) {
     weekRows.push(row);
   }
 
+  // 기간 드래그 중 '며칠부터 며칠까지'를 그 자리에서 알려 주는 배지.
+  // 칸 색만 칠하면 몇 일짜리인지 세어 봐야 한다.
+  const rangeTag = div('cal-rangetag');
+  rangeTag.hidden = true;
+
+  // 날짜 칸마다 버튼을 42개 두는 대신, 하나를 만들어 커서가 올라간 칸으로 옮긴다.
+  // 막대 레이어가 칸 위에 깔리므로 그리드 최상단에 두어야 가려지지 않는다.
+  const addBtn = make('button', 'cal-addbtn');
+  addBtn.type = 'button';
+  addBtn.append(icon('plus'));
+  addBtn.hidden = true;
+
+  grid.append(rangeTag, addBtn);
   root.append(header, weekdays, grid);
 
-  return { root, title, grid, cells, barLayers, weekRows, viewBtn, meterFill: fill, meterLabel };
+  return { root, title, grid, cells, barLayers, weekRows, viewBtn,
+           meterFill: fill, meterLabel, rangeTag, addBtn };
 }
 
 // ================================================================== 막대
@@ -662,6 +800,12 @@ function weeksCount(keys) {
 }
 
 /** 주간 뷰 표제 — '8월 16일 – 22일' */
+/** '8/22(토)' — 범위 배지·버튼 라벨처럼 좁은 곳에 쓴다 */
+function shortLabel(key) {
+  const d = date.fromKey(key);
+  return `${d.getMonth() + 1}/${d.getDate()}(${date.WEEKDAY_LABELS[d.getDay()]})`;
+}
+
 function weekTitle(keys) {
   const a = date.fromKey(keys[0]);
   const b = date.fromKey(keys[keys.length - 1]);

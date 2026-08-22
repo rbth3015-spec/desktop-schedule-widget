@@ -204,12 +204,64 @@ export function createDashboard({ root, store }) {
       'dash-empty__desc',
       '캘린더나 목록에서 중요한 일정을 고정하면 여기에 남은 기간이 표시됩니다.',
     ),
-    h('span', 'dash-empty__how', "목록에서 일정을 눌러 펼친 뒤 'D-Day에 고정' 을 누르세요."),
+    // 끌어다 놓기가 훨씬 짧은 길이므로 그것부터 알려 준다.
+    // 버튼 경로도 남겨 둔다 — 마우스를 못 쓰는 상황이 있다.
+    h('span', 'dash-empty__how',
+      "일정을 여기로 끌어다 놓으세요. 항목을 펼쳐 'D-Day에 고정' 을 눌러도 됩니다."),
   );
 
   body.append(grid, empty);
   el.append(head, body);
   root.append(el);
+
+  // ---------------------------------------------------------- 끌어다 고정
+  //
+  // 목록이나 캘린더에서 일정을 여기로 떨어뜨리면 D-Day 에 고정된다.
+  // 그전에는 항목을 펼쳐 'D-Day에 고정' 버튼을 찾아 누르는 길밖에 없었다.
+  // 반복 일정과 날짜 없는 일정은 '남은 기간' 개념이 없어 대상이 아니다.
+
+  const canPin = (task) => !!(task && !task.repeat && task.end);
+
+  const isTaskDrag = (e) =>
+    !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('application/x-task-id');
+
+  el.addEventListener('dragover', (e) => {
+    if (!isTaskDrag(e)) return;
+    // 드래그 중에는 어떤 일정인지 읽을 수 없다(보안상 dragover 에서는 값이 비어 있다).
+    // 받을 수 있는 자리라는 것만 알리고, 걸러 내기는 drop 에서 한다.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    el.classList.add('is-drop');
+  });
+
+  el.addEventListener('dragleave', (e) => {
+    if (!el.contains(e.relatedTarget)) el.classList.remove('is-drop');
+  });
+
+  el.addEventListener('drop', (e) => {
+    el.classList.remove('is-drop');
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const id = dt.getData('application/x-task-id') || dt.getData('text/plain');
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const task = store.getState().tasks.find((t) => t.id === id);
+    if (!canPin(task)) {
+      toast(task?.repeat
+        ? '반복 일정은 D-Day 에 고정할 수 없습니다'
+        : '날짜가 있는 일정만 고정할 수 있습니다');
+      return;
+    }
+    if (store.setPinned(id, true)) toast(`'${task.title || '일정'}' 을(를) 고정했습니다`, true);
+    else toast('이미 고정된 일정입니다');
+  });
+
+  /** 셸이 토스트를 그린다. 뷰 모듈끼리 직접 부르지 않는다. */
+  function toast(text, undo = false) {
+    document.dispatchEvent(new CustomEvent('app:toast', { detail: { text, undo } }));
+  }
 
   // ---------------------------------------------------------- 로컬 상태
   const cache = new Map(); // taskId -> 카드 레코드 (DOM 재사용)

@@ -131,6 +131,7 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
     `store.COLORS`, `store.PRIORITY_LABELS`
   - 쓰기: `store.addTask()`, `store.updateTask()`, `store.toggleDone()`, `store.removeTask()`,
     `store.reorder()`, `store.moveTask()`, `store.moveTasksTo(ids, key, label)`,
+    `store.setPinned(id, on)` (토글이 아니라 값 지정 — 드롭처럼 결과가 정해진 동작용),
     `store.selectDate()`, `store.setAnchorMonth()`,
     `store.setFilter()`, `store.setEditing()`, `store.setSetting()`
 
@@ -147,6 +148,17 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
   - 구독: `store.subscribe(fn)` → unsubscribe 함수 반환. **팩토리 안에서 반드시 구독하고
     `destroy()` 에서 해제**하세요. 상태가 바뀌면 다시 렌더하면 됩니다.
 - `state` 를 **직접 mutate 하지 마세요.** 반드시 액션 함수 경유.
+
+### 상시 구동 규칙
+
+이 앱은 바탕화면에 며칠씩 떠 있습니다. **숨긴 요소에 무한 애니메이션을 남기지 마세요.**
+`opacity: 0` 이어도 애니메이션이 살아 있으면 매 프레임 합성이 돌아 유휴 CPU 를 잡아먹습니다
+(실측: 안 보이는 스피너 3개 = 코어의 33%).
+
+- 애니메이션은 그것이 **실제로 의미 있는 상태 클래스 안에서만** 선언합니다
+  (`.lnch-item.is-running .lnch-item__ring { animation: … }`).
+- 계속 도는 연출은 `html.is-inactive` / `html[data-hidden="1"]` 에서 `animation: none` 으로
+  스스로 멈춰야 합니다. 셸이 두 상태를 관리합니다.
 
 날짜 계산은 `src/renderer/lib/date.js` 유틸만 씁니다 (`toKey/fromKey/monthGrid/addMonths/...`).
 `new Date(...)` 로 직접 파싱해서 타임존 사고 내지 마세요.
