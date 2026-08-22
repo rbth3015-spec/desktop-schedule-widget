@@ -717,7 +717,9 @@
   transition: border-color .16s, opacity .16s;
 }
 .cmp-date { flex: 1 1 auto; min-width: 0; }
-.cmp-time { flex: 0 0 auto; width: 7.2em; }
+/* 한국어 로케일의 time 입력은 '오후 03:00' + 시계 아이콘까지 그린다.
+   좁게 잡으면 Chromium 이 분 자리를 말없이 잘라 낸다 — overflow 로 보고되지도 않는다. */
+.cmp-time { flex: 0 0 auto; width: 9.8em; }
 .cmp-date:focus,
 .cmp-time:focus { border-color: var(--accent); }
 
@@ -935,7 +937,7 @@
 
 .todo-detail__time {
   flex: 0 0 auto;
-  width: 7em;
+  width: 9.8em;   /* '오후 03:00' + 시계 아이콘이 잘리지 않는 최소 폭 */
   padding: 4px 6px;
   border: 1px solid var(--rule);
   border-radius: 2px;

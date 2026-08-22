@@ -20,7 +20,7 @@
     "url": "git+https://github.com/rbth3015-spec/desktop-schedule-widget.git"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.15.3"
   },
   "build": {
