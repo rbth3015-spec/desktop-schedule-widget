@@ -50,7 +50,7 @@ function rotateBackup(currentPath) {
 
 /** 빈 데이터 기본형 */
 function emptyData() {
-  return { version: 1, tasks: [], launcher: [], settings: {} };
+  return { version: 1, tasks: [], launcher: [], reminderLog: [], settings: {} };
 }
 
 /** userData 디렉터리 보장 */
@@ -132,6 +132,7 @@ function loadData() {
     version: typeof parsed.version === 'number' ? parsed.version : 1,
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     launcher: Array.isArray(parsed.launcher) ? parsed.launcher : undefined,
+    reminderLog: Array.isArray(parsed.reminderLog) ? parsed.reminderLog : [],
     settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
   };
 }
@@ -153,10 +154,14 @@ function saveData(data) {
     return { ok: false, error: 'settings 는 객체여야 합니다.' };
   }
 
+  // 렌더러가 보낸 키를 여기서 화이트리스트로 다시 조립한다.
+  // **새 필드를 store 에 추가하면 반드시 여기에도 더해야 한다** — 빠뜨리면
+  // 저장은 성공한 것처럼 보이면서 그 필드만 조용히 사라진다(알림 기록이 실제로 그랬다).
   const payload = {
     version: typeof data.version === 'number' ? data.version : 1,
     tasks: data.tasks,
     launcher: Array.isArray(data.launcher) ? data.launcher : [],
+    reminderLog: Array.isArray(data.reminderLog) ? data.reminderLog : [],
     settings: data.settings || {},
   };
 

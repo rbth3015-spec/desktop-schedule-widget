@@ -83,3 +83,42 @@ export function monthLabel(key) {
 }
 
 export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+// ---------------------------------------------------------------- 시각
+//
+// 시각도 날짜와 같은 원칙으로 다룬다: 'HH:mm' 로컬 벽시계 문자열.
+// Date 로 바꾸지 않으므로 타임존이 개입할 여지가 없다.
+// null(빈 문자열)이면 '종일' — 시각이 정해지지 않은 일정이다.
+
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** 'HH:mm' 형식인가 */
+export function isTimeKey(v) {
+  return TIME_RE.test(String(v ?? ''));
+}
+
+/** 'HH:mm' → 자정부터의 분. 형식이 아니면 null */
+export function timeMinutes(v) {
+  const m = TIME_RE.exec(String(v ?? ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** '15:00' → '오후 3:00'. 알림 본문처럼 문장 안에 들어갈 때 쓴다. */
+export function formatTimeKo(v) {
+  const m = TIME_RE.exec(String(v ?? ''));
+  if (!m) return '';
+  const hour = Number(m[1]);
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour < 12 ? '오전' : '오후'} ${h12}:${m[2]}`;
+}
+
+/**
+ * 날짜+시각을 로컬 Date 로. 시각이 없으면 그 날 자정.
+ * 알림 시각 계산처럼 '언제인지 재야 하는' 곳에서만 쓴다.
+ */
+export function fromKeyTime(key, time) {
+  const d = fromKey(key);
+  const mins = timeMinutes(time);
+  if (mins !== null) d.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+  return d;
+}

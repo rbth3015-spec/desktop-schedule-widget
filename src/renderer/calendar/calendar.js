@@ -42,6 +42,8 @@ export function createCalendar({ root, store }) {
     const weekCount = weekView ? 1 : 6;
     els.root.classList.toggle('cal-root--week', weekView);
     els.viewBtn.textContent = weekView ? '월간' : '주간';
+    els.viewBtn.setAttribute('aria-label',
+      weekView ? '주간 보기 (누르면 월간)' : '월간 보기 (누르면 주간)');
     const today = date.todayKey();
     const selected = st.selectedDate;
 
@@ -341,7 +343,9 @@ function buildSkeleton(root) {
   const viewBtn = make('button', 'cal-viewbtn');
   viewBtn.type = 'button';
   viewBtn.dataset.view = '1';
-  viewBtn.title = '월간 / 주간 전환';
+  // '월간 / 주간 전환' 만으로는 지금이 어느 쪽인지 알 수 없다.
+  // 글자(=누르면 갈 곳)와 별개로, 현재 상태를 이름에 담는다.
+  viewBtn.setAttribute('aria-label', '월간 보기 (누르면 주간)');
 
   const todayBtn = make('button', 'cal-todaybtn');
   todayBtn.textContent = '오늘';

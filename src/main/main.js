@@ -141,6 +141,24 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // 이 창은 index.html 하나만 띄운다. 다른 곳으로 이동할 일이 절대 없다.
+  // 파일을 창에 끌어다 놓기만 해도 기본 동작은 그 파일로 navigate 하는 것이라,
+  // 막지 않으면 앱이 통째로 사라지고 preload 다리가 붙은 낯선 문서가 남는다.
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url === win.webContents.getURL()) return;   // 새로고침은 허용
+    e.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  });
+
+  // webview / 리다이렉트로 우회하는 경로도 함께 닫는다
+  win.webContents.on('will-attach-webview', (e) => e.preventDefault());
+  win.webContents.on('will-redirect', (e) => e.preventDefault());
+
+  // 권한 요청은 전부 거절한다 — 이 앱은 카메라·마이크·위치·클립보드 읽기를 쓰지 않는다
+  win.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => {
+    callback(false);
+  });
+
   return win;
 }
 
@@ -161,6 +179,9 @@ function showWidget() {
 function hideToTray() {
   if (win && !win.isDestroyed()) {
     windowState.saveNow(); // 숨기기 전에 위치 확정 저장
+    // 트레이로 내려간 뒤 작업 관리자로 강제 종료되는 경우가 흔하다.
+    // 기다리지는 않되, 남은 편집을 지금 쓰도록 밀어 둔다.
+    requestFlush(0);
     win.hide();
   }
   refreshTrayMenu();
@@ -230,6 +251,45 @@ function applyPreset(preset) {
   showWidget();
 }
 
+// ---------------------------------------------------------------- 저장 플러시
+//
+// 렌더러의 저장은 250ms 디바운스다. 마지막 편집 직후 창을 숨기거나 앱을 끄면
+// 그 편집이 통째로 날아간다. 끄기 전에 '지금 마무리하라'고 요청하고 잠깐 기다린다.
+
+let flushSeq = 0;
+
+/**
+ * 렌더러에 저장 마무리를 요청한다.
+ * @param {number} waitMs 0 이면 기다리지 않고 보내기만 한다 (창 숨김 등)
+ * @returns {Promise<void>} 응답이 없어도 waitMs 후 반드시 resolve 한다
+ */
+function requestFlush(waitMs = 0) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return Promise.resolve();
+
+  const token = ++flushSeq;
+  try {
+    win.webContents.send('app:flush', token);
+  } catch {
+    return Promise.resolve();
+  }
+  if (waitMs <= 0) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    // 렌더러가 죽었거나 응답이 없어도 종료를 영원히 막지 않는다
+    const timer = setTimeout(finish, waitMs);
+    function onAck(_e, ackToken) {
+      if (ackToken !== token) return;
+      finish();
+    }
+    function finish() {
+      clearTimeout(timer);
+      ipcMain.removeListener('app:flushed', onAck);
+      resolve();
+    }
+    ipcMain.on('app:flushed', onAck);
+  });
+}
+
 /** 렌더러로 메뉴 액션 전달 */
 function sendMenuAction(action) {
   const w = ensureWindow();
@@ -240,10 +300,60 @@ function sendMenuAction(action) {
 
 // ---------------------------------------------------------------- 트레이
 
+/**
+ * 렌더러가 보고한 오늘 요약. 창을 열지 않아도 트레이가 말할 수 있게 한다.
+ * 렌더러만 일정 데이터를 해석하므로(반복 회차 펼치기 등) 메인은 받아 쓰기만 한다.
+ */
+let traySummary = { today: 0, overdue: 0, items: [] };
+
+/** 트레이 툴팁 — 마우스만 올려도 오늘 몫이 보인다 */
+function trayTooltip() {
+  const parts = [];
+  if (traySummary.today) parts.push(`오늘 ${traySummary.today}건`);
+  if (traySummary.overdue) parts.push(`밀린 일 ${traySummary.overdue}건`);
+  return parts.length ? `일정관리 비서 — ${parts.join(' · ')}` : '일정관리 비서 — 오늘 일정 없음';
+}
+
+/** 트레이 메뉴 맨 위에 오는 오늘 일정 몇 줄 */
+function todayMenuItems() {
+  const out = [];
+
+  if (traySummary.overdue) {
+    out.push({
+      label: `밀린 일 ${traySummary.overdue}건 — 오늘로 당기기`,
+      click: () => sendMenuAction('roll-overdue'),
+    });
+  }
+
+  if (!traySummary.items.length) {
+    out.push({ label: '오늘 일정 없음', enabled: false });
+  } else {
+    for (const it of traySummary.items) {
+      const time = it.time ? `${it.time}  ` : '';
+      out.push({
+        // 완료한 건 지운 것처럼 보이면 안 되니 표시만 다르게 한다
+        label: `${it.done ? '✓ ' : ''}${time}${it.title}`,
+        click: () => sendMenuAction(`open-task:${it.id}`),
+      });
+    }
+    if (traySummary.today > traySummary.items.length) {
+      out.push({
+        label: `외 ${traySummary.today - traySummary.items.length}건…`,
+        click: () => sendMenuAction('today'),
+      });
+    }
+  }
+
+  out.push({ label: '오늘 브리핑 보기', click: () => sendMenuAction('brief') });
+  out.push({ type: 'separator' });
+  return out;
+}
+
 function buildTrayMenu() {
   const visible = !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized());
 
   return Menu.buildFromTemplate([
+    ...todayMenuItems(),
     {
       label: visible ? '위젯 숨기기' : '위젯 보이기',
       click: toggleWidget,
@@ -290,11 +400,11 @@ function buildTrayMenu() {
 function refreshTrayMenu() {
   if (!tray || tray.isDestroyed()) return;
   tray.setContextMenu(buildTrayMenu());
+  tray.setToolTip(trayTooltip());
 }
 
 function createTray() {
   tray = new Tray(trayIcon);
-  tray.setToolTip('일정관리 비서');
   refreshTrayMenu();
 
   tray.on('double-click', showWidget);
@@ -348,6 +458,15 @@ function windowFrom(event) {
 
 function registerIpc() {
   // --- 데이터 ---
+  // 렌더러가 오늘 요약을 보고한다. 바뀐 게 없으면 메뉴를 다시 만들지 않는다
+  // (setContextMenu 는 값싼 호출이 아니고, 열려 있는 메뉴를 닫아 버린다).
+  ipcMain.on('tray:summary', (_e, summary) => {
+    const next = JSON.stringify(summary);
+    if (next === JSON.stringify(traySummary)) return;
+    traySummary = summary;
+    refreshTrayMenu();
+  });
+
   ipcMain.handle('data:load', () => storage.loadData());
   ipcMain.handle('data:save', (_e, data) => storage.saveData(data));
 
@@ -361,13 +480,9 @@ function registerIpc() {
 
   ipcMain.on('window:setAlwaysOnTop', (_e, on) => setAlwaysOnTop(on));
 
-  ipcMain.on('window:setOpacity', (_e, value) => {
-    const w = win;
-    if (!w || w.isDestroyed()) return;
-    const n = Number(value);
-    if (!Number.isFinite(n)) return;
-    w.setOpacity(Math.min(1, Math.max(0.3, n)));
-  });
+  // window:setOpacity 는 두지 않는다. Windows 의 transparent 창에서
+  // BrowserWindow.setOpacity 는 합성이 불안정해 쓰지 않기로 했고(배경 알파로 대체),
+  // 쓰지 않는 IPC 를 열어 두면 공격 표면만 넓어진다.
 
   ipcMain.on('window:setIgnoreMouseEvents', (_e, on) => setClickThrough(on));
 
@@ -389,6 +504,12 @@ function registerIpc() {
   // --- 부팅 시 자동 시작 ---
   // 개발 실행(electron .)에서 등록하면 electron.exe 가 시작 프로그램에 박힌다.
   // 설치본에서만 실제로 등록하고, 개발 중에는 상태만 흉내 낸다.
+  // 설정 화면에 현재 버전을 보여 준다. 새 버전을 받아야 하는지 사용자가 판단할 근거다.
+  ipcMain.handle('app:getVersion', () => ({
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+  }));
+
   ipcMain.handle('app:getAutoLaunch', () => {
     if (!app.isPackaged) return { ok: true, enabled: false, dev: true };
     return { ok: true, enabled: app.getLoginItemSettings().openAtLogin };
@@ -544,10 +665,22 @@ if (!gotLock) {
     app.quit();
   });
 
-  app.on('before-quit', () => {
+  let flushedOnQuit = false;
+
+  app.on('before-quit', (e) => {
     isQuitting = true;
     windowState.saveNow(); // 종료 시 즉시 저장
     runner.killAll();      // 실행 중인 스크립트를 고아 프로세스로 남기지 않는다
+
+    // 렌더러에 남은 저장을 마무리할 틈을 준다. 한 번만 — 아래 app.quit() 이
+    // before-quit 을 다시 부르므로 플래그로 재진입을 막는다.
+    if (flushedOnQuit) return;
+    if (!win || win.isDestroyed()) return;
+    e.preventDefault();
+    requestFlush(1500).then(() => {
+      flushedOnQuit = true;
+      app.quit();
+    });
   });
 
   app.on('will-quit', () => {
