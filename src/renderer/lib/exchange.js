@@ -60,6 +60,11 @@ function ymd(key) {
   return String(key).replace(/-/g, '');
 }
 
+/** 'YYYY-MM-DD' + 'HH:mm' → 'YYYYMMDDTHHMMSS' (floating local time) */
+function ymdhms(key, time) {
+  return `${ymd(key)}T${String(time).replace(':', '')}00`;
+}
+
 /**
  * 75옥텟 줄바꿈(folding). 한글은 UTF-8 에서 3바이트라 글자 수로 자르면 규격을 넘긴다.
  * 이어지는 줄은 공백 한 칸으로 시작해야 한다.
@@ -91,7 +96,14 @@ const FREQ_MAP = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly:
 
 /**
  * 일정을 iCalendar 로 내보낸다. 구글/아웃룩 캘린더로 가져갈 수 있다.
- * 모두 종일(all-day) 이벤트로 쓴다 — 이 앱은 시각 개념이 없다.
+ *
+ * 시각이 없는 일정은 종일(all-day) 이벤트로, 시각이 있으면 시간 이벤트로 쓴다.
+ *
+ * 시간 이벤트는 **floating local time** 으로 쓴다 — TZID 도 Z 도 붙이지 않는다.
+ * 이 앱은 날짜도 시각도 로컬 벽시계 문자열로만 다루므로(타임존 개념이 없다)
+ * '보는 사람의 현지 시각'이라는 floating 의 뜻이 데이터와 정확히 일치한다.
+ * TZID 를 붙이려면 VTIMEZONE 블록을 규격대로 실어야 하는데, 있지도 않은
+ * 타임존 정보를 지어내는 셈이라 더 나쁘다.
  */
 export function toICS(tasks, { name = '일정관리 비서' } = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -116,8 +128,18 @@ export function toICS(tasks, { name = '일정관리 비서' } = {}) {
     lines.push('BEGIN:VEVENT');
     lines.push(`UID:${esc(t.id)}@schedule-widget`);
     lines.push(`DTSTAMP:${stamp}`);
-    lines.push(`DTSTART;VALUE=DATE:${ymd(startKey)}`);
-    lines.push(`DTEND;VALUE=DATE:${ymd(addDays(endKey, 1))}`);
+
+    if (t.startTime) {
+      lines.push(`DTSTART:${ymdhms(startKey, t.startTime)}`);
+      // 종료 시각이 없으면 DTEND 를 쓰지 않는다. RFC 5545 는 그 경우
+      // DTSTART 와 같은 시점에 끝나는 것으로 정의한다 — 길이를 지어내지 않는다.
+      if (t.endTime) lines.push(`DTEND:${ymdhms(endKey, t.endTime)}`);
+      else if (endKey > startKey) lines.push(`DTEND:${ymdhms(endKey, t.startTime)}`);
+    } else {
+      lines.push(`DTSTART;VALUE=DATE:${ymd(startKey)}`);
+      lines.push(`DTEND;VALUE=DATE:${ymd(addDays(endKey, 1))}`);
+    }
+
     lines.push(fold(`SUMMARY:${esc(t.title)}`));
 
     if (t.notes) lines.push(fold(`DESCRIPTION:${esc(t.notes)}`));
@@ -130,11 +152,18 @@ export function toICS(tasks, { name = '일정관리 비서' } = {}) {
     if (t.repeat && FREQ_MAP[t.repeat.freq]) {
       let rule = `RRULE:FREQ=${FREQ_MAP[t.repeat.freq]}`;
       if (t.repeat.interval > 1) rule += `;INTERVAL=${t.repeat.interval}`;
-      if (t.repeat.until) rule += `;UNTIL=${ymd(t.repeat.until)}`;
+      // UNTIL 도 DTSTART 와 값 타입을 맞춘다
+      if (t.repeat.until) {
+        rule += `;UNTIL=${t.startTime ? ymdhms(t.repeat.until, t.startTime) : ymd(t.repeat.until)}`;
+      }
       lines.push(rule);
 
       if (t.exceptions?.length) {
-        lines.push(fold(`EXDATE;VALUE=DATE:${t.exceptions.map(ymd).join(',')}`));
+        // EXDATE 의 값 타입은 DTSTART 와 같아야 한다. 시간 이벤트인데
+        // VALUE=DATE 로 쓰면 파서가 예외를 통째로 무시한다.
+        lines.push(t.startTime
+          ? fold(`EXDATE:${t.exceptions.map((k) => ymdhms(k, t.startTime)).join(',')}`)
+          : fold(`EXDATE;VALUE=DATE:${t.exceptions.map(ymd).join(',')}`));
       }
     }
 

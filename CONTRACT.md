@@ -25,35 +25,90 @@ Electron 데스크톱 위젯. **빌드 스텝 없음.** 렌더러는 순수 ES �
   id: string, title: string, notes: string,
   start: 'YYYY-MM-DD' | null,   // null = 날짜 미지정('언젠가')
   end:   'YYYY-MM-DD' | null,   // 단일 일정이면 start 와 동일. end > start 이면 장기 계획
+  startTime: 'HH:mm' | null,    // null = 종일. 날짜와 같은 로컬 벽시계 문자열
+  endTime:   'HH:mm' | null,    // startTime 이 없으면 항상 null
   done: boolean, priority: 0|1|2, color: 'blue'|'green'|'amber'|'rose'|'violet'|'slate',
   tags: string[], order: number, createdAt: number, doneAt: number|null
 }
 ```
 
-디스크 저장 형태: `{ "version": 1, "tasks": Task[], "settings": {...} }`
+**시각 규칙** — `normalize()` / `updateTask()` 가 강제합니다. 직접 조립하지 마세요.
+
+- 시작 시각이 없으면 종료 시각도 없다 ('언제 끝나는지'만 아는 일정은 뜻이 모호하다)
+- 하루짜리인데 종료 시각이 시작보다 빠르면 종료를 비운다 (에러 대신 조용히 정리)
+- 시작 시각이 사라지면 `'-30m'` 같은 상대 알림도 함께 지운다 (기준점이 없어진다)
+
+디스크 저장 형태:
+`{ "version": 1, "tasks": Task[], "launcher": [...], "reminderLog": [...], "settings": {...} }`
+
+> ⚠️ `storage.saveData` 는 렌더러가 보낸 객체를 그대로 쓰지 않고 **필드를 골라 다시 조립**합니다.
+> store 에 새 영속 필드를 더하면 `src/main/storage.js` 의 `payload` 와 `loadData` 반환값에도
+> 반드시 더하세요. 빠뜨리면 저장은 성공한 것처럼 보이면서 그 필드만 조용히 사라집니다.
+
+영속화하지 않는 UI 상태 중 뷰가 봐야 하는 것:
+
+| 필드 | 뜻 |
+|---|---|
+| `loadNotice` | 부팅 시 데이터 손상·읽기 실패 안내 (셸이 배너로 띄운다) |
+| `saveError` | 마지막 저장 실패 메시지. 성공하면 다시 `null` |
 
 `settings` 기본값은 `store.js` 의 `DEFAULT_SETTINGS` 참조:
-`theme, opacity, splitRatio, alwaysOnTop, clickThroughLocked, showCompleted, weekStart, fontScale`
+`theme, opacity, splitRatio, alwaysOnTop, clickThroughLocked, showCompleted, weekStart, fontScale,
+showBrief, lastBriefDate, seenWelcome`
+
+`remind` 형식은 두 가지입니다.
+
+| 형식 | 뜻 | 조건 |
+|---|---|---|
+| `'N@HH:mm'` | 시작일에서 N일 앞당긴 날의 지정 시각 | — |
+| `'-Nm'` | 시작 시각 N분 전 | `startTime` 이 있어야 함 |
 
 ## IPC 계약 — `window.api` (preload 가 contextBridge 로 노출)
 
 ```ts
 window.api = {
-  loadData(): Promise<{version:number, tasks:Task[], settings:object}>,
-  saveData(data: {tasks:Task[], settings:object}): Promise<{ok:boolean, error?:string}>,
+  loadData(): Promise<{
+    version: number, tasks: Task[], launcher?: object[], reminderLog: object[], settings: object,
+    corrupted?: boolean, backupPath?: string, error?: string,
+  }>,
+  // 반드시 결과를 확인할 것. ok:false 를 무시하면 사용자는 데이터가 안 쓰이는 줄 모른다.
+  saveData(data: {
+    tasks: Task[], launcher: object[], reminderLog: object[], settings: object,
+  }): Promise<{ok: boolean, error?: string}>,
+
+  app: {
+    getVersion(): Promise<{version: string, packaged: boolean}>,
+    getAutoLaunch(): Promise<{ok: boolean, enabled: boolean, dev?: boolean}>,
+    setAutoLaunch(on: boolean): Promise<{ok: boolean, enabled?: boolean, error?: string}>,
+    // 메인이 종료·숨김 직전에 '지금 저장을 마무리하라'고 요청한다.
+    // 콜백이 끝나면 preload 가 알아서 ack 를 돌려주므로 셸은 store.flushSave() 만 넘기면 된다.
+    onFlushRequest(cb: () => void | Promise<void>): void,
+  },
 
   window: {
     minimize(): void,
     hide(): void,                              // 트레이로 숨김
     setAlwaysOnTop(on: boolean): void,
-    setOpacity(value: number): void,           // 0.3 ~ 1
     setIgnoreMouseEvents(on: boolean): void,   // 클릭 통과(잠금 모드)
     getBounds(): Promise<{x,y,width,height}>,
     setSize(w: number, h: number): void,
     snapPreset(preset: 'compact'|'normal'|'wide'|'tall'): void,
   },
 
-  onMenuAction(cb: (action: string) => void): void,  // 트레이 메뉴 -> 렌더러
+  // 창을 열지 않아도 오늘 몫이 보이도록 렌더러가 트레이에 보고한다.
+  // 일정 해석(반복 회차 펼치기 등)은 렌더러만 할 수 있어 메인은 받아 쓰기만 한다.
+  tray: {
+    setSummary(s: {
+      today: number,      // 오늘 남은 건수
+      overdue: number,    // 밀린 건수
+      items: {id: string, title: string, time: string, done: boolean}[],  // 최대 5줄
+    }): void,
+  },
+
+  // 트레이 메뉴 -> 렌더러.
+  // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue'
+  // | 'open-task:<id>' | 'unlock'
+  onMenuAction(cb: (action: string) => void): void,
 }
 ```
 
@@ -71,11 +126,24 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
 
 - `root` : 이미 존재하는 빈 DOM 엘리먼트. 그 안에만 그립니다.
 - `store`: `src/renderer/store.js` 모듈 네임스페이스 객체 전체.
-  - 읽기: `store.getState()`, `store.tasksOnDate(key)`, `store.inboxTasks()`,
-    `store.spanningTasks()`, `store.allTags()`, `store.COLORS`, `store.PRIORITY_LABELS`
+  - 읽기: `store.getState()`, `store.tasksOnDate(key, {filtered})`, `store.inboxTasks()`,
+    `store.spanningTasks()`, `store.overdueTasks(today, {filtered})`, `store.allTags()`,
+    `store.COLORS`, `store.PRIORITY_LABELS`
   - 쓰기: `store.addTask()`, `store.updateTask()`, `store.toggleDone()`, `store.removeTask()`,
-    `store.reorder()`, `store.moveTask()`, `store.selectDate()`, `store.setAnchorMonth()`,
+    `store.reorder()`, `store.moveTask()`, `store.moveTasksTo(ids, key, label)`,
+    `store.selectDate()`, `store.setAnchorMonth()`,
     `store.setFilter()`, `store.setEditing()`, `store.setSetting()`
+
+  `filtered: false` 는 검색어·태그 필터를 무시합니다. 트레이 요약이나 브리핑처럼
+  **화면 밖에 보고할 때만** 쓰세요 — 태그를 걸어 둔 채 트레이가 걸러진 개수를 말하면
+  사실과 다른 보고가 됩니다.
+
+  여러 건을 옮길 때는 `moveTask()` 를 반복하지 말고 `moveTasksTo()` 를 쓰세요.
+  한 건씩 부르면 되돌리기 스택에 그만큼 쌓여 Ctrl+Z 를 스무 번 눌러야 합니다.
+  - 저장: `store.flushSave()` — 디바운스 대기 중인 저장을 지금 끝낸다.
+    창을 숨기거나 앱을 끄기 직전에만 부른다(셸이 담당). `state.saveError` 가 차 있으면
+    대기 중인 변경이 없어도 다시 쓴다.
+  - 갱신: `store.touch()` — 데이터는 그대로인데 다시 그려야 할 때(자정이 지났을 때 등).
   - 구독: `store.subscribe(fn)` → unsubscribe 함수 반환. **팩토리 안에서 반드시 구독하고
     `destroy()` 에서 해제**하세요. 상태가 바뀌면 다시 렌더하면 됩니다.
 - `state` 를 **직접 mutate 하지 마세요.** 반드시 액션 함수 경유.

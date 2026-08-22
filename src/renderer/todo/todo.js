@@ -5,12 +5,19 @@
 import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../lib/date.js';
 import { remindLabel } from '../reminders.js';
 import { icon } from '../lib/icons.js';
-import { createCompose } from './compose.js';
+import { createCompose, whenSummary } from './compose.js';
 import { showContextMenu } from '../lib/menu.js';
 
-/** 리마인더 프리셋. 값은 store 의 '<며칠 전>@<HH:mm>' 형식. */
+/**
+ * 리마인더 프리셋.
+ *   'N@HH:mm'  시작일에서 N일 전의 지정 시각
+ *   '-Nm'      시작 시각 N분 전 — 시각이 있는 일정에서만 뜻이 있다
+ */
 const REMIND_PRESETS = [
   ['',        '알림 없음'],
+  ['-10m',    '10분 전',  true],
+  ['-30m',    '30분 전',  true],
+  ['-60m',    '1시간 전', true],
   ['0@09:00', '당일 오전 9시'],
   ['0@12:00', '당일 정오'],
   ['0@18:00', '당일 오후 6시'],
@@ -43,13 +50,21 @@ function repeatSelect(cls) {
 function remindSelect(cls) {
   const sel = document.createElement('select');
   sel.className = cls;
-  for (const [value, label] of REMIND_PRESETS) {
+  for (const [value, label, needsTime] of REMIND_PRESETS) {
     const opt = document.createElement('option');
     opt.value = value;
     opt.textContent = label;
+    if (needsTime) opt.dataset.needsTime = '1';
     sel.append(opt);
   }
   return sel;
+}
+
+/** 시각 없는 일정에서는 '몇 분 전'을 숨긴다 — 기준점이 없어 울리지 않는 선택지다 */
+function syncRemindOptions(sel, hasTime) {
+  for (const opt of sel.options) {
+    if (opt.dataset.needsTime) opt.hidden = !hasTime;
+  }
 }
 
 // ============================================================ 빠른 입력 파서
@@ -175,10 +190,51 @@ function resolveDateWord(word, baseKey) {
 }
 
 /**
+ * 시각처럼 생긴 낱말을 'HH:mm' 으로. 아니면 null.
+ *
+ *   15:00  9:30        그대로
+ *   15시  9시  9시30분  시 단위
+ *   오후3시  오전9:30    오전/오후를 붙였을 때만 12시간제로 읽는다
+ *
+ * **오전/오후를 안 붙이면 적힌 그대로 읽는다.** '3시'를 15:00 으로 넘겨짚지 않는다.
+ * 반복 규칙에서 31일을 말일에 붙이지 않은 것과 같은 이유 — 예측 가능성이 먼저다.
+ */
+function resolveTimeWord(w) {
+  const m = /^(오전|오후)?(\d{1,2})(?::(\d{1,2})|시(?:(\d{1,2})분?)?)$/.exec(String(w || ''));
+  if (!m) return null;
+
+  let hour = Number(m[2]);
+  const min = Number(m[3] ?? m[4] ?? 0);
+  if (min > 59) return null;
+
+  if (m[1]) {
+    // 오전/오후를 붙였으면 12시간제. '오후 12시'는 정오, '오전 12시'는 자정.
+    if (hour < 1 || hour > 12) return null;
+    if (m[1] === '오후' && hour !== 12) hour += 12;
+    if (m[1] === '오전' && hour === 12) hour = 0;
+  } else if (hour > 23) {
+    return null;
+  }
+
+  return `${pad2(hour)}:${pad2(min)}`;
+}
+
+/** '15:00~16:30' / '15:00-16:30' → 시작·종료 시각. 아니면 null */
+function resolveTimeRange(w) {
+  const parts = String(w || '').split(/[~-]/);
+  if (parts.length !== 2) return null;
+  const startTime = resolveTimeWord(parts[0]);
+  const endTime = resolveTimeWord(parts[1]);
+  if (!startTime || !endTime) return null;
+  return { startTime, endTime };
+}
+
+/**
  * 빠른 입력 문자열을 태스크 조각으로 파싱한다. 순수 함수.
  * @param {string} text
  * @param {string} [baseKey] 상대 날짜 기준일 (기본: 오늘)
  * @returns {{title:string, start:string|null, end:string|null, endDays:number|null,
+ *            startTime:string|null, endTime:string|null,
  *            tags:string[], priority:number, color:string|null, unknown:string[]}}
  */
 export function parseQuickInput(text, baseKey = todayKey()) {
@@ -187,6 +243,8 @@ export function parseQuickInput(text, baseKey = todayKey()) {
     start: null,
     end: null,
     endDays: null,   // ~3d 처럼 '시작일 + N일' 로 들어온 경우 N (미리보기에서 안내)
+    startTime: null, // '15:00' 처럼 시각만 적은 토큰
+    endTime: null,
     tags: [],
     priority: 0,
     color: null,
@@ -238,6 +296,20 @@ export function parseQuickInput(text, baseKey = todayKey()) {
       const key = resolveDateWord(body, baseKey);
       if (key) out.end = key;
       else out.unknown.push(token);
+      return;
+    }
+
+    // 시각 — '15:00', '오후3시', '15:00~16:30'.
+    // 마커(@ ~ # *)가 없어도 알아본다. 무엇으로 읽혔는지는 미리보기가 바로 보여 준다.
+    const range = resolveTimeRange(token);
+    if (range) {
+      out.startTime = range.startTime;
+      out.endTime = range.endTime;
+      return;
+    }
+    const time = resolveTimeWord(token);
+    if (time) {
+      out.startTime = time;
       return;
     }
 
@@ -338,6 +410,14 @@ function setValueSafe(el, value) {
   if (el.value !== value) el.value = value;
 }
 
+/**
+ * 짧은 확인 문구를 셸에 부탁한다.
+ * 뷰 모듈끼리 직접 부르지 않는다는 계약을 지키려고 이벤트로 넘긴다.
+ */
+function notify(text) {
+  document.dispatchEvent(new CustomEvent('app:toast', { detail: String(text) }));
+}
+
 function isSpanTask(t) {
   return !!(t.start && t.end && t.end > t.start);
 }
@@ -363,12 +443,12 @@ export function createTodoPanel({ root, store }) {
   const todayBadge = h('span', 'todo-badge todo-badge--today', '오늘');
   const goTodayBtn = h('button', 'todo-gotoday', '오늘로');
   goTodayBtn.type = 'button';
-  goTodayBtn.title = '오늘 날짜로 이동';
+  goTodayBtn.setAttribute('aria-label', '오늘 날짜로 이동');
   const progressText = h('span', 'todo-progress__text', '0/0');
   const addBtn = h('button', 'todo-add');
   addBtn.append(icon('plus'));
   addBtn.type = 'button';
-  addBtn.title = '일정 추가';
+  addBtn.setAttribute('aria-label', '일정 추가');
   dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, addBtn);
 
   const progressBar = h('div', 'todo-progress');
@@ -380,9 +460,10 @@ export function createTodoPanel({ root, store }) {
   searchInput.type = 'text';
   searchInput.placeholder = '검색';
   searchInput.spellcheck = false;
+  searchInput.setAttribute('aria-label', '전체 일정 검색');
   const completedBtn = h('button', 'todo-toggle', '완료 표시');
   completedBtn.type = 'button';
-  completedBtn.title = '완료 항목 표시/숨김';
+  completedBtn.setAttribute('aria-pressed', 'false');
   filterRow.append(searchInput, completedBtn);
 
   const tagBar = h('div', 'todo-tagbar');
@@ -403,14 +484,32 @@ export function createTodoPanel({ root, store }) {
 
   const sections = {
     search: makeSection('search', '검색 결과'),
+    // 기한이 지났는데 안 끝난 일. 고른 날짜와 무관하게 언제나 맨 위에 온다 —
+    // 어제 못 끝낸 일이 어제 칸에 남아 시야에서 사라지는 게 이 앱의 가장 큰 구멍이었다.
+    overdue: makeSection('overdue', '지난 일'),
     focus: makeSection('focus', '선택한 항목'),
     day: makeSection('day', '오늘 할 일'),
     span: makeSection('span', '진행 중인 장기 계획'),
     inbox: makeSection('inbox', '언젠가'),
   };
   sections.inbox.collapsed = false;
-  body.append(sections.search.el, sections.focus.el, sections.day.el,
-              sections.span.el, sections.inbox.el);
+  sections.overdue.el.classList.add('todo-section--overdue');
+
+  // '오늘로 당기기' — 밀린 일을 한 번에 오늘로. 되돌리기 한 번으로 취소된다.
+  const rollBtn = h('button', 'todo-rollup', '오늘로 당기기');
+  rollBtn.type = 'button';
+  rollBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const ids = store.overdueTasks().map((t) => t.id);
+    if (!ids.length) return;
+    const n = store.moveTasksTo(ids, todayKey(), `밀린 일 ${ids.length}건 오늘로`);
+    store.selectDate(todayKey());
+    if (n) notify(`${n}건을 오늘로 옮겼습니다`);
+  });
+  sections.overdue.actions.append(rollBtn);
+
+  body.append(sections.search.el, sections.overdue.el, sections.focus.el,
+              sections.day.el, sections.span.el, sections.inbox.el);
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
@@ -442,11 +541,22 @@ export function createTodoPanel({ root, store }) {
     const secEl = h('section', 'todo-section');
     secEl.dataset.section = key;
 
+    // 접기 버튼과 동작 버튼은 형제여야 한다.
+    // 머리글 자체를 button 으로 만들면 '오늘로 당기기'가 버튼 안의 버튼이 되어
+    // HTML 이 유효하지 않고 접근성 트리도 무너진다.
     const head = h('div', 'todo-section__head');
+
+    const toggle = h('button', 'todo-section__toggle');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', 'true');
     const caret = h('span', 'todo-section__caret', '▾');
     const titleEl = h('span', 'todo-section__title', title);
     const count = h('span', 'todo-section__count', '0');
-    head.append(caret, titleEl, count);
+    toggle.append(caret, titleEl, count);
+
+    // 섹션마다 붙는 동작 버튼 자리(예: 지난 일의 '오늘로 당기기'). 기본은 비어 있다.
+    const actions = h('span', 'todo-section__actions');
+    head.append(toggle, actions);
 
     const wrap = h('div', 'todo-list-wrap');
     const list = h('ul', 'todo-list');
@@ -455,10 +565,12 @@ export function createTodoPanel({ root, store }) {
 
     secEl.append(head, wrap);
 
-    const sec = { key, el: secEl, head, list, wrap, dropline, count, titleEl, ids: [], collapsed: false, emptyEl: null };
+    const sec = { key, el: secEl, head, toggle, list, wrap, dropline, count, titleEl, actions,
+                  ids: [], collapsed: false, emptyEl: null };
 
-    head.addEventListener('click', () => {
+    toggle.addEventListener('click', () => {
       sec.collapsed = !sec.collapsed;
+      toggle.setAttribute('aria-expanded', String(!sec.collapsed));
       scheduleRender();
     });
 
@@ -541,25 +653,34 @@ export function createTodoPanel({ root, store }) {
     const li = h('li', 'todo-item');
     li.dataset.id = taskId;
     li.draggable = true;
+    // 로빙 탭인덱스 — 목록 전체가 아니라 '현재 항목' 하나만 Tab 으로 들어온다.
+    // 50개짜리 목록에서 Tab 을 50번 누르게 만들지 않기 위해서다.
+    li.tabIndex = -1;
 
     const row = h('div', 'todo-item__row');
 
+    // 체크는 시각적으로 버튼이지만 하는 일은 체크박스다.
+    // role/aria-checked 를 주지 않으면 스크린리더에 '눌림' 상태가 전달되지 않는다.
     const check = h('button', 'todo-check');
     check.type = 'button';
-    check.title = '완료 토글';
+    check.setAttribute('role', 'checkbox');
+    check.setAttribute('aria-checked', 'false');
 
     const dot = h('span', 'todo-dot');
+    // 시각이 있으면 제목 앞에 세워 목록이 그날의 타임라인으로 읽히게 한다
+    const time = h('span', 'todo-time');
+    time.hidden = true;
     const title = h('span', 'todo-title');
     const meta = h('span', 'todo-meta');           // 우선순위 뱃지 + 태그 + D-day
     const del = h('button', 'todo-del');
     del.append(icon('close'));
     del.type = 'button';
-    del.title = '삭제';
 
-    row.append(check, dot, title, meta, del);
+    row.append(check, dot, time, title, meta, del);
     li.append(row);
 
-    const rec = { id: taskId, el: li, row, check, dot, title, meta, del, detail: null, task: null };
+    const rec = { id: taskId, el: li, row, check, dot, time, title, meta, del,
+                  detail: null, task: null };
 
     // 완료 토글
     check.addEventListener('click', (e) => {
@@ -736,21 +857,41 @@ export function createTodoPanel({ root, store }) {
     });
     notes.addEventListener('blur', flushNotes);
 
+    // 시작 / 종료 · 날짜 + 시각.
+    // 추가 폼과 같은 배치다 — 만들 때와 고칠 때의 조작이 달라선 안 된다.
     const startIn = h('input', 'todo-detail__date');
     startIn.type = 'date';
+    startIn.setAttribute('aria-label', '시작 날짜');
     startIn.addEventListener('change', () => {
       const v = startIn.value;
       if (!v) store.updateTask(rec.id, { start: null, end: null });
       else store.updateTask(rec.id, { start: v });
     });
 
+    const startTimeIn = h('input', 'todo-detail__time');
+    startTimeIn.type = 'time';
+    startTimeIn.setAttribute('aria-label', '시작 시각 (비우면 종일)');
+    startTimeIn.addEventListener('change', () => {
+      // 빈 값은 '종일'이다. store 가 종료 시각과 상대 알림까지 함께 정리한다.
+      store.updateTask(rec.id, { startTime: startTimeIn.value || null });
+    });
+
     const endIn = h('input', 'todo-detail__date');
     endIn.type = 'date';
+    endIn.setAttribute('aria-label', '종료 날짜');
     endIn.addEventListener('change', () => {
       const t = rec.task;
       const v = endIn.value;
       if (!t || !t.start) return;
+      // 종료가 시작보다 빠르면 막지 않고 시작에 맞춘다 (추가 폼과 같은 규칙)
       store.updateTask(rec.id, { end: v && v >= t.start ? v : t.start });
+    });
+
+    const endTimeIn = h('input', 'todo-detail__time');
+    endTimeIn.type = 'time';
+    endTimeIn.setAttribute('aria-label', '종료 시각');
+    endTimeIn.addEventListener('change', () => {
+      store.updateTask(rec.id, { endTime: endTimeIn.value || null });
     });
 
     const prio = h('select', 'todo-detail__select');
@@ -796,8 +937,22 @@ export function createTodoPanel({ root, store }) {
       if (e.key === 'Enter') { e.preventDefault(); tagsIn.blur(); }
     });
 
-    const rowDates = h('div', 'todo-detail__row');
-    rowDates.append(field('시작', startIn), field('종료', endIn));
+    const whenRow = (labelText, dateEl, timeEl) => {
+      const r = h('div', 'todo-detail__whenrow');
+      r.append(h('span', 'todo-detail__whenkey', labelText), dateEl, timeEl);
+      return r;
+    };
+
+    // 무엇으로 저장돼 있는지 한 줄로 되읽어 준다 — 추가 폼과 같은 문구를 쓴다
+    const whenSummaryEl = h('div', 'todo-detail__whensummary');
+    whenSummaryEl.setAttribute('aria-live', 'polite');
+
+    const rowDates = h('div', 'todo-detail__when');
+    rowDates.append(
+      whenRow('시작', startIn, startTimeIn),
+      whenRow('종료', endIn, endTimeIn),
+      whenSummaryEl,
+    );
 
     const rowMeta = h('div', 'todo-detail__row');
     rowMeta.append(field('우선순위', prio), field('색', swatches));
@@ -883,7 +1038,8 @@ export function createTodoPanel({ root, store }) {
     d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
              rowExtra, rowSeries);
 
-    rec.detail = { el: d, notes, startIn, endIn, prio, swatchBtns, tagsIn, linkIn, linkOpen,
+    rec.detail = { el: d, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
+                   prio, swatchBtns, tagsIn, linkIn, linkOpen,
                    remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
     return rec.detail;
   }
@@ -902,11 +1058,27 @@ export function createTodoPanel({ root, store }) {
     setValueSafe(d.notes, task.notes || '');
     setValueSafe(d.startIn, task.start || '');
     setValueSafe(d.endIn, task.end || task.start || '');
+    setValueSafe(d.startTimeIn, task.startTime || '');
+    setValueSafe(d.endTimeIn, task.endTime || '');
     d.endIn.disabled = !task.start;
+    // 날짜 없는 '언젠가' 항목에는 시각을 붙일 자리가 없다.
+    // 종료 시각은 시작 시각이 있어야 뜻이 생긴다.
+    d.startTimeIn.disabled = !task.start;
+    d.endTimeIn.disabled = !task.start || !task.startTime;
+    d.whenSummaryEl.textContent = task.start
+      ? whenSummary({
+          start: task.start,
+          end: task.end || task.start,
+          startTime: task.startTime,
+          endTime: task.endTime,
+          freq: task.repeat?.freq || '',
+        })
+      : '날짜 없음 · 언젠가 할 일';
     setValueSafe(d.prio, String(task.priority || 0));
     setValueSafe(d.tagsIn, task.tags.join(' '));
     setValueSafe(d.linkIn, task.link || '');
     d.linkOpen.disabled = !task.link;
+    syncRemindOptions(d.remindIn, !!task.startTime);
     setValueSafe(d.remindIn, task.remind || '');
     setValueSafe(d.repeatIn, task.repeat?.freq || '');
     setValueSafe(d.untilIn, task.repeat?.until || '');
@@ -916,6 +1088,7 @@ export function createTodoPanel({ root, store }) {
     d.pinBtn.hidden = !!task.repeat || !task.end;
     d.pinBtn.textContent = task.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정';
     d.pinBtn.classList.toggle('is-on', !!task.pinned);
+    d.pinBtn.setAttribute('aria-pressed', String(!!task.pinned));
     d.rowSeries.hidden = d.pinBtn.hidden && d.dropSeries.hidden;
     // 반복 일정은 당일만 — 종료일 입력을 잠근다
     d.endIn.disabled = !task.start || !!task.repeat;
@@ -939,6 +1112,22 @@ export function createTodoPanel({ root, store }) {
     if (task.done) rec.check.append(icon('check'));
     rec.dot.style.background = COLORS[task.color] || COLORS.blue;
 
+    // 화면에는 체크 표시 하나뿐이라 '완료 토글' 여덟 개가 똑같이 읽혔다.
+    // 어떤 일정인지 이름에 넣어 준다.
+    const readable = task.title || '제목 없음';
+    rec.check.setAttribute('aria-checked', String(!!task.done));
+    rec.check.setAttribute('aria-label', `${readable} 완료`);
+    rec.del.setAttribute('aria-label',
+      task.repeat && task.occDate ? `${readable} 이 회차 건너뛰기` : `${readable} 삭제`);
+
+    // 시각 — 있으면 제목 앞
+    const hasTime = !!task.startTime;
+    rec.time.hidden = !hasTime;
+    rec.time.textContent = hasTime ? task.startTime : '';
+    if (hasTime) {
+      rec.time.title = task.endTime ? `${task.startTime}–${task.endTime}` : task.startTime;
+    }
+
     if (rec.titleInput) {
       // 인라인 편집 중이면 제목 텍스트를 건드리지 않는다
     } else if (rec.title.textContent !== task.title) {
@@ -956,6 +1145,9 @@ export function createTodoPanel({ root, store }) {
     for (const tag of task.tags) {
       const c = h('button', 'todo-tag', `#${tag}`);
       c.type = 'button';
+      const tagOn = store.getState().filter.tag === tag;
+      c.setAttribute('aria-pressed', String(tagOn));
+      c.setAttribute('aria-label', tagOn ? `${tag} 태그 필터 끄기` : `${tag} 태그만 보기`);
       c.addEventListener('click', (e) => {
         e.stopPropagation();
         const cur = store.getState().filter.tag;
@@ -1025,6 +1217,11 @@ export function createTodoPanel({ root, store }) {
     sec.ids = tasks.map((t) => t.id);
     sec.count.textContent = String(tasks.length);
     sec.el.classList.toggle('is-collapsed', sec.collapsed);
+
+    // 캐럿(▾)·제목·개수가 span 이라 이름이 자동으로 잡히지 않는다.
+    // 무엇을 몇 건 접고 펴는지 직접 적는다.
+    sec.toggle.setAttribute('aria-label',
+      `${sec.titleEl.textContent} ${tasks.length}건 ${sec.collapsed ? '펼치기' : '접기'}`);
 
     const els = [];
     if (!sec.collapsed) {
@@ -1123,6 +1320,10 @@ export function createTodoPanel({ root, store }) {
     if (end && start && end > start) {
       add('todo-chip--date', '종료', `${formatShort(end)} · ${diffDays(start, end) + 1}일간`);
     }
+    if (parsed.startTime) {
+      add('todo-chip--date', '시각',
+        parsed.endTime ? `${parsed.startTime}–${parsed.endTime}` : parsed.startTime);
+    }
     if (parsed.priority > 0) add(`todo-chip--p${parsed.priority}`, '', PRIORITY_LABELS[parsed.priority]);
     for (const tag of parsed.tags) add('todo-chip--tag', '', `#${tag}`);
     if (parsed.color) add('todo-chip--color', '', COLOR_NAMES[parsed.color], COLORS[parsed.color]);
@@ -1162,6 +1363,10 @@ export function createTodoPanel({ root, store }) {
     const showCompleted = st.settings.showCompleted;
     completedBtn.textContent = showCompleted ? '완료 표시' : '완료 숨김';
     completedBtn.classList.toggle('is-on', !showCompleted);
+    // 눌린 상태 = 숨김. 글자만으로는 스크린리더에 상태가 전달되지 않는다.
+    completedBtn.setAttribute('aria-pressed', String(!showCompleted));
+    completedBtn.setAttribute('aria-label',
+      showCompleted ? '완료 항목 숨기기' : '완료 항목 보이기');
 
     // 태그 칩 — 내용이 바뀔 때만 다시 그린다
     const tags = store.allTags();
@@ -1173,7 +1378,10 @@ export function createTodoPanel({ root, store }) {
       for (const tag of tags) {
         const chip = h('button', 'todo-tagchip', `#${tag}`);
         chip.type = 'button';
-        chip.classList.toggle('is-on', st.filter.tag === tag);
+        const on = st.filter.tag === tag;
+        chip.classList.toggle('is-on', on);
+        chip.setAttribute('aria-pressed', String(on));
+        chip.setAttribute('aria-label', on ? `${tag} 태그 필터 끄기` : `${tag} 태그만 보기`);
         chip.addEventListener('click', () => {
           const cur = store.getState().filter.tag;
           store.setFilter({ tag: cur === tag ? null : tag });
@@ -1182,6 +1390,91 @@ export function createTodoPanel({ root, store }) {
       }
     }
   }
+
+  // ---------------------------------------------------------- 키보드 조작
+  //
+  // 캘린더는 화살표로 움직이는데 오른쪽 목록은 마우스 전용이었다.
+  // 캘린더의 키 처리는 캘린더 root 에 걸려 있으므로 서로 가로채지 않는다.
+
+  let focusedId = null;
+
+  function visibleItems() {
+    return Array.from(el.querySelectorAll('.todo-item'));
+  }
+
+  function focusItem(li) {
+    if (!li) return;
+    focusedId = li.dataset.id;
+    for (const other of visibleItems()) other.tabIndex = other === li ? 0 : -1;
+    li.focus();
+  }
+
+  /** Tab 으로 들어올 항목 하나를 정해 둔다 (없으면 첫 항목) */
+  function syncRovingTabindex() {
+    const items = visibleItems();
+    if (!items.length) return;
+    const active = items.find((li) => li.dataset.id === focusedId) || items[0];
+    for (const li of items) li.tabIndex = li === active ? 0 : -1;
+  }
+
+  el.addEventListener('focusin', (e) => {
+    const li = e.target.closest?.('.todo-item');
+    if (li) focusedId = li.dataset.id;
+  });
+
+  el.addEventListener('keydown', (e) => {
+    if (isFormControl(e.target)) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const items = visibleItems();
+    if (!items.length) return;
+
+    const cur = e.target.closest?.('.todo-item');
+    const index = cur ? items.indexOf(cur) : -1;
+
+    // --- 이동
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      e.stopPropagation();
+      let next;
+      if (e.key === 'Home') next = items[0];
+      else if (e.key === 'End') next = items[items.length - 1];
+      else if (index < 0) next = items[0];
+      else if (e.key === 'ArrowDown') next = items[Math.min(items.length - 1, index + 1)];
+      else next = items[Math.max(0, index - 1)];
+      focusItem(next);
+      return;
+    }
+
+    if (!cur) return;
+    const task = itemCache.get(cur.dataset.id)?.task;
+    if (!task) return;
+
+    // --- 동작
+    if (e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      store.toggleDone(task.id, task.occDate);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      const editing = store.getState().editingTaskId;
+      store.setEditing(editing === task.id ? null : task.id);
+      return;
+    }
+    if (e.key === 'Delete') {
+      e.preventDefault();
+      e.stopPropagation();
+      // 지운 뒤 포커스가 허공에 남지 않도록 다음 항목으로 미리 옮겨 둔다
+      const fallback = items[index + 1] || items[index - 1];
+      focusedId = fallback ? fallback.dataset.id : null;
+      if (store.getState().editingTaskId === task.id) store.setEditing(null);
+      store.removeTask(task.id, task.occDate);
+      notify(task.repeat && task.occDate ? '이 회차를 건너뜁니다' : '일정을 삭제했습니다');
+    }
+  });
 
   // ---------------------------------------------------------- 전체 렌더
   function render() {
@@ -1209,9 +1502,19 @@ export function createTodoPanel({ root, store }) {
     const dayTasks = onDate.filter((t) => !isSpanTask(t));
     const inboxTasks = searching ? [] : store.inboxTasks();
 
+    // 밀린 일은 고른 날짜와 무관하다. 오늘 이전에 끝났어야 하는데 안 끝난 것 전부.
+    // 단, 이미 그날 목록에 보이는 항목은 두 번 나오지 않게 뺀다.
+    const shown = new Set(onDate.map((t) => t.id));
+    const overdue = searching
+      ? []
+      : store.overdueTasks().filter((t) => !shown.has(t.id));
+
     sections.search.el.hidden = !searching;
     sections.day.el.hidden = searching;
     sections.inbox.el.hidden = searching;
+    sections.overdue.el.hidden = searching || overdue.length === 0;
+    sections.overdue.titleEl.textContent =
+      overdue.length ? `지난 일 · 아직 안 끝났어요` : '지난 일';
     if (searching) {
       sections.search.titleEl.textContent = `'${st.filter.text.trim()}' 검색 결과`;
     }
@@ -1232,6 +1535,7 @@ export function createTodoPanel({ root, store }) {
     sections.span.el.hidden = searching || spanTasks.length === 0;
 
     renderSection(sections.search, searchResults, key, searching ? buildSearchEmpty : null);
+    renderSection(sections.overdue, overdue, key, null);
     renderSection(sections.focus, focusTasks, key, null);
     renderSection(sections.day, dayTasks, key, buildDayEmpty);
     renderSection(sections.span, spanTasks, key, null);
@@ -1251,6 +1555,7 @@ export function createTodoPanel({ root, store }) {
     }
     lastEditingId = editingId;
 
+    syncRovingTabindex();
     renderPreview();
   }
 
@@ -1309,6 +1614,8 @@ export function createTodoPanel({ root, store }) {
     // start 를 넘기지 않으면 store 가 selectedDate 를 넣는다
     if (parsed.start) patch.start = parsed.start;
     if (end && start) patch.end = end;
+    if (parsed.startTime) patch.startTime = parsed.startTime;
+    if (parsed.endTime) patch.endTime = parsed.endTime;
 
     store.addTask(patch);
     quickInput.value = '';

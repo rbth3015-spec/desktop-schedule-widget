@@ -1,10 +1,16 @@
 // 렌더러 전역 상태 저장소. 단일 소스 오브 트루스.
 // 뷰 모듈(calendar / todo)은 store 를 직접 mutate 하지 않고 액션 함수만 호출한다.
 
-import { todayKey } from './lib/date.js';
+import { todayKey, addDays, diffDays, isTimeKey, timeMinutes, fromKeyTime } from './lib/date.js';
 
 const listeners = new Set();
+
+// 저장 상태.
+// 예전에는 saveData() 를 부르고 결과를 보지 않았다. 디스크가 차거나 파일이 잠기면
+// 사용자는 아무것도 모른 채 계속 일정을 적고, 앱을 껐다 켜면 전부 사라져 있었다.
+// 일정 앱에서 가장 나쁜 실패 방식이라 결과를 반드시 확인하고 화면에 알린다.
 let saveTimer = null;
+let savePending = false;   // 디바운스 대기 중인 변경이 있는가
 
 /**
  * @typedef {Object} Task
@@ -13,6 +19,8 @@ let saveTimer = null;
  * @property {string}  notes
  * @property {string|null} start   'YYYY-MM-DD' — 시작일. null 이면 '언젠가(inbox)'
  * @property {string|null} end     'YYYY-MM-DD' — 종료일. 단일 일정이면 start 와 동일
+ * @property {string|null} startTime 'HH:mm' — 시작 시각. null 이면 종일
+ * @property {string|null} endTime   'HH:mm' — 종료 시각. startTime 이 없으면 항상 null
  * @property {boolean} done
  * @property {number}  priority    0=보통 1=중요 2=긴급
  * @property {string}  color       카테고리 색 키 (COLORS 참조)
@@ -56,6 +64,15 @@ const DEFAULT_SETTINGS = {
   // --- 패널 표시 ---
   showDashboard: true,    // Zone C: D-Day 대시보드
   showLauncher: true,     // Zone D: 퀵 런처 도크
+
+  // --- 브리핑 ---
+  // 하루에 한 번, 앱을 처음 켠 날 아침에 오늘 몫을 한 장으로 요약해 준다.
+  // '물어봐야 답하는 장부'와 '먼저 말하는 비서'를 가르는 지점이라 기본은 켜 둔다.
+  showBrief: true,
+  lastBriefDate: '',      // 마지막으로 브리핑을 띄운 날 ('YYYY-MM-DD')
+
+  // 처음 켰을 때 한 번만 보여 주는 안내. 빈 패널 네 개를 마주하게 두지 않는다.
+  seenWelcome: false,
 };
 
 /**
@@ -81,6 +98,7 @@ const state = {
   editingTaskId: null,
   ready: false,
   loadNotice: null,
+  saveError: null,      // 마지막 저장 실패 메시지. 성공하면 다시 null.
   // 캘린더에서 기간을 드래그하면 여기 담기고, 투두 패널이 추가 폼을 열면서 비운다.
   composeRequest: /** @type {{start:string,end:string}|null} */ (null),
 };
@@ -98,17 +116,51 @@ function emit() {
   for (const fn of listeners) fn(state);
 }
 
+/** 디스크에 남길 것만 추린다. 여기 더한 필드는 storage.js 의 payload 에도 더해야 한다. */
+function persistPayload() {
+  return {
+    tasks: state.tasks,
+    launcher: state.launcher,
+    reminderLog: state.reminderLog,
+    settings: state.settings,
+  };
+}
+
+async function writeNow() {
+  savePending = false;
+  let message = null;
+  try {
+    const res = await window.api.saveData(persistPayload());
+    // storage.saveData 는 예외를 던지지 않고 {ok:false, error} 를 돌려준다
+    if (res && res.ok === false) message = res.error || '알 수 없는 오류';
+  } catch (err) {
+    message = String(err?.message || err);
+  }
+
+  // 상태가 바뀔 때만 알린다 (매 저장마다 리렌더를 유발하지 않도록)
+  if (state.saveError !== message) {
+    state.saveError = message;
+    emit();
+  }
+}
+
 /** 영속 데이터만 디바운스 저장 */
 function persist() {
+  savePending = true;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    window.api.saveData({
-      tasks: state.tasks,
-      launcher: state.launcher,
-      reminderLog: state.reminderLog,
-      settings: state.settings,
-    });
-  }, 250);
+  saveTimer = setTimeout(writeNow, 250);
+}
+
+/**
+ * 대기 중인 저장을 지금 끝낸다.
+ * 창을 숨기거나 앱을 종료하기 직전에 부른다 — 디바운스 250ms 안에 종료하면
+ * 마지막 편집이 통째로 날아간다.
+ */
+export function flushSave() {
+  clearTimeout(saveTimer);
+  // 저장에 실패한 상태면 대기 중인 변경이 없어도 다시 쓴다 — '다시 시도' 버튼의 경로다.
+  if (!savePending && !state.saveError) return Promise.resolve();
+  return writeNow();
 }
 
 function commit({ save = true } = {}) {
@@ -122,9 +174,21 @@ function commit({ save = true } = {}) {
 // 일정 수가 수천 개가 되어도 스냅샷 하나는 수백 KB 수준이라 실사용에 문제가 없고,
 // 새 액션을 추가할 때 되돌리기 로직을 따로 안 짜도 된다는 점이 훨씬 크다.
 
-const UNDO_LIMIT = 50;
 const undoStack = [];
 const redoStack = [];
+
+/**
+ * 되돌리기 깊이를 일정 수에 맞춰 줄인다.
+ * 스냅샷 하나가 일정 수에 비례하므로(2000건이면 한 장에 수백 KB, 뜨는 데 20ms),
+ * 깊이를 고정 50 으로 두면 큰 데이터에서 메모리와 지연이 같이 커진다.
+ * 실제로 50단계를 거슬러 올라가는 사람은 없으니 깊이를 양보한다.
+ */
+function undoLimit() {
+  const n = state.tasks.length;
+  if (n <= 300) return 50;
+  if (n <= 1000) return 25;
+  return 12;
+}
 
 function snapshot() {
   return {
@@ -138,11 +202,43 @@ function restore(snap) {
   state.launcher = snap.launcher;
 }
 
-/** 되돌릴 수 있는 변경 직전에 부른다. label 은 사용자에게 보여줄 문구. */
-function pushUndo(label) {
+// 연속 편집 묶기.
+// 메모를 한 줄 치면 updateTask 가 300ms 마다 불리고, 그때마다 전체 스냅샷을 떴다.
+// 큰 데이터에서는 눈에 띄는 끊김이 되고, Ctrl+Z 를 눌러도 글자 몇 개씩만 되돌아간다.
+// 같은 대상의 같은 종류 편집이 이어지면 첫 스냅샷 하나로 묶는다.
+const COALESCE_MS = 1200;
+let lastUndoKey = null;
+let lastUndoAt = 0;
+
+/**
+ * 되돌릴 수 있는 변경 직전에 부른다.
+ * @param {string} label 사용자에게 보여줄 문구
+ * @param {string|null} coalesceKey 같은 키로 연달아 들어오면 하나로 묶는다
+ */
+function pushUndo(label, coalesceKey = null) {
+  const now = Date.now();
+
+  if (coalesceKey && coalesceKey === lastUndoKey && now - lastUndoAt < COALESCE_MS
+      && undoStack.length) {
+    // 직전 스냅샷이 이미 '이 편집 이전' 상태를 담고 있다. 새로 뜨지 않는다.
+    lastUndoAt = now;
+    redoStack.length = 0;
+    return;
+  }
+
   undoStack.push({ label, data: snapshot() });
-  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  const limit = undoLimit();
+  while (undoStack.length > limit) undoStack.shift();
   redoStack.length = 0;   // 새 변경이 생기면 다시 실행 이력은 버린다
+
+  lastUndoKey = coalesceKey;
+  lastUndoAt = now;
+}
+
+/** 묶기를 끊는다. 다른 경로로 상태가 바뀌었을 때(되돌리기 등) 부른다. */
+function breakCoalesce() {
+  lastUndoKey = null;
+  lastUndoAt = 0;
 }
 
 export function canUndo() { return undoStack.length > 0; }
@@ -150,6 +246,7 @@ export function canRedo() { return redoStack.length > 0; }
 
 /** @returns {string|null} 되돌린 동작의 이름 (없으면 null) */
 export function undo() {
+  breakCoalesce();
   const entry = undoStack.pop();
   if (!entry) return null;
   redoStack.push({ label: entry.label, data: snapshot() });
@@ -159,6 +256,7 @@ export function undo() {
 }
 
 export function redo() {
+  breakCoalesce();
   const entry = redoStack.pop();
   if (!entry) return null;
   undoStack.push({ label: entry.label, data: snapshot() });
@@ -179,21 +277,35 @@ export async function init() {
   state.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
   migrate();
   state.ready = true;
-  // 메인 프로세스가 손상된 데이터 파일을 백업으로 격리했을 때만 채워진다
-  state.loadNotice = data?.corrupted
-    ? `이전 데이터 파일이 손상되어 백업했습니다:\n${data.backupPath || ''}`
-    : null;
+
+  // 읽기 단계에서 생긴 문제를 사용자에게 알린다.
+  //  - corrupted: 파일이 깨져서 격리했다 (기존 데이터는 백업에 남아 있다)
+  //  - error   : 권한 등으로 아예 못 읽었다. 이때 빈 화면을 그냥 보여 주면
+  //              '일정이 전부 사라졌다'고 오해하고, 그 위에 새로 쓰면 진짜로 덮인다.
+  if (data?.corrupted) {
+    state.loadNotice = '이전 데이터 파일이 손상되어 백업했습니다:\n'
+      + (data.backupPath || '');
+  } else if (data?.error) {
+    state.loadNotice = '데이터를 읽지 못했습니다 — ' + data.error + '\n'
+      + '이대로 일정을 추가하면 기존 파일을 덮어쓸 수 있습니다. 백업 폴더를 먼저 확인하세요.';
+  } else {
+    state.loadNotice = null;
+  }
+
   commit({ save: false });
 }
 
 function normalize(t) {
   const start = t.start ?? null;
+  const { startTime, endTime } = normalizeTimes(t, start, t.end ?? start);
   return {
     id: t.id ?? cryptoId(),
     title: t.title ?? '',
     notes: t.notes ?? '',
     start,
     end: t.end ?? start,
+    startTime,
+    endTime,
     done: !!t.done,
     priority: t.priority ?? 0,
     color: t.color in COLORS ? t.color : 'blue',
@@ -214,6 +326,27 @@ function normalize(t) {
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.slice() : [],  // 건너뛴 회차 날짜
     doneDates: Array.isArray(t.doneDates) ? t.doneDates.slice() : [],     // 완료한 회차 날짜
   };
+}
+
+/**
+ * 시각 필드를 정리한다. 시각은 날짜와 같은 원칙으로 'HH:mm' 로컬 벽시계 문자열이고,
+ * null 이면 '종일'이다. 기존 데이터에는 이 필드가 없으므로 전부 null 로 읽힌다.
+ *
+ * 규칙 두 가지만 강제한다:
+ *  - 시작 시각이 없으면 종료 시각도 없다 ('언제 끝나는지'만 아는 일정은 뜻이 모호하다)
+ *  - 하루짜리인데 종료가 시작보다 빠르면 종료를 비운다 (오타를 에러로 막는 대신 조용히 정리)
+ */
+function normalizeTimes(t, start, end) {
+  if (!start) return { startTime: null, endTime: null };
+
+  const startTime = isTimeKey(t.startTime) ? t.startTime : null;
+  if (!startTime) return { startTime: null, endTime: null };
+
+  let endTime = isTimeKey(t.endTime) ? t.endTime : null;
+  const sameDay = !end || end === start;
+  if (endTime && sameDay && timeMinutes(endTime) <= timeMinutes(startTime)) endTime = null;
+
+  return { startTime, endTime };
 }
 
 const REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
@@ -338,8 +471,15 @@ function cryptoId() {
 
 // ---------------------------------------------------------------- 셀렉터
 
-/** 해당 날짜에 걸쳐 있는 태스크 (기간 일정 포함) */
-export function tasksOnDate(key) {
+/**
+ * 해당 날짜에 걸쳐 있는 태스크 (기간 일정 포함)
+ *
+ * @param {{filtered?: boolean}} [opts]
+ *   filtered — 검색어·태그·완료표시 필터를 적용할지. 기본 true.
+ *   트레이나 브리핑처럼 '화면 밖'에 보고할 때는 false 로 둔다. 태그 필터를 켜 둔
+ *   상태에서 트레이가 걸러진 개수를 말하면 사실과 다른 보고가 된다.
+ */
+export function tasksOnDate(key, { filtered = true } = {}) {
   const out = [];
   for (const t of state.tasks) {
     if (t.repeat) {
@@ -348,7 +488,7 @@ export function tasksOnDate(key) {
       out.push(t);
     }
   }
-  return out.filter(passesFilter).sort(byOrder);
+  return (filtered ? out.filter(passesFilter) : out).sort(byOrder);
 }
 
 /** 날짜 없는 '언젠가' 목록 */
@@ -364,6 +504,29 @@ export function spanningTasks() {
   return state.tasks
     .filter((t) => !t.repeat && t.start && t.end && t.end > t.start)
     .filter(passesFilter);
+}
+
+/**
+ * 기한이 지났는데 아직 안 끝난 일정.
+ *
+ * 이게 없으면 어제 못 끝낸 일은 어제 칸에 그대로 남아 시야에서 사라진다.
+ * 사용자 입장에서는 앱이 자기 실패를 숨기는 것처럼 보이므로, 날짜와 무관하게
+ * 항상 목록 맨 위로 올려 준다.
+ *
+ * 반복 일정은 제외한다 — 지나간 회차 하나하나가 '밀린 일'로 쌓이면
+ * 매일 반복 하나만 있어도 목록이 수백 줄이 된다.
+ */
+export function overdueTasks(today = todayKey(), { filtered = true } = {}) {
+  return state.tasks
+    .filter((t) => !t.done && !t.repeat && t.start && (t.end || t.start) < today)
+    .filter((t) => !filtered || passesFilter(t))
+    .sort((a, b) => {
+      // 오래 밀린 것부터 — 가장 오래 방치된 일이 맨 위
+      const ae = a.end || a.start;
+      const be = b.end || b.start;
+      if (ae !== be) return ae < be ? -1 : 1;
+      return b.priority - a.priority;
+    });
 }
 
 /** D-Day 대시보드에 고정된 일정. 임박한 순서(남은 일수 오름차순). */
@@ -429,6 +592,13 @@ function byOrder(a, b) {
   if (state.settings.sortMode === 'priority' && a.priority !== b.priority) {
     return b.priority - a.priority;
   }
+  // 시각이 정해진 일정은 하루의 뼈대다. 위쪽에 시간순으로 세우고,
+  // 시각 없는 일정(종일)은 그 아래에서 기존 드래그 순서를 유지한다.
+  // '시각 있는 것 먼저'를 order 보다 앞세워야 목록이 그날의 타임라인으로 읽힌다.
+  if (!!a.startTime !== !!b.startTime) return a.startTime ? -1 : 1;
+  if (a.startTime && b.startTime && a.startTime !== b.startTime) {
+    return a.startTime < b.startTime ? -1 : 1;
+  }
   if (a.order !== b.order) return a.order - b.order;
   return a.createdAt - b.createdAt;
 }
@@ -448,9 +618,24 @@ export function addTask(patch = {}) {
 export function updateTask(id, patch) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return;
-  pushUndo('일정 수정');
+  // 같은 일정의 같은 필드를 연달아 고치면(메모 타이핑 등) 한 번으로 묶는다
+  pushUndo('일정 수정', `edit:${id}:${Object.keys(patch).sort().join(',')}`);
   Object.assign(t, patch);
   if (t.start && (!t.end || t.end < t.start)) t.end = t.start;
+
+  // 시각 규칙은 normalize 와 같은 것을 다시 적용한다. patch 는 필드 하나만 담아
+  // 오는 일이 많아서(예: startTime 만 비움) 여기서 정리하지 않으면 모순된 조합이 남는다.
+  const times = normalizeTimes(t, t.start, t.end);
+  t.startTime = times.startTime;
+  t.endTime = times.endTime;
+
+  // 시작 시각이 사라지면 '30분 전' 같은 상대 알림은 기준점을 잃는다.
+  // 그대로 두면 조용히 안 울리는 알림이 되므로 함께 지운다.
+  if (!t.startTime && parseRemind(t.remind)?.kind === 'rel') {
+    t.remind = '';
+    t.remindedAt = null;
+  }
+
   commit();
 }
 
@@ -527,27 +712,37 @@ export function reorder(ids) {
 
 /** 캘린더로 드롭했을 때 등, 날짜 이동 (기간 길이 유지) */
 export function moveTask(id, newStart) {
-  const t = state.tasks.find((x) => x.id === id);
-  if (!t) return;
-  pushUndo('날짜 이동');
-  if (!t.start) {
-    t.start = newStart;
-    t.end = newStart;
-  } else {
-    const span = Math.max(0, dayDiff(t.start, t.end || t.start));
-    t.start = newStart;
-    t.end = shift(newStart, span);
-  }
-  commit();
+  moveTasksTo([id], newStart, '날짜 이동');
 }
 
-function dayDiff(a, b) {
-  return Math.round((new Date(b) - new Date(a)) / 86400000);
-}
-function shift(key, n) {
-  const d = new Date(key);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+/**
+ * 여러 건을 한 날짜로 옮긴다. 기간 길이와 시각은 그대로 유지한다.
+ *
+ * 한 건씩 moveTask 를 부르면 되돌리기 스택에 20개가 쌓여서, 되돌리려면
+ * Ctrl+Z 를 스무 번 눌러야 한다. '밀린 일 오늘로 당기기' 같은 일괄 동작은
+ * 반드시 한 번의 되돌리기로 묶여야 한다.
+ *
+ * @returns {number} 실제로 옮긴 건수
+ */
+export function moveTasksTo(ids, newStart, label) {
+  const targets = ids
+    .map((id) => state.tasks.find((x) => x.id === id))
+    .filter((t) => t && !t.repeat);
+  if (!targets.length) return 0;
+
+  pushUndo(label || (targets.length > 1 ? `${targets.length}건 날짜 이동` : '날짜 이동'));
+  for (const t of targets) {
+    if (!t.start) {
+      t.start = newStart;
+      t.end = newStart;
+    } else {
+      const span = Math.max(0, diffDays(t.start, t.end || t.start));
+      t.start = newStart;
+      t.end = addDays(newStart, span);
+    }
+  }
+  commit();
+  return targets.length;
 }
 
 export function togglePinned(id) {
@@ -562,11 +757,29 @@ export function togglePinned(id) {
 
 const LOG_MAX = 30;
 
-/** 'N@HH:mm' 을 해석한다. 잘못된 값이면 null */
+/**
+ * 알림 설정 문자열을 해석한다. 두 가지 형식이 있다.
+ *
+ *   'N@HH:mm'  절대 — 시작일에서 N일 앞당긴 날의 지정 시각 ('0@09:00' = 당일 오전 9시)
+ *   '-Nm'      상대 — 시작 시각 N분 전 ('-30m' = 30분 전)
+ *
+ * 상대 형식은 일정에 시작 시각(startTime)이 있어야 뜻이 생긴다. 종일 일정에는
+ * '몇 분 전'의 기준점이 없기 때문에 remindTime 이 null 을 돌려준다.
+ *
+ * @returns {{kind:'abs',offsetDays:number,hour:number,minute:number}
+ *          |{kind:'rel',minutes:number}|null}
+ */
 export function parseRemind(remind) {
-  const m = /^(\d{1,2})@([01]\d|2[0-3]):([0-5]\d)$/.exec(String(remind || ''));
-  if (!m) return null;
-  return { offsetDays: Number(m[1]), hour: Number(m[2]), minute: Number(m[3]) };
+  const raw = String(remind || '');
+
+  const rel = /^-(\d{1,4})m$/.exec(raw);
+  if (rel) return { kind: 'rel', minutes: Number(rel[1]) };
+
+  const abs = /^(\d{1,2})@([01]\d|2[0-3]):([0-5]\d)$/.exec(raw);
+  if (abs) {
+    return { kind: 'abs', offsetDays: Number(abs[1]), hour: Number(abs[2]), minute: Number(abs[3]) };
+  }
+  return null;
 }
 
 /**
@@ -580,6 +793,15 @@ export function remindTime(t) {
   // 기준일이 회차마다 앞으로 밀리므로 매번 새로 알림이 나간다.
   const base = t.repeat ? lastOccurrenceOnOrBefore(t, todayKey()) : t.start;
   if (!base) return null;
+
+  if (r.kind === 'rel') {
+    // '몇 분 전'은 시작 시각이 있어야 기준점이 생긴다. 종일 일정에는 뜻이 없다.
+    if (!t.startTime) return null;
+    const when = fromKeyTime(base, t.startTime);
+    when.setMinutes(when.getMinutes() - r.minutes);
+    return when.getTime();
+  }
+
   const [y, mo, d] = base.split('-').map(Number);
   const when = new Date(y, mo - 1, d, r.hour, r.minute, 0, 0);
   when.setDate(when.getDate() - r.offsetDays);
@@ -616,7 +838,10 @@ export function clearReminderLog() {
   commit();
 }
 
-/** 일정 복제 — 같은 내용을 하루 뒤로 하나 더 */
+/**
+ * 일정 복제 — 같은 날짜에 같은 내용으로 하나 더.
+ * 완료 상태·알림 이력·건너뛴 회차는 원본의 사정이므로 물려받지 않는다.
+ */
 export function duplicateTask(id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return null;
@@ -629,6 +854,7 @@ export function duplicateTask(id) {
     doneAt: null,
     remindedAt: null,
     doneDates: [],
+    exceptions: [],
     createdAt: Date.now(),
   });
   copy.order = state.tasks.length;
@@ -774,6 +1000,15 @@ export function consumeCompose() {
 
 export function setEditing(id) {
   state.editingTaskId = id;
+  commit({ save: false });
+}
+
+/**
+ * 데이터는 그대로인데 다시 그려야 할 때 (날짜가 바뀌었을 때 등).
+ * '오늘'을 기준으로 계산하는 것들 — 지난 일, D-Day, 오늘 할 일 머리글 — 은
+ * 태스크가 하나도 안 바뀌어도 자정이 지나면 값이 달라진다.
+ */
+export function touch() {
   commit({ save: false });
 }
 

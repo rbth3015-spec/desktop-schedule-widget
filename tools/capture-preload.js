@@ -14,7 +14,9 @@ const t = (o) => ({ notes: '', tags: [], priority: 0, color: 'blue', done: false
 
 const SAMPLE = {
   version: 1,
-  settings: {},
+  // 첫 실행 안내와 아침 브리핑은 다른 컷을 덮으므로 기본은 꺼 둔다.
+  // 그 화면을 찍고 싶으면 --set '{"seenWelcome":false}' / '{"lastBriefDate":""}' 로 되돌린다.
+  settings: { seenWelcome: true, lastBriefDate: day(0) },
   launcher: [
     { id: 'l_cal', label: '구글 캘린더', icon: '', kind: 'url', target: 'https://calendar.google.com', order: 0 },
     { id: 'l_mail', label: '메일', icon: '', kind: 'url', target: 'https://mail.google.com', order: 1 },
@@ -30,14 +32,20 @@ const SAMPLE = {
     t({ id: 's3', title: '여름 휴가', notes: '강릉', start: day(16), end: day(20), color: 'amber', tags: ['개인'], order: 2 }),
     t({ id: 's4', title: '월간 보고서 마감', start: day(3), end: day(3), color: 'rose', priority: 2, tags: ['업무'], pinned: true, remind: '1@18:00', order: 3 }),
 
-    t({ id: 't1', title: '아침 스탠드업 회의', start: day(0), end: day(0), color: 'blue', priority: 1, tags: ['업무'], link: 'https://meet.google.com/abc-defg', remind: '0@09:00', remindedAt: Date.now() - 42 * 60000, order: 4 }),
-    t({ id: 't2', title: '장보기 — 우유, 계란, 커피', start: day(0), end: day(0), color: 'green', tags: ['개인'], order: 5 }),
-    t({ id: 't3', title: '이메일 정리', start: day(0), end: day(0), done: true, doneAt: Date.now(), color: 'slate', order: 6 }),
-    t({ id: 't4', title: '운동 40분', start: day(0), end: day(0), color: 'amber', tags: ['건강'], order: 7 }),
-    t({ id: 't5', title: '치과 예약 확인', start: day(1), end: day(1), color: 'rose', priority: 1, order: 8 }),
+    // 오늘 — 시각이 있는 것은 목록 위쪽에 시간순으로 선다
+    t({ id: 't0', title: '운동 40분', start: day(0), end: day(0), startTime: '07:00', color: 'amber', tags: ['건강'], repeat: { freq: 'weekly', interval: 1, until: null }, order: 4 }),
+    t({ id: 't1', title: '아침 스탠드업', notes: '지난주 액션 아이템 확인', start: day(0), end: day(0), startTime: '09:30', endTime: '10:00', color: 'blue', priority: 1, tags: ['업무'], link: 'https://meet.google.com/abc-defg', remind: '-10m', order: 5 }),
+    t({ id: 't2', title: '디자인 리뷰', start: day(0), end: day(0), startTime: '14:00', color: 'violet', tags: ['업무'], order: 6 }),
+    t({ id: 't3', title: '치과 예약', start: day(0), end: day(0), startTime: '18:30', color: 'rose', priority: 1, remind: '-60m', order: 7 }),
+    t({ id: 't4', title: '장보기 — 우유, 계란', start: day(0), end: day(0), color: 'green', tags: ['개인'], order: 8 }),
+    t({ id: 't5', title: '이메일 정리', start: day(0), end: day(0), done: true, doneAt: Date.now(), color: 'slate', order: 9 }),
 
-    t({ id: 'i1', title: '책상 정리하기', start: null, end: null, color: 'slate', order: 9 }),
-    t({ id: 'i2', title: '포트폴리오 사이트 리뉴얼', start: null, end: null, color: 'violet', priority: 1, tags: ['개인'], order: 10 }),
+    // 기한이 지났는데 안 끝난 일 — '지난 일' 섹션과 아침 브리핑에 잡힌다
+    t({ id: 'o1', title: '세금계산서 발행', start: day(-3), end: day(-3), color: 'rose', priority: 2, tags: ['업무'], order: 10 }),
+    t({ id: 'o2', title: '건강검진 예약', start: day(-9), end: day(-9), color: 'green', priority: 1, order: 11 }),
+
+    t({ id: 'i1', title: '책상 정리하기', start: null, end: null, color: 'slate', order: 12 }),
+    t({ id: 'i2', title: '포트폴리오 사이트 리뉴얼', start: null, end: null, color: 'violet', priority: 1, tags: ['개인'], order: 13 }),
   ],
 };
 
@@ -56,6 +64,7 @@ const noop = () => {};
 // 내보내기 내용을 검증할 수 있도록 별도 통로를 둔다.
 let lastSaveAs = null;
 let nextOpenFile = null;   // 다음 openFile 호출이 돌려줄 내용
+let lastTraySummary = null;
 
 contextBridge.exposeInMainWorld('api', {
   loadData: async () => JSON.parse(JSON.stringify(SAMPLE)),
@@ -80,9 +89,13 @@ contextBridge.exposeInMainWorld('api', {
     openBackups: async () => ({ ok: true, path: '' }),
   },
   app: {
+    getVersion: async () => ({ version: require('../package.json').version, packaged: true }),
     getAutoLaunch: async () => ({ ok: true, enabled: false, dev: true }),
     setAutoLaunch: async () => ({ ok: true, enabled: false }),
+    onFlushRequest: noop,
   },
+  // 캡처 창에는 트레이가 없다. 렌더러가 보고한 요약은 확인용으로만 담아 둔다.
+  tray: { setSummary: (s) => { lastTraySummary = s; } },
   openExternal: async () => ({ ok: true }),
   launcher: {
     run: async () => ({ ok: true }),
@@ -95,5 +108,6 @@ contextBridge.exposeInMainWorld('api', {
 
 contextBridge.exposeInMainWorld('captureProbe', {
   lastSaveAs: () => lastSaveAs,
+  lastTraySummary: () => lastTraySummary,
   setNextOpenFile: (text) => { nextOpenFile = text; },
 });

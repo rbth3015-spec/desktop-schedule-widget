@@ -3,13 +3,6 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-/** 0.3 ~ 1 로 자르기 (불량 값 방어) */
-function clampOpacity(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(1, Math.max(0.3, n));
-}
-
 const api = {
   // ------------------------------------------------------------ 데이터
   loadData: () => ipcRenderer.invoke('data:load'),
@@ -20,7 +13,6 @@ const api = {
     minimize: () => ipcRenderer.send('window:minimize'),
     hide: () => ipcRenderer.send('window:hide'),
     setAlwaysOnTop: (on) => ipcRenderer.send('window:setAlwaysOnTop', !!on),
-    setOpacity: (value) => ipcRenderer.send('window:setOpacity', clampOpacity(value)),
     setIgnoreMouseEvents: (on) => ipcRenderer.send('window:setIgnoreMouseEvents', !!on),
     getBounds: () => ipcRenderer.invoke('window:getBounds'),
     setSize: (w, h) => ipcRenderer.send('window:setSize', Number(w), Number(h)),
@@ -29,8 +21,21 @@ const api = {
 
   // ------------------------------------------------------------ 앱 설정
   app: {
+    getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
     setAutoLaunch: (on) => ipcRenderer.invoke('app:setAutoLaunch', !!on),
+
+    /**
+     * 메인이 '지금 저장을 마무리하라'고 요청할 때 불린다 (창 숨김 / 앱 종료 직전).
+     * 저장은 250ms 디바운스라, 마지막 편집 직후 종료하면 그대로 날아간다.
+     * 콜백이 끝나면 같은 token 으로 ack 를 돌려줘야 메인이 종료를 이어간다.
+     */
+    onFlushRequest: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('app:flush', (_event, token) => {
+        Promise.resolve(cb()).finally(() => ipcRenderer.send('app:flushed', token));
+      });
+    },
   },
 
   // ------------------------------------------------------------ 데이터 내보내기/가져오기
@@ -88,8 +93,27 @@ const api = {
     },
   },
 
+  // ------------------------------------------------------------ 트레이 요약
+  // 창을 열지 않아도 오늘 몫을 알 수 있도록 렌더러가 주기적으로 보고한다.
+  // 문자열/숫자만 넘긴다 — 태스크 객체를 통째로 보내지 않는다.
+  tray: {
+    setSummary: (summary) => ipcRenderer.send('tray:summary', {
+      today: Number(summary?.today) || 0,
+      overdue: Number(summary?.overdue) || 0,
+      items: Array.isArray(summary?.items)
+        ? summary.items.slice(0, 5).map((it) => ({
+            id: String(it?.id ?? ''),
+            title: String(it?.title ?? '').slice(0, 60),
+            time: String(it?.time ?? ''),
+            done: !!it?.done,
+          }))
+        : [],
+    }),
+  },
+
   // ------------------------------------------------------------ 트레이 메뉴 -> 렌더러
-  // 'today' | 'settings' | 'toggle-completed' (+ 전역 단축키 해제 시 'unlock')
+  // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue'
+  // | 'open-task:<id>' (+ 전역 단축키 해제 시 'unlock')
   onMenuAction: (cb) => {
     if (typeof cb !== 'function') return;
     // 이벤트 객체는 넘기지 않는다 — 액션 문자열만 전달.

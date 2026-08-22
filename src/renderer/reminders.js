@@ -4,7 +4,7 @@
 // 필요해 일반 Electron 앱에서 읽을 수 없다. 그래서 '남의 알림을 수집'하는 대신
 // 이 앱이 자기 일정으로 직접 알림을 띄우고, 그 기록을 자체 보관한다.
 
-import { fromKey, WEEKDAY_LABELS } from './lib/date.js';
+import { fromKey, formatTimeKo, WEEKDAY_LABELS } from './lib/date.js';
 
 const TICK_MS = 30_000;          // 30초마다 확인 (상시 구동이라 더 자주 돌 이유가 없다)
 const STALE_MS = 6 * 60 * 60_000; // 6시간 넘게 지난 건 조용히 지나간 것으로 처리
@@ -65,8 +65,10 @@ function describe(task) {
   const d = fromKey(task.start);
   const when = `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
   const span = task.end && task.end > task.start ? ` ~ ${spanLabel(task.end)}` : '';
+  // 시각이 있으면 알림 본문에서 가장 쓸모 있는 정보다 — 날짜 바로 뒤에 붙인다
+  const time = task.startTime ? ` ${formatTimeKo(task.startTime)}` : '';
   const note = task.notes ? `\n${task.notes.slice(0, 120)}` : '';
-  return `${when}${span}${note}`;
+  return `${when}${span}${time}${note}`;
 }
 
 function spanLabel(key) {
@@ -74,9 +76,20 @@ function spanLabel(key) {
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
-/** 'N@HH:mm' → '당일 오전 9:00' 같은 사람이 읽는 문구 */
+/** 알림 설정 → 사람이 읽는 문구. '0@09:00' → '당일 오전 9:00', '-30m' → '30분 전' */
 export function remindLabel(remind) {
-  const m = /^(\d{1,2})@([01]\d|2[0-3]):([0-5]\d)$/.exec(String(remind || ''));
+  const raw = String(remind || '');
+
+  // 상대 알림 — 시작 시각이 있는 일정에서만 쓰인다
+  const rel = /^-(\d{1,4})m$/.exec(raw);
+  if (rel) {
+    const mins = Number(rel[1]);
+    if (mins < 60) return `${mins}분 전`;
+    if (mins % 60 === 0) return `${mins / 60}시간 전`;
+    return `${Math.floor(mins / 60)}시간 ${mins % 60}분 전`;
+  }
+
+  const m = /^(\d{1,2})@([01]\d|2[0-3]):([0-5]\d)$/.exec(raw);
   if (!m) return '';
   const days = Number(m[1]);
   const hour = Number(m[2]);

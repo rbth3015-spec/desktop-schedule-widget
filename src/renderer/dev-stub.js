@@ -27,7 +27,11 @@
         color: 'rose', priority: 2, tags: ['업무'], pinned: true, order: 3, createdAt: Date.now() },
 
       { id: 't1', title: '아침 스탠드업 회의', notes: '', start: day(0), end: day(0),
+        startTime: '09:30', endTime: '10:00',
         color: 'blue', priority: 1, tags: ['업무'], order: 4, createdAt: Date.now() },
+      { id: 't1b', title: '디자인 리뷰', notes: '', start: day(0), end: day(0),
+        startTime: '14:00',
+        color: 'violet', priority: 0, tags: ['업무'], order: 12, createdAt: Date.now() },
       { id: 't2', title: '장보기 — 우유, 계란', notes: '', start: day(0), end: day(0),
         color: 'green', priority: 0, tags: ['개인'], order: 5, createdAt: Date.now() },
       { id: 't3', title: '이메일 정리', notes: '', start: day(0), end: day(0), done: true,
@@ -38,6 +42,12 @@
         color: 'rose', priority: 1, tags: [], order: 8, createdAt: Date.now() },
       { id: 't6', title: '전기요금 납부', notes: '', start: day(2), end: day(2),
         color: 'blue', priority: 0, tags: [], order: 9, createdAt: Date.now() },
+
+      // 밀린 일 — '지난 일' 섹션과 아침 브리핑을 확인하기 위한 샘플
+      { id: 'o1', title: '세금계산서 발행', notes: '', start: day(-3), end: day(-3),
+        color: 'rose', priority: 2, tags: ['업무'], order: 13, createdAt: Date.now() },
+      { id: 'o2', title: '건강검진 예약', notes: '', start: day(-9), end: day(-9),
+        color: 'green', priority: 1, tags: [], order: 14, createdAt: Date.now() },
 
       { id: 'i1', title: '책상 정리하기', notes: '', start: null, end: null,
         color: 'slate', priority: 0, tags: [], order: 10, createdAt: Date.now() },
@@ -62,8 +72,6 @@
       minimize: () => console.log('[dev] minimize'),
       hide: () => console.log('[dev] hide'),
       setAlwaysOnTop: (on) => console.log('[dev] alwaysOnTop', on),
-      // 브라우저에서는 창 투명도를 흉내 낼 수 없으므로 무시한다 (레이아웃 확인이 목적)
-      setOpacity: (v) => console.log('[dev] opacity', v),
       setIgnoreMouseEvents: (on) => console.log('[dev] ignoreMouse', on),
       getBounds: async () => ({ ...win }),
       setSize: (w, h) => { win.width = w; win.height = h; console.log('[dev] setSize', w, h); },
@@ -94,6 +102,15 @@
       openBackups: async () => ({ ok: true, path: '(dev)' }),
     },
 
+    // 트레이가 없으므로 요약은 콘솔에만 남긴다.
+    // window.__devTraySummary 로 마지막 보고를 들여다볼 수 있다.
+    tray: {
+      setSummary: (summary) => {
+        window.__devTraySummary = summary;
+        console.log('[dev] tray', summary);
+      },
+    },
+
     // 브라우저에는 OS 알림을 띄울 수 없으므로 콘솔로만 확인한다
     reminder: {
       notify: async (payload) => { console.log('[dev] notify', payload); return { ok: true }; },
@@ -101,6 +118,7 @@
     },
 
     app: {
+      getVersion: async () => ({ version: '개발 실행', packaged: false }),
       getAutoLaunch: async () => ({ ok: true, enabled: false, dev: true }),
       setAutoLaunch: async () => ({ ok: false, dev: true, error: '개발 실행 중에는 설정되지 않습니다.' }),
     },

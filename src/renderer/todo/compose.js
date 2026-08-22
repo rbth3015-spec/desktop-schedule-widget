@@ -3,8 +3,16 @@
 // 빠른 입력(@내일 ~3d #태그)은 익힌 사람에게는 빠르지만, 처음 쓰는 사람에게는
 // 외워야 할 문법이다. 이 폼은 문법을 전혀 몰라도 **누르기만 해서** 일정을 만들 수 있는
 // 기본 경로다. 모든 선택지가 눈에 보이는 것이 핵심 — 숨은 규칙이 없어야 한다.
+//
+// 날짜는 '여러 날에 걸쳐' 토글로 모드를 나누지 않는다. 시작과 종료를 늘 나란히 두고,
+// 둘이 같으면 그게 하루짜리다. 데이터 모델이 원래 그 모양이고(end 는 항상 채워진다),
+// 상세 패널도 이미 시작/종료 두 칸이라 폼만 달랐다. 모드를 없애면 '여러 날짜리를
+// 만들 수 있다'는 사실이 숨지 않는다는 게 더 크다.
+//
+// 대신 폼 아래에 '무엇이 만들어지는지' 한 줄로 되읽어 준다. 이 한 줄이 있으면
+// 설명 문구를 따로 달 필요가 없다 — 화면이 스스로 설명한다.
 
-import { todayKey, addDays, fromKey, WEEKDAY_LABELS } from '../lib/date.js';
+import { todayKey, addDays, diffDays, fromKey, WEEKDAY_LABELS } from '../lib/date.js';
 import { icon } from '../lib/icons.js';
 
 function h(tag, cls, text) {
@@ -23,7 +31,7 @@ function field(labelText, control) {
 
 /**
  * 하나만 고르는 버튼 묶음. select 보다 선택지가 한눈에 보인다.
- * @returns {{el:HTMLElement, get:()=>string, set:(v:string)=>void}}
+ * @returns {{el:HTMLElement, get:()=>string, set:(v:string)=>void, button:(v:string)=>HTMLElement|null}}
  */
 function chipGroup(options, initial, onChange) {
   const el = h('div', 'cmp-chips');
@@ -47,7 +55,7 @@ function chipGroup(options, initial, onChange) {
   }
   set(initial);
 
-  return { el, get: () => value, set };
+  return { el, get: () => value, set, button: (v) => buttons.get(v) || null };
 }
 
 /** '8월 20일 (목)' */
@@ -55,6 +63,28 @@ function pretty(key) {
   if (!key) return '';
   const d = fromKey(key);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
+}
+
+/**
+ * 만들어질 일정을 사람 말로 한 줄 되읽어 준다.
+ * 이 줄이 폼 아래에 늘 있으면 '시작=종료면 하루' 같은 규칙을 따로 설명할 필요가 없다.
+ */
+export function whenSummary({ start, end, startTime, endTime, freq }) {
+  if (!start) return '';
+
+  const repeatPart = freq ? `${REPEAT_LABEL_MAP[freq] || ''} 반복 · ` : '';
+
+  // 여러 날에 걸친 일정
+  if (!freq && end && end > start) {
+    const days = diffDays(start, end) + 1;
+    const time = startTime ? ` · ${startTime} 시작` : '';
+    return `${pretty(start)} → ${pretty(end)} · ${days}일간${time}`;
+  }
+
+  // 하루짜리
+  if (!startTime) return `${repeatPart}${pretty(start)} · 하루 종일`;
+  if (endTime) return `${repeatPart}${pretty(start)} · ${startTime}–${endTime}`;
+  return `${repeatPart}${pretty(start)} · ${startTime}`;
 }
 
 /** 다가오는 토요일 (오늘이 토요일이면 오늘) */
@@ -76,8 +106,14 @@ const REPEAT_OPTIONS = [
   ['monthly', '매월'], ['yearly', '매년'],
 ];
 
+const REPEAT_LABEL_MAP = Object.fromEntries(REPEAT_OPTIONS.filter(([v]) => v));
+
+// '-Nm' 은 시작 시각 N분 전. 시각을 넣은 일정에서만 보인다.
 const REMIND_OPTIONS = [
   ['', '없음'],
+  ['-10m', '10분 전'],
+  ['-30m', '30분 전'],
+  ['-60m', '1시간 전'],
   ['0@09:00', '당일 아침'],
   ['0@18:00', '당일 저녁'],
   ['1@18:00', '하루 전'],
@@ -103,11 +139,30 @@ export function createCompose({ store }) {
   titleIn.required = true;
   titleIn.spellcheck = false;
 
-  // ---------------------------------------------------------------- 날짜
+  // 반복 칩은 아래에서 만들지만 '언제' 블록이 먼저 참조한다(반복이면 종료를 잠근다).
+  // const 로 두면 시간대 오류(TDZ)가 나므로 let 으로 미리 선언해 둔다.
+  let repeat = null;
+
+  // ---------------------------------------------------------------- 언제
+  //
+  // 시작 / 종료가 늘 함께 보인다. 둘이 같으면 하루짜리다.
+  // 시각 칸은 비워 두면 '종일' — 빈 --:-- 자체가 그 뜻을 말해 준다.
+
   const startIn = h('input', 'cmp-date');
   startIn.type = 'date';
+  startIn.setAttribute('aria-label', '시작 날짜');
 
-  const startLabel = h('span', 'cmp-datelabel');
+  const startTimeIn = h('input', 'cmp-time');
+  startTimeIn.type = 'time';
+  startTimeIn.setAttribute('aria-label', '시작 시각 (비우면 종일)');
+
+  const endIn = h('input', 'cmp-date');
+  endIn.type = 'date';
+  endIn.setAttribute('aria-label', '종료 날짜');
+
+  const endTimeIn = h('input', 'cmp-time');
+  endTimeIn.type = 'time';
+  endTimeIn.setAttribute('aria-label', '종료 시각');
 
   const dayChips = chipGroup(
     [['today', '오늘'], ['tomorrow', '내일'], ['weekend', '이번 주말'], ['nextweek', '다음 주']],
@@ -120,66 +175,98 @@ export function createCompose({ store }) {
         weekend: nextWeekend(base),
         nextweek: nextMonday(base),
       };
-      startIn.value = map[v];
-      syncDates();
+      setStart(map[v]);
     }
   );
 
-  const startRow = h('div', 'cmp-row');
-  startRow.append(startIn, startLabel);
-
-  // --- 기간 ---
-  const spanToggle = h('button', 'cmp-toggle');
-  spanToggle.type = 'button';
-  spanToggle.append(icon('plus'), h('span', null, '여러 날에 걸쳐'));
-
-  const endIn = h('input', 'cmp-date');
-  endIn.type = 'date';
-  const endLabel = h('span', 'cmp-datelabel');
-
+  // 종료를 시작에서 며칠 뒤로 미는 버튼. '기간 일정'이라는 말을 안 써도
+  // 눌러 보면 종료 칸이 따라 바뀌는 게 보이므로 설명이 필요 없다.
   const lenChips = chipGroup(
-    [['1', '2일'], ['2', '3일'], ['4', '5일'], ['6', '1주']],
-    null,
+    [['0', '하루'], ['1', '+1일'], ['2', '+2일'], ['4', '+4일'], ['6', '+1주']],
+    '0',
     (v) => {
       endIn.value = addDays(startIn.value || todayKey(), Number(v));
-      syncDates();
+      syncWhen();
     }
   );
 
-  const endRow = h('div', 'cmp-row');
-  endRow.append(endIn, endLabel);
+  const startRow = h('div', 'cmp-when__row');
+  startRow.append(h('span', 'cmp-when__key', '시작'), startIn, startTimeIn);
 
-  const spanBox = h('div', 'cmp-span');
-  spanBox.append(field('마지막 날', endRow), lenChips.el);
-  spanBox.hidden = true;
+  const endRow = h('div', 'cmp-when__row');
+  endRow.append(h('span', 'cmp-when__key', '종료'), endIn, endTimeIn);
 
-  let spanOn = false;
-  spanToggle.addEventListener('click', () => {
-    setSpan(!spanOn);
-    if (spanOn) {
-      if (!endIn.value || endIn.value < startIn.value) endIn.value = addDays(startIn.value, 1);
-      syncDates();
+  // 만들어질 일정을 그대로 되읽어 주는 줄. 도움말을 대신한다.
+  const summary = h('div', 'cmp-when__summary');
+  summary.setAttribute('aria-live', 'polite');
+
+  const whenBox = h('div', 'cmp-when');
+  whenBox.append(dayChips.el, startRow, endRow, lenChips.el, summary);
+
+  // 시작이 바뀌기 직전의 값. change 이벤트가 올 때 input.value 는 이미 새 값이라
+  // 여기 없으면 '며칠짜리였는지'를 알 수 없어 기간이 무너진다.
+  let prevStartKey = null;
+
+  /** 시작을 옮기면 종료도 같은 간격을 유지한 채 따라온다 (기간 길이 보존) */
+  function setStart(key) {
+    const base = prevStartKey || startIn.value || key;
+    const prevEnd = endIn.value || base;
+    const span = Math.max(0, diffDays(base, prevEnd));
+    startIn.value = key;
+    endIn.value = addDays(key, repeatFreq() ? 0 : span);
+    syncWhen();
+  }
+
+  function repeatFreq() {
+    return repeat ? repeat.get() : '';
+  }
+
+  /**
+   * 입력값을 규칙에 맞게 정리하고 요약을 다시 쓴다.
+   * 잘못된 조합은 에러로 막지 않고 조용히 바로잡는다 — 사용자가 틀린 게 아니라
+   * 아직 순서대로 고르는 중일 뿐이다.
+   */
+  function syncWhen() {
+    if (!startIn.value) startIn.value = todayKey();
+
+    // 종료가 시작보다 빠르면 시작에 맞춘다
+    if (!endIn.value || endIn.value < startIn.value) endIn.value = startIn.value;
+
+    // 시작 시각이 없으면 종료 시각도 뜻이 없다
+    if (!startTimeIn.value) endTimeIn.value = '';
+    endTimeIn.disabled = !startTimeIn.value;
+
+    // 하루짜리인데 종료 시각이 시작보다 빠르면 비운다 (store 와 같은 규칙)
+    const sameDay = endIn.value === startIn.value;
+    if (startTimeIn.value && endTimeIn.value && sameDay
+        && endTimeIn.value <= startTimeIn.value) {
+      endTimeIn.value = '';
     }
-  });
 
-  function setSpan(on) {
-    spanOn = on;
-    spanBox.hidden = !on;
-    spanToggle.classList.toggle('is-on', on);
-    spanToggle.querySelector('span').textContent = on ? '하루만' : '여러 날에 걸쳐';
+    // 며칠짜리인지에 맞춰 길이 칩을 켠다
+    const span = String(diffDays(startIn.value, endIn.value));
+    lenChips.set(['0', '1', '2', '4', '6'].includes(span) ? span : null);
+
+    syncRemindOptions();
+
+    summary.textContent = whenSummary({
+      start: startIn.value,
+      end: endIn.value,
+      startTime: startTimeIn.value,
+      endTime: endTimeIn.value,
+      freq: repeatFreq(),
+    });
+
+    prevStartKey = startIn.value;
   }
 
   startIn.addEventListener('change', () => {
     dayChips.set(null);
-    if (spanOn && endIn.value && endIn.value < startIn.value) endIn.value = startIn.value;
-    syncDates();
+    setStart(startIn.value || todayKey());
   });
-  endIn.addEventListener('change', () => { lenChips.set(null); syncDates(); });
-
-  function syncDates() {
-    startLabel.textContent = pretty(startIn.value);
-    endLabel.textContent = pretty(endIn.value);
-  }
+  endIn.addEventListener('change', () => syncWhen());
+  startTimeIn.addEventListener('change', () => syncWhen());
+  endTimeIn.addEventListener('change', () => syncWhen());
 
   // ---------------------------------------------------------------- 색·우선순위
   let pickedColor = 'blue';
@@ -202,14 +289,31 @@ export function createCompose({ store }) {
   const prio = chipGroup(PRIORITY_OPTIONS, '0');
 
   // ---------------------------------------------------------------- 반복·알림
-  const repeat = chipGroup(REPEAT_OPTIONS, '', (v) => {
-    // 반복은 당일 일정만 지원한다 — 켜면 기간을 접는다
-    if (v) setSpan(false);
-    spanToggle.disabled = !!v;
-    spanToggle.classList.toggle('is-disabled', !!v);
+  repeat = chipGroup(REPEAT_OPTIONS, '', (v) => {
+    // 반복은 당일 일정만 지원한다 — 켜면 종료를 시작에 붙이고 잠근다.
+    // 칸을 숨기지 않고 잠그기만 하는 이유: 사라지면 왜 못 고치는지 알 수 없다.
+    if (v) endIn.value = startIn.value;
+    endIn.disabled = !!v;
+    lenChips.el.classList.toggle('is-disabled', !!v);
+    for (const b of lenChips.el.children) b.disabled = !!v;
+    syncWhen();
   });
 
+  // 시각이 있는 일정에만 뜻이 있는 상대 알림('30분 전')은 시각을 넣으면 나타난다.
   const remind = chipGroup(REMIND_OPTIONS, '');
+
+  /** 시작 시각 유무에 따라 알림 선택지를 바꾼다 */
+  function syncRemindOptions() {
+    const timed = !!startTimeIn.value;
+    for (const [value] of REMIND_OPTIONS) {
+      const btn = remind.button(value);
+      if (!btn) continue;
+      const relOnly = value.startsWith('-');
+      btn.hidden = relOnly && !timed;
+    }
+    // 시각을 지웠는데 '30분 전'이 골라져 있으면 기준점이 없다 — 없음으로 되돌린다
+    if (!timed && remind.get().startsWith('-')) remind.set('');
+  }
 
   // ---------------------------------------------------------------- 태그·링크
   const tagsIn = h('input', 'cmp-input');
@@ -280,10 +384,7 @@ export function createCompose({ store }) {
   form.append(
     head,
     titleIn,
-    field('언제', dayChips.el),
-    startRow,
-    spanToggle,
-    spanBox,
+    whenBox,
     field('색', swatches),
     field('중요도', prio.el),
     moreBtn,
@@ -306,23 +407,24 @@ export function createCompose({ store }) {
     titleIn.value = '';
     startIn.value = start;
     endIn.value = end;
+    startTimeIn.value = '';
+    endTimeIn.value = '';
     linkIn.value = '';
     tagsIn.value = '';
     prio.set('0');
     repeat.set('');
     remind.set('');
     dayChips.set(start === todayKey() ? 'today' : null);
-    lenChips.set(null);
-    spanToggle.disabled = false;
-    spanToggle.classList.remove('is-disabled');
-    setSpan(end > start);
+    endIn.disabled = false;
+    lenChips.el.classList.remove('is-disabled');
+    for (const b of lenChips.el.children) b.disabled = false;
     moreBox.hidden = true;
     moreBtn.classList.remove('is-on');
     err.hidden = true;
     pickedColor = 'blue';
     for (const k of Object.keys(swatchBtns)) swatchBtns[k].classList.toggle('is-on', k === 'blue');
 
-    syncDates();
+    syncWhen();
     form.hidden = false;
     titleIn.focus();
   }
@@ -355,18 +457,22 @@ export function createCompose({ store }) {
     const title = titleIn.value.trim();
     if (!title) { fail('일정 이름을 적어 주세요.', titleIn); return; }
 
+    // syncWhen 이 이미 시작/종료를 정리해 두므로 여기서 되돌릴 조합은 없다.
+    // (종료가 앞서면 시작에 맞추고, 시각 조합도 그때 정돈된다)
+    syncWhen();
     const start = startIn.value || store.getState().selectedDate;
-    const end = spanOn && endIn.value ? endIn.value : start;
-    if (end < start) { fail('마지막 날이 시작일보다 빠릅니다.', endIn); return; }
+    const freq = repeat.get();
+    const end = freq ? start : (endIn.value || start);
 
     const link = normalizeLink(linkIn.value);
     if (link === null) { fail('링크 주소를 확인해 주세요.', linkIn); return; }
 
-    const freq = repeat.get();
     store.addTask({
       title,
       start,
-      end: freq ? start : end,
+      end,
+      startTime: startTimeIn.value || null,
+      endTime: endTimeIn.value || null,
       link,
       color: pickedColor,
       priority: Number(prio.get()) || 0,

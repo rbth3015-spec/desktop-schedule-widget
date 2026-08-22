@@ -1,11 +1,12 @@
 {
   "name": "schedule-widget",
-  "version": "0.2.0",
-  "description": "바탕화면 상주형 일정관리 위젯 — 캘린더(장기 계획) + 할 일 목록",
+  "version": "1.0.0",
+  "description": "바탕화면 상주형 일정관리 비서 — 캘린더(장기 계획) + 할 일 목록 + 밀린 일·브리핑",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "node tools/dev-server.js",
+    "screens": "node tools/screens.js",
     "icon": "electron tools/make-icon.js",
     "dist": "electron-builder --win",
     "pack": "electron-builder --win --dir"
@@ -14,8 +15,13 @@
     "name": "rbth3015-spec"
   },
   "license": "MIT",
+  "homepage": "https://github.com/rbth3015-spec/desktop-schedule-widget",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rbth3015-spec/desktop-schedule-widget.git"
+  },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "electron": "^43.4.1",
     "electron-builder": "^26.15.3"
   },
   "build": {
@@ -57,7 +63,9 @@
       "language": "1042",
       "deleteAppDataOnUninstall": false,
       "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "uninstallerIcon": "build/icon.ico",
+      "allowElevation": false,
+      "runAfterFinish": true
     }
   }
 }

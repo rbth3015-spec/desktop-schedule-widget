@@ -238,14 +238,37 @@
 .todo-section { padding-top: 4px; }
 .todo-section:empty { display: none; }
 
+/* 머리글은 줄만 잡는 껍데기. 접기 버튼과 동작 버튼이 그 안에서 형제로 앉는다. */
 .todo-section__head {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 10px 14px 5px;
-  cursor: pointer;
   user-select: none;
 }
+
+/* 접기 버튼 — 캐럿·제목·개수를 품는다 */
+.todo-section__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 섹션 머리글의 동작 버튼 자리 — 오른쪽 끝에 붙는다 */
+.todo-section__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.todo-section__actions:empty { display: none; }
 
 .todo-section__caret {
   font-size: 9px;
@@ -281,6 +304,14 @@
 }
 .todo-item:first-child { border-top: none; }
 .todo-item.is-dragging { opacity: .4; }
+
+/* 키보드로 고른 항목. 마우스 클릭으로는 테두리가 뜨지 않게 :focus-visible 을 쓴다. */
+.todo-item:focus { outline: none; }
+.todo-item:focus-visible {
+  outline: none;
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 
 .todo-item__row {
   display: flex;
@@ -641,57 +672,77 @@
   font-weight: 600;
 }
 
-/* ------------------------------------------------------------ 날짜 */
+/* ------------------------------------------------------------ 언제(날짜·시각) */
+/*
+ * 시작과 종료가 늘 나란히 있고, 둘이 같으면 하루짜리다.
+ * 모드가 없으므로 '펼침' 상태를 나타낼 장식도 필요 없다 — 괘선 하나로 묶기만 한다.
+ */
 
-.cmp-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.cmp-when {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border-left: 2px solid var(--accent-soft);
+  background: var(--bg-solid);
+}
 
-.cmp-date {
+.cmp-when__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* '시작' / '종료' — 두 줄의 폭을 맞춰 날짜 칸이 세로로 정렬되게 한다 */
+.cmp-when__key {
+  flex: 0 0 auto;
+  width: 2.4em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  color: var(--text-faint);
+}
+
+.cmp-date,
+.cmp-time {
   padding: 5px 8px;
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: var(--bg-solid);
+  color: var(--text);
   font-family: var(--font-serif);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   outline: none;
-  transition: border-color .16s;
+  transition: border-color .16s, opacity .16s;
 }
-.cmp-date:focus { border-color: var(--accent); }
+.cmp-date { flex: 1 1 auto; min-width: 0; }
+/* 한국어 로케일의 time 입력은 '오후 03:00' + 시계 아이콘까지 그린다.
+   좁게 잡으면 Chromium 이 분 자리를 말없이 잘라 낸다 — overflow 로 보고되지도 않는다. */
+.cmp-time { flex: 0 0 auto; width: 9.8em; }
+.cmp-date:focus,
+.cmp-time:focus { border-color: var(--accent); }
 
-.cmp-datelabel {
+/* 잠긴 칸은 숨기지 않고 흐리게 둔다 — 사라지면 왜 못 고치는지 알 수 없다 */
+.cmp-date:disabled,
+.cmp-time:disabled { opacity: .38; cursor: default; }
+
+.cmp-when .cmp-chips.is-disabled { opacity: .38; }
+
+/*
+ * 만들어질 일정을 그대로 되읽어 주는 줄.
+ * 이 한 줄이 '시작=종료면 하루' 같은 규칙의 설명을 대신한다.
+ */
+.cmp-when__summary {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule);
   font-family: var(--font-serif);
   font-size: 12px;
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
-
-/* 기간 토글 — 스위치가 아니라 '눌러서 펴는' 버튼 */
-.cmp-toggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px 5px 8px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 2px;
-  font-size: 11.5px;
-  color: var(--text-dim);
-  transition: border-color .16s, color .16s;
-}
-.cmp-toggle:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.cmp-toggle .icon { width: .8em; height: .8em; transition: transform .2s; }
-.cmp-toggle.is-on { border-style: solid; color: var(--accent); border-color: var(--accent); }
-.cmp-toggle.is-on .icon { transform: rotate(45deg); }
-.cmp-toggle.is-disabled { opacity: .4; cursor: default; }
-
-.cmp-span {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-left: 2px solid var(--accent-soft);
-  background: var(--bg-solid);
-}
-.cmp-span[hidden] { display: none; }
+.cmp-when__summary:empty { display: none; }
 
 /* ------------------------------------------------------------ 색 */
 
@@ -822,3 +873,91 @@
 }
 .todo-detail__pin:hover { border-color: var(--accent); color: var(--accent); }
 .todo-detail__pin.is-on { border-color: var(--accent); color: var(--accent); }
+
+/* ------------------------------------------------------------ 지난 일 */
+/*
+ * 기한이 지났는데 안 끝난 일. 다그치는 붉은 경고가 아니라
+ * '여기 남아 있다'고 조용히 알리는 정도의 강조로 둔다.
+ */
+
+.todo-section--overdue {
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+.todo-section--overdue .todo-section__title { color: var(--accent); }
+
+.todo-rollup {
+  padding: 3px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  font-size: 10.5px;
+  color: var(--accent);
+  white-space: nowrap;
+  transition: background .16s, color .16s;
+}
+.todo-rollup:hover { background: var(--accent); color: var(--on-color); }
+
+/* ------------------------------------------------------------ 항목의 시각 */
+
+.todo-time {
+  flex: 0 0 auto;
+  font-family: var(--font-serif);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  letter-spacing: .02em;
+}
+.todo-time[hidden] { display: none; }
+.todo-item.is-done .todo-time { opacity: .4; }
+
+/* ------------------------------------------------------------ 상세: 언제 */
+/* 추가 폼(.cmp-when)과 같은 배치 — 만들 때와 고칠 때가 달라선 안 된다 */
+
+.todo-detail__when {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.todo-detail__whenrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.todo-detail__whenrow .todo-detail__date { flex: 1 1 auto; min-width: 0; }
+
+.todo-detail__whenkey {
+  flex: 0 0 auto;
+  width: 2.4em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  color: var(--text-faint);
+}
+
+.todo-detail__time {
+  flex: 0 0 auto;
+  width: 9.8em;   /* '오후 03:00' + 시계 아이콘이 잘리지 않는 최소 폭 */
+  padding: 4px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--bg-solid);
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color .16s, opacity .16s;
+}
+.todo-detail__time:focus { border-color: var(--accent); }
+.todo-detail__time:disabled,
+.todo-detail__date:disabled { opacity: .38; cursor: default; }
+
+.todo-detail__whensummary {
+  padding-top: 5px;
+  font-family: var(--font-serif);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.todo-detail__whensummary:empty { display: none; }
