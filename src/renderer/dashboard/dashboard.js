@@ -204,7 +204,10 @@ export function createDashboard({ root, store }) {
       'dash-empty__desc',
       '캘린더나 목록에서 중요한 일정을 고정하면 여기에 남은 기간이 표시됩니다.',
     ),
-    h('span', 'dash-empty__how', "목록에서 일정을 눌러 펼친 뒤 'D-Day에 고정' 을 누르세요."),
+    // 끌어다 놓기가 훨씬 짧은 길이므로 그것부터 알려 준다.
+    // 버튼 경로도 남겨 둔다 — 마우스를 못 쓰는 상황이 있다.
+    h('span', 'dash-empty__how',
+      "일정을 여기로 끌어다 놓으세요. 항목을 펼쳐 'D-Day에 고정' 을 눌러도 됩니다."),
   );
 
   body.append(grid, empty);
