@@ -216,6 +216,17 @@ NSIS 설치 관리자를 만든다. 설치 위치를 고를 수 있고, 관리�
 > `.ico` 는 `tools/make-icon.js` 가 직접 만든다. electron-builder 의 PNG→ICO 변환기가
 > 이 환경에서 WebAssembly 메모리 할당에 실패해서, ICO 컨테이너를 규격대로 직접 조립한다.
 
+### README 스크린샷 다시 뽑기
+
+```bash
+npm run screens
+```
+
+실제 앱의 렌더러를 그대로 띄워 `capturePage` 로 굽는다(`tools/capture.js`).
+사용자 데이터는 건드리지 않고 `tools/capture-preload.js` 의 샘플만 쓰며,
+창은 화면 밖(-4000)에 띄우므로 작업 중에 눈에 띄지 않는다.
+화면이 바뀌면 이 명령만 다시 돌리면 된다 — 손으로 찍는 것과 달리 결과가 재현된다.
+
 ### 브라우저 미리보기
 
 UI 만 빠르게 확인할 때는 Electron 없이 브라우저로 띄울 수 있다.

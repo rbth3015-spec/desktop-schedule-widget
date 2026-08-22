@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "node tools/dev-server.js",
+    "screens": "node tools/screens.js",
     "icon": "electron tools/make-icon.js",
     "dist": "electron-builder --win",
     "pack": "electron-builder --win --dir"
