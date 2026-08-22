@@ -55,6 +55,10 @@ const DEFAULT_SETTINGS = {
   weekStart: 0,           // 0=일요일
   calendarView: 'month',  // 'month' | 'week' — 주간 뷰는 좁은 위젯에서 유용하다
   fontScale: 1,           // 0.8 ~ 1.4
+  // 글꼴. 값은 base.css 의 [data-font] / [data-font-serif] 선택자 키와 같다.
+  // 'default' 면 손대지 않고 기본(Pretendard / 나눔명조)을 쓴다.
+  font: 'default',        // 본문 산세리프
+  fontSerif: 'default',   // 날짜·표제 명조
   sortMode: 'manual',     // 'manual' = 드래그 순서 우선 | 'priority' = 우선순위 우선
 
   // --- 외형 ---

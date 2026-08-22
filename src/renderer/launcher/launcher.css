@@ -541,15 +541,26 @@
 }
 
 .lnch-item {
-  width: 28px;
-  height: 26px;
+  width: 30px;
+  height: 28px;
   border-radius: 2px;
   color: var(--text-faint);
   transition: color .16s, background .16s;
 }
-.lnch-item:hover { color: var(--accent); background: var(--pane-hover); }
-.lnch-item__icon { font-size: 13px; }
-.lnch-item__icon .icon { width: 1em; height: 1em; }
+/* 판이 이미 배경을 가지므로 항목 자체는 칠하지 않는다 — 두 겹으로 칠하면 탁해진다 */
+.lnch-item:hover { color: var(--accent); background: none; }
+
+/* 책갈피 띠에 맞춰 판을 조금 줄이고 모서리를 눕힌다.
+   도크가 알약이 아니라 지면에 끼운 띠이므로 판도 각진 인장에 가깝게. */
+.lnch-item__plate {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+.lnch-item__icon { font-size: 12px; }
+.lnch-item__icon.is-monogram { font-size: 11.5px; }
+.lnch-item__icon.is-glyph .icon { width: 11px; height: 11px; }
+.lnch-item__icon.is-emoji { font-size: 12.5px; }
 
 .lnch-add {
   width: 26px;
@@ -625,10 +636,52 @@
   color: var(--text-faint);
 }
 
-/* 이니셜 — 아이콘 대신 이름 첫 글자를 새긴다 */
+/* ------------------------------------------------------------ 아이콘 판 */
+/*
+ * 도크에 낱글자('구', '메')가 흩어져 있으면 아이콘이 아니라 오려 붙인 글자처럼 보인다.
+ * 인장을 찍듯 안료 판 위에 새긴다 — 일정 색과 같은 붓(store.COLORS)을 쓰고,
+ * 색은 이름에서 해시로 뽑아 늘 같은 자리에 같은 색이 오게 한다.
+ */
+.lnch-item__plate {
+  --lnch-ink: var(--accent);
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--lnch-ink) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lnch-ink) 45%, transparent);
+  color: color-mix(in srgb, var(--lnch-ink) 72%, var(--text));
+  transition: background .14s, box-shadow .14s;
+}
+.lnch-item:hover .lnch-item__plate,
+.lnch-item:focus-visible .lnch-item__plate {
+  background: color-mix(in srgb, var(--lnch-ink) 34%, transparent);
+  box-shadow: inset 0 0 0 1px var(--lnch-ink);
+}
+
+/* 어두운 테마에서는 안료가 배경에 묻힌다. 잉크를 종이 쪽으로 끌어올려 획을 살린다. */
+[data-theme="dark"] .lnch-item__plate {
+  background: color-mix(in srgb, var(--lnch-ink) 34%, transparent);
+  color: color-mix(in srgb, var(--lnch-ink) 30%, var(--text));
+}
+[data-theme="dark"] .lnch-item:hover .lnch-item__plate {
+  background: color-mix(in srgb, var(--lnch-ink) 48%, transparent);
+}
+
+/* 이니셜 — 이름 첫 글자를 명조로 */
 .lnch-item__icon.is-monogram {
   font-family: var(--font-serif);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
-  letter-spacing: 0;
+  line-height: 1;
+  letter-spacing: -.01em;
 }
+/* 라틴 두 글자(GH, SP)는 한 칸에 앉도록 조금 좁힌다 */
+.lnch-item__icon.is-monogram:not(:lang(ko)) { letter-spacing: -.04em; }
+
+/* 종류별 선 아이콘 */
+.lnch-item__icon.is-glyph .icon { width: 13px; height: 13px; }
+
+/* 사용자가 직접 넣은 이모지 */
+.lnch-item__icon.is-emoji { font-size: 14px; line-height: 1; }

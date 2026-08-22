@@ -75,26 +75,46 @@
   color: var(--text-faint);
 }
 
-.todo-add {
+/* ------------------------------------------------------------ 일정 추가 */
+/*
+ * 이 앱에서 일정을 만드는 유일한 입구다.
+ * 머리글 구석의 22px 아이콘이던 시절에는 '어디서 추가하지'가 매번 물음이었다.
+ * 이름을 달고, 목록 바로 위 한 줄을 통째로 준다.
+ */
+
+.todo-addbar {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  align-self: center;
-  border: 1px solid var(--rule);
+  padding: 9px 14px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.todo-addbar[hidden] { display: none; }
+
+.todo-add {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent);
   border-radius: 2px;
-  color: var(--text-dim);
-  transition: background .16s, color .16s, border-color .16s, transform .18s;
-}
-.todo-add:hover { border-color: var(--accent); color: var(--accent); }
-.todo-add.is-open {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--on-color);
-  transform: rotate(45deg);
+  font-family: var(--font-serif);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  cursor: pointer;
+  transition: filter .16s, box-shadow .16s;
 }
-.todo-add .icon { width: .78em; height: .78em; }
+.todo-add:hover { filter: brightness(1.12); }
+.todo-add:active { filter: brightness(.94); }
+.todo-add:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent);
+}
+.todo-add .icon { width: 12px; height: 12px; }
+.todo-add__text { white-space: nowrap; }
 
 /* 진행률 — 잉크가 차오르는 가는 선 */
 .todo-progress {
@@ -390,17 +410,38 @@
 .todo-link:hover { color: var(--accent); transform: scale(1.12); }
 .todo-link .icon { width: 1em; height: 1em; }
 
+/* 행 위의 동작 버튼 — 커서를 올렸을 때만 나타난다.
+ *
+ * 18px 에 --text-faint 로 두었더니 나타나도 눈에 안 띄어서, 누를 수 있는 것인지
+ * 알아보기 어려웠다. 크기를 키우고 색을 올리고, 버튼 자리에 옅은 판을 깔아
+ * '여기를 누른다'가 보이게 한다.
+ *
+ * 미루기(→)와 삭제(✕) 는 같은 규격이라 한 곳에서 다룬다.
+ */
+.todo-defer,
 .todo-del {
   flex: 0 0 auto;
-  width: 18px; height: 18px;
+  width: 24px; height: 24px;
   display: grid; place-items: center;
-  color: var(--text-faint);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
   opacity: 0;
-  transition: opacity .14s, color .14s;
+  transition: opacity .14s, color .14s, background .14s;
 }
+.todo-item__row:hover .todo-defer,
 .todo-item__row:hover .todo-del { opacity: 1; }
-.todo-del:hover { color: var(--danger); }
-.todo-del .icon { width: .75em; height: .75em; }
+
+/* 키보드로 짚었을 때도 보여야 한다 */
+.todo-defer:focus-visible,
+.todo-del:focus-visible { opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px; }
+
+.todo-defer:hover { background: var(--accent-soft); color: var(--accent); }
+.todo-del:hover   { background: var(--accent-soft); color: var(--danger); }
+
+.todo-defer .icon { width: 12px; height: 12px; }
+.todo-del .icon   { width: 12px; height: 12px; }
+.todo-defer[hidden] { display: none; }
 
 /* 드래그 놓을 자리 — 기본은 숨김.
    JS 가 드래그 중에만 style.display 로 켠다(엘리먼트는 항상 DOM 에 있다). */

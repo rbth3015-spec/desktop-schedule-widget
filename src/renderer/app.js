@@ -232,6 +232,9 @@ function applyChrome(s) {
   if (s.fontScale !== prev.fontScale) {
     document.documentElement.style.setProperty('--fs', `${(13 * s.fontScale).toFixed(1)}px`);
   }
+  // 'default' 면 속성을 아예 지운다 — base.css 의 기본 토큰이 그대로 살아 있게.
+  if (s.font !== prev.font) setPick('font', s.font);
+  if (s.fontSerif !== prev.fontSerif) setPick('fontSerif', s.fontSerif);
   if (s.splitRatio !== prev.splitRatio) {
     els.calendar.style.flex = `0 0 ${(s.splitRatio * 100).toFixed(2)}%`;
   }
@@ -263,6 +266,13 @@ function applyChrome(s) {
   if (s.showLauncher !== prev.showLauncher) els.launcher.hidden = !s.showLauncher;
 
   appliedChrome = { ...s };
+}
+
+/** data-font / data-font-serif 심기. 'default' 면 속성을 지운다. */
+function setPick(key, value) {
+  const attr = key === 'fontSerif' ? 'fontSerif' : 'font';
+  if (!value || value === 'default') delete document.documentElement.dataset[attr];
+  else document.documentElement.dataset[attr] = value;
 }
 
 /** 창이 비활성이면 위젯을 배경으로 물린다 (macOS 데스크톱 위젯의 틴팅/디밍 방식).
@@ -981,6 +991,20 @@ function renderSettings() {
     row('글자 크기', slider(0.8, 1.4, 0.05, s.fontScale, (v) =>
       store.setSetting('fontScale', v), (v) => `${Math.round(v * 100)}%`)),
 
+    row('본문 글꼴', fontPicker('font', s.font, [
+      ['default',     'Pretendard'],
+      ['gowun-dodum', '고운돋움'],
+      ['malgun',      '맑은 고딕'],
+      ['system',      '시스템'],
+    ]), '목록·버튼처럼 작은 글씨에 쓰입니다.'),
+
+    row('표제 글꼴', fontPicker('fontSerif', s.fontSerif, [
+      ['default',      '나눔명조'],
+      ['gowun-batang', '고운바탕'],
+      ['batang',       '바탕'],
+      ['gungsuh',      '궁서'],
+    ]), '날짜·D-Day 처럼 큰 글씨에 쓰입니다. 고른 글꼴로 바로 미리 보여 줍니다.'),
+
     row('배경 흐림 효과', toggle(s.blurEnabled, (v) => store.setSetting('blurEnabled', v)),
       '끄면 GPU 사용량이 줄어듭니다. 저사양·배터리 모드에서 권장.'),
 
@@ -1102,6 +1126,39 @@ function row(label, control, hint) {
     el.append(h);
   }
   return el;
+}
+
+/**
+ * 글꼴 고르기. 각 버튼을 그 글꼴로 그려서 고르기 전에 생김새를 보여 준다 —
+ * 이름만 늘어놓으면 '고운바탕'이 어떻게 생겼는지 눌러 봐야만 알 수 있다.
+ */
+function fontPicker(key, value, options) {
+  const wrap = document.createElement('div');
+  wrap.className = 'settings__fonts';
+
+  // base.css 의 선택자 키 → 실제 font-family. 미리보기에만 쓴다.
+  const FAMILY = {
+    'default':      key === 'fontSerif' ? '"Nanum Myeongjo", Georgia, serif' : '"Pretendard", sans-serif',
+    'gowun-dodum':  '"Gowun Dodum", sans-serif',
+    'gowun-batang': '"Gowun Batang", serif',
+    'malgun':       '"Malgun Gothic", sans-serif',
+    'system':       'system-ui, sans-serif',
+    'batang':       '"Batang", serif',
+    'gungsuh':      '"Gungsuh", serif',
+  };
+
+  for (const [val, label] of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'settings__font';
+    b.style.fontFamily = FAMILY[val] || 'inherit';
+    b.textContent = label;
+    b.classList.toggle('is-active', val === value);
+    b.setAttribute('aria-pressed', String(val === value));
+    b.addEventListener('click', () => { store.setSetting(key, val); renderSettings(); });
+    wrap.append(b);
+  }
+  return wrap;
 }
 
 function segmented(options, value, onChange) {

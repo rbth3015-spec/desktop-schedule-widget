@@ -126,10 +126,13 @@ const COLOR_NAMES = {
 };
 
 /**
- * @param {{store: object}} deps
+ * @param {{store: object, onToggle?: (open: boolean) => void}} deps
  * @returns {{el:HTMLElement, open:(preset?:{start:string,end:string})=>void, close:()=>void, isOpen:()=>boolean}}
  */
-export function createCompose({ store }) {
+export function createCompose({ store, onToggle }) {
+  /** 폼이 열리거나 닫힐 때마다 알린다.
+   *  안에서 닫는 길이 여럿(취소·Esc·제출)이라, 바깥이 상태를 따라오려면 통보가 필요하다. */
+  const notifyToggle = () => onToggle?.(!form.hidden);
   const form = h('form', 'cmp');
   form.hidden = true;
 
@@ -507,11 +510,13 @@ export function createCompose({ store }) {
 
     syncWhen();
     form.hidden = false;
+    notifyToggle();
     titleIn.focus();
   }
 
   function close() {
     form.hidden = true;
+    notifyToggle();
   }
 
   function fail(message, focusEl) {

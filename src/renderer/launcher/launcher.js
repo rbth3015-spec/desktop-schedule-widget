@@ -19,6 +19,49 @@ const KIND_ORDER = ['url', 'script', 'app', 'folder'];
 const KIND_LABELS = { url: '웹주소', script: '스크립트', app: '앱', folder: '폴더' };
 /** 사용자가 아이콘을 지정하지 않았을 때 쓰는 기본 선 아이콘 */
 const KIND_ICONS = { url: 'globe', script: 'terminal', app: 'plus', folder: 'folder' };
+/**
+ * 도크 전체의 판 색을 정한다.
+ *
+ * 기본은 이름 해시라 같은 이름이면 늘 같은 색이지만, 안료가 여섯 개뿐이라
+ * 서넛만 있어도 옆자리와 색이 겹친다. 겹치면 나란히 놓였을 때 구분이 안 되므로
+ * **바로 앞 항목과 같은 색일 때만** 다음 안료로 한 칸 민다.
+ * 충돌이 없으면 순서를 바꿔도 색이 그대로다.
+ */
+function assignPigments(items, palette) {
+  const keys = Object.keys(palette);
+  const out = new Map();
+  let prev = null;
+
+  for (const item of items) {
+    const base = keys.indexOf(pigmentKeyFor(item.label || item.target || item.id, keys));
+    let idx = base;
+    if (keys[idx] === prev) idx = (idx + 1) % keys.length;
+    prev = keys[idx];
+    out.set(item.id, palette[keys[idx]]);
+  }
+  return out;
+}
+
+/** 이름 → 안료 키 (해시). 같은 이름이면 언제나 같은 값. */
+function pigmentKeyFor(text, keys) {
+  let h = 0;
+  for (const ch of String(text || '')) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
+  return keys[h % keys.length];
+}
+
+/** 이니셜 — 한글은 한 글자, 라틴은 두 글자까지가 판에 예쁘게 앉는다 */
+function monogramOf(label) {
+  const t = String(label || '').trim();
+  if (!t) return '·';
+  const chars = [...t];
+  // 라틴/숫자로 시작하면 두 글자 (GH, Sp …), 그 외(한글·한자 등)는 한 글자
+  if (/[A-Za-z0-9]/.test(chars[0])) {
+    const word = t.split(/\s+/)[0];
+    return [...word].slice(0, 2).join('').toUpperCase();
+  }
+  return chars[0];
+}
+
 const KIND_TARGET_LABELS = {
   url: '주소',
   script: '스크립트 경로',
@@ -194,13 +237,17 @@ export function createLauncher({ root, store }) {
     const el = h('button', 'lnch-item');
     el.type = 'button';
     el.draggable = true;
+    // 내용을 '판' 위에 올린다. 맨 글자로 두면 도크에 낱글자가 흩어진 것처럼 보인다.
+    const plate = h('span', 'lnch-item__plate');
+    plate.append(h('span', 'lnch-item__icon'));
     el.append(
-      h('span', 'lnch-item__icon'),
+      plate,
       h('span', 'lnch-item__ring'),
       h('span', 'lnch-item__badge'),
     );
     return {
       el,
+      plate,
       icon: el.querySelector('.lnch-item__icon'),
       badge: el.querySelector('.lnch-item__badge'),
       label: '',
@@ -208,24 +255,28 @@ export function createLauncher({ root, store }) {
     };
   }
 
-  function updateItem(rec, item) {
+  function updateItem(rec, item, ink) {
     rec.el.dataset.id = item.id;
     rec.label = item.label || '바로가기';
     rec.sub = item.target || '';
     // 이모지도 사용자 입력이므로 textContent 로만 넣는다
     // 사용자가 이모지를 넣었으면 그대로, 아니면 종류별 선 아이콘
     rec.icon.textContent = '';
+    // 판 색은 이름에서 뽑는다 — 같은 이름이면 언제나 같은 색이라 자리를 기억할 수 있다.
+    rec.plate.style.setProperty('--lnch-ink', ink);
+
     if (item.icon) {
+      // 사용자가 직접 넣은 이모지는 그대로 존중한다 (사용자 입력이므로 textContent 로만)
       rec.icon.textContent = item.icon;
-      rec.icon.classList.remove('is-monogram');
+      rec.icon.className = 'lnch-item__icon is-emoji';
     } else if (item.label) {
-      // 같은 종류가 여러 개면 아이콘이 전부 똑같아져 구분이 안 된다.
-      // 이름 첫 글자를 명조 이니셜로 찍어 책갈피에 새긴 것처럼 보이게 한다.
-      rec.icon.textContent = [...item.label.trim()][0] || '·';
-      rec.icon.classList.add('is-monogram');
+      // 같은 종류가 여러 개면 선 아이콘이 전부 똑같아져 구분이 안 된다.
+      // 이름 첫 글자를 명조로 새기되, 맨 글자가 아니라 안료 판 위에 얹는다.
+      rec.icon.textContent = monogramOf(item.label);
+      rec.icon.className = 'lnch-item__icon is-monogram';
     } else {
       rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe'));
-      rec.icon.classList.remove('is-monogram');
+      rec.icon.className = 'lnch-item__icon is-glyph';
     }
     rec.badge.textContent = '';
     rec.el.setAttribute('aria-label', `${rec.label} (${KIND_LABELS[item.kind] || item.kind})`);
@@ -236,12 +287,13 @@ export function createLauncher({ root, store }) {
     const items = store.launcherItems();
     const seen = new Set();
     const frag = document.createDocumentFragment();
+    const inks = assignPigments(items, store.COLORS);
 
     for (const item of items) {
       seen.add(item.id);
       let rec = itemEls.get(item.id);
       if (!rec) { rec = buildItem(); itemEls.set(item.id, rec); }
-      updateItem(rec, item);
+      updateItem(rec, item, inks.get(item.id));
       frag.append(rec.el);
     }
 

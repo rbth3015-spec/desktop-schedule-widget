@@ -38,6 +38,50 @@
   font-display: block;
 }
 
+/* 고를 수 있는 글꼴. 기본값 외에는 설정에서 켤 때만 실제로 내려받는다
+   (font-display: block + 미사용 시 브라우저가 요청하지 않는다). */
+@font-face {
+  font-family: 'Gowun Batang';
+  src: url('../fonts/GowunBatang-400-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215;
+}
+@font-face {
+  font-family: 'Gowun Batang';
+  src: url('../fonts/GowunBatang-400-korean.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Gowun Batang';
+  src: url('../fonts/GowunBatang-700-latin.woff2') format('woff2');
+  font-weight: 700;
+  font-display: block;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215;
+}
+@font-face {
+  font-family: 'Gowun Batang';
+  src: url('../fonts/GowunBatang-700-korean.woff2') format('woff2');
+  font-weight: 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Gowun Dodum';
+  src: url('../fonts/GowunDodum-400-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215;
+}
+@font-face {
+  font-family: 'Gowun Dodum';
+  src: url('../fonts/GowunDodum-400-korean.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+}
+
 /* 공통 토큰 + 셸 레이아웃.
    calendar/todo/dashboard/launcher 모듈은 여기 정의된 변수만 쓰고,
    자기 CSS 파일 안에서만 규칙을 추가한다.
@@ -83,6 +127,10 @@
 
   --shadow:        0 8px 28px rgba(58, 44, 28, 0.16), 0 1px 2px rgba(58, 44, 28, 0.10);
   --shadow-sm:     0 2px 8px rgba(58, 44, 28, 0.10);
+
+  /* 재질 — 종이의 잔결. 농도는 SVG 안에 구워 넣는다(아래 주석 참고). */
+  --grain:      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='180' height='180' filter='url(%23g)' opacity='0.05'/></svg>");
+  --grain-size: 180px 180px;
 }
 
 /* ── 다크: 가죽 표지 ───────────────────────────────────────────── */
@@ -117,6 +165,10 @@
 
   --shadow:        0 10px 32px rgba(0, 0, 0, 0.52), 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-sm:     0 2px 10px rgba(0, 0, 0, 0.36);
+
+  /* 재질 — 가죽의 오돌토돌한 알갱이 */
+  --grain:      url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.045 0.055' numOctaves='5' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='gamma' exponent='1.6'/></feComponentTransfer></filter><rect width='220' height='220' filter='url(%23g)' opacity='0.12'/></svg>");
+  --grain-size: 220px 220px;
 }
 
 /* ── 공통 ──────────────────────────────────────────────────────── */
@@ -132,10 +184,23 @@
   --icon-stroke:   1.4;
 
   /* 본문 — 작은 글씨에서 또렷한 산세리프 */
-  --font: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
+  --font-pick:       "Pretendard";
+  --font-serif-pick: "Nanum Myeongjo";
+  --font: var(--font-pick), "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
   /* 날짜·표제 — 앱에 포함한 명조. 시스템 폰트에 기대지 않는다. */
-  --font-serif: "Nanum Myeongjo", Georgia, serif;
+  --font-serif: var(--font-serif-pick), Georgia, serif;
 }
+
+/* 글꼴 선택.
+ * 설정이 :root 에 data-font / data-font-serif 를 심으면 여기서 갈아 끼운다.
+ * 폴백 목록은 그대로 두므로, 고른 글꼴이 없더라도 화면이 무너지지 않는다. */
+:root[data-font="gowun-dodum"]  { --font-pick: "Gowun Dodum"; }
+:root[data-font="malgun"]       { --font-pick: "Malgun Gothic"; }
+:root[data-font="system"]       { --font-pick: system-ui; }
+
+:root[data-font-serif="gowun-batang"] { --font-serif-pick: "Gowun Batang"; }
+:root[data-font-serif="batang"]       { --font-serif-pick: "Batang"; }
+:root[data-font-serif="gungsuh"]      { --font-serif-pick: "Gungsuh"; }
 
 /* 블러 끄기 — 저사양·배터리 절약용 폴백. 알파를 올려 가독성을 보전한다. */
 :root[data-blur="off"] { --blur: 0px; --sat-boost: 1; --glass-a: 0.97; }
@@ -177,7 +242,20 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   display: flex;
   flex-direction: column;
   height: 100%;            /* body 의 콘텐츠 박스 = 100vh - padding */
-  background: var(--bg);
+  /* ---- 재질 ----
+   * '종이 / 가죽' 이라고 이름 붙여 놓고 실제로는 밝기만 달랐다.
+   * 종이는 잔결(높은 주파수 노이즈)에 한지 가로결을, 가죽은 낮은 주파수로 뭉친
+   * 알갱이에 안쪽 광택을 준다. 결은 SVG feTurbulence 를 data URI 로 구워 쓴다 —
+   * 외부 파일이 없어 CSP 를 건드리지 않는다.
+   *
+   * **결은 반드시 배경 레이어여야 한다.** 콘텐츠 위에 덮는 오버레이(::after)로 두면
+   * 아래에서 무엇이 조금만 움직여도 덮인 영역을 통째로 다시 합성한다.
+   * 실제로 D-Day 맥박 하나와 겹쳤을 때 유휴 CPU 가 4% → 26% 로 뛰었다.
+   * 농도를 CSS opacity 로 조절하려면 별도 레이어가 필요하므로, SVG 안에 구워 넣었다. */
+  background-color: var(--bg);
+  background-image: var(--grain);
+  background-size: var(--grain-size);
+  background-repeat: repeat;
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -186,7 +264,7 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   transition: opacity .28s ease;
 }
 
-/* 종이 결 — 아주 옅은 얼룩으로 평면적인 느낌을 덜어낸다 */
+/* 얼룩 — 빛이 닿는 쪽과 그늘. 재질감의 바탕이 된다. */
 .widget::before {
   content: '';
   position: absolute;
@@ -201,6 +279,22 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   background:
     radial-gradient(120% 90% at 15% 0%, rgba(255, 240, 215, .05), transparent 55%),
     radial-gradient(110% 80% at 100% 100%, rgba(0, 0, 0, .22), transparent 60%);
+}
+
+/* 종이에는 한지를 뜰 때 생기는 가로 결이 희미하게 남는다 */
+:root[data-theme="light"] .widget {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120, 96, 64, .045) 0 1px, transparent 1px 4px),
+    var(--grain);
+  background-size: auto, var(--grain-size);
+}
+
+/* 가죽은 가장자리가 안쪽으로 말리며 광택이 앉는다 */
+:root[data-theme="dark"] .widget {
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 rgba(255, 236, 208, .07),
+    inset 0 -1px 0 rgba(0, 0, 0, .35);
 }
 
 /* 창이 비활성이면 배경으로 물러난다 (macOS 데스크톱 위젯의 디밍 방식) */
@@ -459,6 +553,30 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   transition: border-color .16s, color .16s;
 }
 .notice__close:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 글꼴 고르기 — 버튼 자체를 그 글꼴로 그려 미리 보여 준다 */
+.settings__fonts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings__font {
+  padding: 6px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: none;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.settings__font:hover { border-color: var(--border-strong); color: var(--text); }
+.settings__font.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 .settings__group {
   margin: 16px 0 2px;

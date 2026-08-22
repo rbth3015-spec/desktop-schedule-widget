@@ -168,11 +168,17 @@ export function createTodoPanel({ root, store }) {
   goTodayBtn.type = 'button';
   goTodayBtn.setAttribute('aria-label', '오늘 날짜로 이동');
   const progressText = h('span', 'todo-progress__text', '0/0');
+  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText);
+
+  // 일정을 만드는 유일한 입구다. 머리글 구석의 22px 아이콘으로 두면
+  // '여기서 추가한다'는 걸 알아채는 데 시간이 걸린다 — 이름을 달고 크게 둔다.
+  // 자리는 예전 빠른 입력칸이 있던 곳. 목록 바로 위, 가장 먼저 눈이 가는 줄이다.
   const addBtn = h('button', 'todo-add');
-  addBtn.append(icon('plus'));
   addBtn.type = 'button';
-  addBtn.setAttribute('aria-label', '일정 추가');
-  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, addBtn);
+  addBtn.append(icon('plus'), h('span', 'todo-add__text', '일정 추가'));
+
+  const addBar = h('div', 'todo-addbar');
+  addBar.append(addBtn);
 
   const progressBar = h('div', 'todo-progress');
   const progressFill = h('div', 'todo-progress__fill');
@@ -228,18 +234,26 @@ export function createTodoPanel({ root, store }) {
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
-  const compose = createCompose({ store });
+  // 폼이 열리고 닫힐 때마다 추가 버튼 줄을 맞춘다(취소·Esc·제출 모두 포함).
+  const compose = createCompose({ store, onToggle: () => syncAddBar() });
 
   // 일정을 만드는 입구는 헤더의 '+' 하나뿐이다.
   // 전용 입력칸이 따로 있으면 같은 일을 하는 길이 둘로 갈려 매번 어느 쪽인지 고민하게 된다.
   // 한 줄 문법은 버리지 않았다 — 추가 폼의 제목칸이 그대로 이해한다.
-  el.append(header, compose.el, body);
+  el.append(header, addBar, compose.el, body);
   root.append(el);
 
   addBtn.addEventListener('click', () => {
     if (compose.el.hidden) compose.open();
     else compose.close();
   });
+
+  /** 폼이 열려 있는 동안에는 버튼을 감춘다.
+   *  폼 안에 이미 '취소 / 일정 추가' 가 있어서, 위에 같은 뜻의 버튼이 하나 더 있으면
+   *  어느 쪽을 눌러야 하는지 다시 헷갈린다. */
+  function syncAddBar() {
+    addBar.hidden = !compose.el.hidden;
+  }
 
   /** 날짜·기간·링크까지 한 번에 지정하는 추가 폼 */
 
@@ -390,14 +404,21 @@ export function createTodoPanel({ root, store }) {
     time.hidden = true;
     const title = h('span', 'todo-title');
     const meta = h('span', 'todo-meta');           // 우선순위 뱃지 + 태그 + D-day
+    // 내일로 미루기.
+    // 그동안 우클릭 메뉴 안에만 있어서 '있는 줄 몰라 못 쓰는' 대표 기능이었다.
+    // 오늘 못 할 일을 미는 건 매일 하는 동작이라 손 닿는 곳에 둔다.
+    const defer = h('button', 'todo-defer');
+    defer.append(icon('chevronRight'));
+    defer.type = 'button';
+
     const del = h('button', 'todo-del');
     del.append(icon('close'));
     del.type = 'button';
 
-    row.append(check, dot, time, title, meta, del);
+    row.append(check, dot, time, title, meta, defer, del);
     li.append(row);
 
-    const rec = { id: taskId, el: li, row, check, dot, time, title, meta, del,
+    const rec = { id: taskId, el: li, row, check, dot, time, title, meta, defer, del,
                   detail: null, task: null };
 
     // 완료 토글
@@ -405,6 +426,15 @@ export function createTodoPanel({ root, store }) {
       e.stopPropagation();
       // 반복 일정은 '이 회차'만 완료 처리한다
       store.toggleDone(taskId, rec.task?.occDate);
+    });
+
+    // 내일로 미루기
+    defer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const t = rec.task;
+      if (!t || !t.start || t.repeat) return;
+      store.moveTask(t.id, addDays(t.start, 1));
+      notify(`'${t.title || '일정'}' 을(를) 내일로 미뤘습니다`);
     });
 
     // 삭제
@@ -432,9 +462,11 @@ export function createTodoPanel({ root, store }) {
         },
         { separator: true },
         {
+          // 반복 일정은 규칙 하나를 공유하므로 한 회차만 밀 수 없다.
+          // 예전에는 눌리기는 하는데 아무 일도 일어나지 않았다.
           label: '내일로 미루기',
-          disabled: !t.start,
-          onSelect: () => store.moveTask(t.id, addDays(t.occDate || t.start, 1)),
+          disabled: !t.start || !!t.repeat,
+          onSelect: () => store.moveTask(t.id, addDays(t.start, 1)),
         },
         {
           label: t.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정',
@@ -838,6 +870,11 @@ export function createTodoPanel({ root, store }) {
     rec.del.setAttribute('aria-label',
       task.repeat && task.occDate ? `${readable} 이 회차 건너뛰기` : `${readable} 삭제`);
 
+    // 날짜가 없으면 밀 곳이 없고, 반복 일정은 규칙째 움직이면 안 된다
+    const canDefer = !!task.start && !task.repeat;
+    rec.defer.hidden = !canDefer;
+    if (canDefer) rec.defer.setAttribute('aria-label', `${readable} 내일로 미루기`);
+
     // 시각 — 있으면 제목 앞
     const hasTime = !!task.startTime;
     rec.time.hidden = !hasTime;
@@ -1224,6 +1261,7 @@ export function createTodoPanel({ root, store }) {
     lastEditingId = editingId;
 
     syncRovingTabindex();
+    syncAddBar();
   }
 
   function scheduleRender() {
