@@ -994,30 +994,45 @@
  * 둘 다 못 쓰게 되므로, 고치는 동안에는 상세에 패널을 통째로 내준다.
  */
 
-.todo-panel.is-focusmode .todo-body { overflow: hidden; }
-
-.todo-panel.is-focusmode .todo-section--focus {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
+/*
+ * 스크롤은 평소처럼 .todo-body 가 맡는다.
+ * 한때 body 를 overflow:hidden 으로 막고 안쪽 목록만 스크롤하게 했는데,
+ * .todo-body 가 flex 컨테이너가 아니라 안쪽 flex 지정이 전부 무효였고
+ * 결과적으로 스크롤이 통째로 사라졌다. 머리글만 sticky 로 붙여 두면 충분하다.
+ */
 
 /* 집중 모드의 머리글은 '여기서 나가는 길' 이기도 하다.
    다른 섹션 머리글처럼 옅게 두면 갇힌 느낌이 되므로 띠를 둘러 분명히 한다. */
+/* 목록이 통째로 바뀌는 순간이라 살짝 밀어 올려 들어오게 한다 —
+   무엇이 무엇으로 바뀌었는지 눈이 따라갈 시간을 준다. */
+.todo-panel.is-focusmode .todo-section--focus {
+  animation: todo-focus-in .2s cubic-bezier(.2,.7,.3,1);
+}
+@keyframes todo-focus-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 애니메이션을 원치 않는 설정이면 전부 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  .todo-panel.is-focusmode .todo-section--focus { animation: none; }
+}
+
+/* 머리글은 '여기서 나가는 길' 이라 스크롤해도 늘 보여야 한다.
+   accent-soft 는 반투명이므로 아래 글자가 비치지 않도록 불투명 배경 위에 얹는다. */
 .todo-panel.is-focusmode .todo-section--focus .todo-section__head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   border-bottom: 1px solid var(--rule);
-  background: var(--accent-soft);
+  background:
+    linear-gradient(var(--accent-soft), var(--accent-soft)),
+    var(--bg-solid);
   padding-top: 7px;
   padding-bottom: 7px;
 }
 .todo-panel.is-focusmode .todo-section--focus .todo-section__title { color: var(--accent); }
 .todo-panel.is-focusmode .todo-section--focus .todo-section__count { display: none; }
-.todo-panel.is-focusmode .todo-section--focus .todo-list-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
 /* 집중 모드에서는 접기 캐럿이 할 일이 없다 — 돌아가는 길만 남긴다 */
 .todo-panel.is-focusmode .todo-section--focus .todo-section__caret { display: none; }
 

@@ -899,6 +899,48 @@ export function createTodoPanel({ root, store }) {
     }
   }
 
+  // ---------------------------------------------------------- 펼침 애니메이션
+  //
+  // 상세가 툭 튀어나오면 '무엇이 어디서 열렸는지' 를 눈이 따라가지 못한다.
+  // 실제 높이를 재서 0 → 제 높이로 자라게 한다(고정 max-height 로 어림잡으면
+  // 내용이 짧을 때 뒷부분이 빈 채로 늘어나 어색해진다).
+  //
+  // 접는 쪽은 애니메이션하지 않는다. 목록이 통째로 다시 그려지는 경로라
+  // 사라지는 요소를 붙잡아 두려면 렌더 흐름을 비틀어야 하고, 얻는 것보다 잃는 게 크다.
+
+  const OPEN_MS = 190;
+
+  function playOpen(el) {
+    // 사용자가 애니메이션을 원치 않으면(OS 설정) 그대로 둔다
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (typeof el.animate !== 'function') return;
+
+    // renderSection 은 항목을 **문서에 넣기 전에** updateItem 을 부른다.
+    // 그 시점의 el 은 아직 떨어져 있어 scrollHeight 가 0 이고, 재 보고 시작하면
+    // 애니메이션이 조용히 건너뛰어진다. 그래서 일단 0 으로 접어 두고
+    // 다음 프레임(=문서에 붙은 뒤)에 실제 높이를 재서 편다.
+    el.style.overflow = 'hidden';
+    el.style.height = '0px';
+
+    requestAnimationFrame(() => {
+      const done = () => { el.style.overflow = ''; el.style.height = ''; };
+      if (!el.isConnected) { done(); return; }
+
+      // height:0 이어도 scrollHeight 는 내용의 높이를 돌려준다
+      const h = el.scrollHeight;
+      if (!h) { done(); return; }
+
+      const anim = el.animate(
+        [
+          { height: '0px', opacity: 0, transform: 'translateY(-3px)' },
+          { height: `${h}px`, opacity: 1, transform: 'none' },
+        ],
+        { duration: OPEN_MS, easing: 'cubic-bezier(.2,.7,.3,1)' }
+      );
+      anim.finished.catch(() => {}).finally(done);
+    });
+  }
+
   // ---------------------------------------------------------- 제목 편집
   //
   // 상세에 '이름' 칸을 따로 두면 같은 값이 화면에 두 번 나온다(행의 제목 + 폼의 칸).
@@ -1096,8 +1138,11 @@ export function createTodoPanel({ root, store }) {
     li.classList.toggle('is-expanded', expanded);
     if (expanded) {
       if (!rec.detail) buildDetail(rec);
-      if (rec.detail.el.parentNode !== li) li.append(rec.detail.el);
+      const justOpened = rec.detail.el.parentNode !== li;
+      if (justOpened) li.append(rec.detail.el);
       updateDetail(rec, task);
+      // 값을 다 채운 뒤에 펼친다 — 비어 있는 상태로 자랐다가 내용이 튀어나오면 어수선하다
+      if (justOpened) playOpen(rec.detail.el);
     } else if (rec.detail && rec.detail.el.parentNode) {
       rec.detail.el.remove();
     }
