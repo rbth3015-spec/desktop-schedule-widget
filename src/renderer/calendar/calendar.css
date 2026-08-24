@@ -316,7 +316,8 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: -0.005em;
-  cursor: pointer;
+  /* 잡아서 옮길 수 있다는 표시. pointer 로 두면 '누르는 것' 으로만 읽힌다. */
+  cursor: grab;
   overflow: hidden;
   pointer-events: auto;
 
@@ -334,6 +335,36 @@
 .cal-bar--cl { margin-left: 0; border-left: none; border-radius: 0 1px 1px 0; }
 .cal-bar--cr { margin-right: 0; border-radius: 1px 0 0 1px; }
 .cal-bar--cl.cal-bar--cr { border-radius: 0; }
+
+/* 양 끝 손잡이 — 기간을 늘리고 줄이는 자리.
+   좌표로 판정하는 건 JS 가 하지만, 커서 모양은 CSS 가 정확히 같은 폭으로 잡아 준다.
+   (이어지는 막대는 그쪽 끝이 이번 주 밖이라 손잡이를 주지 않는다) */
+.cal-bar::before,
+.cal-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.cal-bar::before { left: 0; }
+.cal-bar::after { right: 0; }
+.cal-bar--cl::before,
+.cal-bar--cr::after,
+.cal-bar[data-locked]::before,
+.cal-bar[data-locked]::after { display: none; }
+
+/* 반복 일정은 규칙 하나를 공유하므로 캘린더에서 옮길 수 없다 */
+.cal-bar[data-locked] { cursor: default; }
+
+/* 끄는 동안 커서를 고정한다 — 칸 위를 지나도 모양이 바뀌지 않게 */
+.cal-root--drag-move,
+.cal-root--drag-move * { cursor: grabbing !important; }
+.cal-root--drag-start,
+.cal-root--drag-start *,
+.cal-root--drag-end,
+.cal-root--drag-end * { cursor: ew-resize !important; }
 
 .cal-bar__t {
   min-width: 0;
