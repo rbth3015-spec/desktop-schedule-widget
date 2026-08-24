@@ -472,8 +472,8 @@ function buildSkeleton(root) {
   viewBtn.setAttribute('aria-label', '월간 보기 (누르면 주간)');
 
   const todayBtn = make('button', 'cal-todaybtn');
-  todayBtn.textContent = '오늘';
-  todayBtn.title = '오늘로 이동 (T)';
+  todayBtn.textContent = '오늘로';
+  todayBtn.setAttribute('aria-label', '오늘 날짜로 이동 (T)');
 
   header.append(prev, title, next, spacer, meter, viewBtn, todayBtn);
 

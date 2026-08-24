@@ -189,25 +189,18 @@ export function createTodoPanel({ root, store }) {
   const dateLabel = h('div', 'todo-date');
   const todayBadge = h('span', 'todo-badge todo-badge--today', '오늘');
 
-  // '오늘로' 라는 글자만으로는 누르면 무슨 일이 생기는지 알기까지 한 박자 걸린다.
-  // 달력장 위에 오늘 날짜를 새긴 아이콘 + '오늘' 글자를 함께 둔다 —
-  // 오늘이 며칠인지도 같이 알려 주므로, 다른 날을 보다가도 기준을 잃지 않는다.
-  const goTodayBtn = h('button', 'todo-gotoday');
-  goTodayBtn.type = 'button';
-  const goTodayNum = h('span', 'todo-gotoday__num');
-  goTodayBtn.append(goTodayNum, h('span', 'todo-gotoday__text', '오늘'));
-
   const progressText = h('span', 'todo-progress__text', '0/0');
 
-  // 검색은 늘 펼쳐 둘 만큼 자주 쓰지 않는다. 평소에는 돋보기 하나로 접어 두고
-  // 그 자리를 날짜와 '오늘' 버튼에 내준다.
+  // 검색은 늘 펼쳐 둘 만큼 자주 쓰지 않아 접어 둔다.
+  // 다만 아이콘만 덩그러니 두면 무슨 버튼인지 알아보기 어려워서 이름을 함께 적는다.
+  // ('오늘로' 는 캘린더 머리글에 이미 있다 — 같은 일을 하는 버튼을 둘 두지 않는다)
   const searchBtn = h('button', 'todo-searchbtn');
   searchBtn.type = 'button';
-  searchBtn.append(icon('search'));
+  searchBtn.append(icon('search'), h('span', 'todo-searchbtn__text', '검색'));
   searchBtn.setAttribute('aria-label', '검색 열기');
   searchBtn.setAttribute('aria-expanded', 'false');
 
-  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, searchBtn, completedBtn);
+  dateRow.append(dateLabel, todayBadge, progressText, searchBtn, completedBtn);
 
   // 일정을 만드는 유일한 입구다. 머리글 구석의 22px 아이콘으로 두면
   // '여기서 추가한다'는 걸 알아채는 데 시간이 걸린다 — 이름을 달고 크게 둔다.
@@ -555,9 +548,11 @@ export function createTodoPanel({ root, store }) {
       store.setEditing(cur === taskId ? null : taskId);
     };
     li.addEventListener('click', (e) => {
-      if (e.target.closest('.todo-check, .todo-del, .todo-detail, .todo-title-input, .todo-tag')) return;
+      if (e.target.closest('.todo-check, .todo-del, .todo-defer, .todo-plan, .todo-detail, .todo-tag')) return;
+      // 펼친 상태의 제목은 입력칸이다 — 클릭이 접기로 번지면 글자를 못 고친다
+      if (e.target.closest('.todo-title--edit, .todo-title-input')) return;
       if (e.detail > 1) return;   // 더블클릭의 두 번째 클릭 무시
-      if (e.target === title) {
+      if (e.target.closest('.todo-title')) {
         clearTimeout(clickTimer);
         clickTimer = setTimeout(toggleExpand, 200);
       } else {
@@ -565,8 +560,11 @@ export function createTodoPanel({ root, store }) {
       }
     });
 
-    // 제목 더블클릭 → 인라인 편집
-    title.addEventListener('dblclick', (e) => {
+    // 접힌 상태에서 제목 더블클릭 → 그 자리에서 이름만 고치기.
+    // 제목 엘리먼트는 펼침 여부에 따라 span ↔ input 으로 바뀌므로 행에 위임한다.
+    li.addEventListener('dblclick', (e) => {
+      if (!e.target.closest('.todo-title')) return;
+      if (e.target.closest('.todo-title--edit, .todo-title-input')) return;
       e.stopPropagation();
       clearTimeout(clickTimer);
       startInlineEdit(rec);
@@ -650,30 +648,6 @@ export function createTodoPanel({ root, store }) {
 
   function buildDetail(rec) {
     const d = h('div', 'todo-detail');
-
-    // 제목.
-    // 그동안 제목을 고치는 길은 '제목 더블클릭' 하나뿐이었다. 숨은 제스처라
-    // 항목을 펼쳐 놓고도 '제목은 왜 못 고치지' 로 막히는 자리였다.
-    // 상세를 열면 가장 위에서 바로 고칠 수 있어야 한다.
-    const titleIn = h('input', 'todo-detail__title');
-    titleIn.type = 'text';
-    titleIn.placeholder = '일정 이름';
-    titleIn.spellcheck = false;
-    titleIn.setAttribute('aria-label', '일정 이름');
-
-    const commitTitle = () => {
-      const v = titleIn.value.trim();
-      const cur = rec.task?.title || '';
-      if (!v || v === cur) { titleIn.value = cur; return; }
-      store.updateTask(rec.id, { title: v });
-    };
-    titleIn.addEventListener('change', commitTitle);
-    titleIn.addEventListener('keydown', (e) => {
-      if (e.isComposing || e.keyCode === 229) return;
-      if (e.key === 'Enter') { e.preventDefault(); titleIn.blur(); }
-      if (e.key === 'Escape') { e.preventDefault(); titleIn.value = rec.task?.title || ''; titleIn.blur(); }
-    });
-    titleIn.addEventListener('click', (e) => e.stopPropagation());
 
     const notes = h('textarea', 'todo-detail__notes');
     notes.placeholder = '메모';
@@ -863,10 +837,10 @@ export function createTodoPanel({ root, store }) {
     const rowSeries = h('div', 'todo-detail__row');
     rowSeries.append(pinBtn, dropSeries);
 
-    d.append(titleIn, notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
+    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
              rowExtra, rowSeries);
 
-    rec.detail = { el: d, titleIn, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
+    rec.detail = { el: d, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
                    prio, swatchBtns, tagsIn, linkIn, linkOpen,
                    remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
     return rec.detail;
@@ -883,7 +857,6 @@ export function createTodoPanel({ root, store }) {
   function updateDetail(rec, task) {
     const d = rec.detail;
     if (!d) return;
-    setValueSafe(d.titleIn, task.title || '');
     setValueSafe(d.notes, task.notes || '');
     setValueSafe(d.startIn, task.start || '');
     setValueSafe(d.endIn, task.end || task.start || '');
@@ -926,6 +899,60 @@ export function createTodoPanel({ root, store }) {
     }
   }
 
+  // ---------------------------------------------------------- 제목 편집
+  //
+  // 상세에 '이름' 칸을 따로 두면 같은 값이 화면에 두 번 나온다(행의 제목 + 폼의 칸).
+  // 대신 **펼친 항목의 제목 자체가 입력칸이 된다.** 눈에 보이는 그 글자를 바로 고치는 것이
+  // 가장 짧은 길이고, 칸이 하나 늘지도 않는다.
+  //
+  // 접혀 있을 때는 그냥 글자다 — 그래야 항목을 제목째 잡아 캘린더로 끌 수 있다.
+
+  function setTitleEditable(rec, on, task) {
+    const isInput = rec.title.tagName === 'INPUT';
+    if (on === isInput) {
+      // 이미 원하는 모양이면 값만 맞춘다 (입력 중이면 건드리지 않는다)
+      if (isInput) setValueSafe(rec.title, task.title || '');
+      else if (rec.title.textContent !== task.title) rec.title.textContent = task.title;
+      return;
+    }
+
+    if (on) {
+      const input = h('input', 'todo-title todo-title--edit');
+      input.type = 'text';
+      input.value = task.title || '';
+      input.spellcheck = false;
+      input.placeholder = '일정 이름';
+      input.setAttribute('aria-label', '일정 이름');
+
+      const commit = () => {
+        const v = input.value.trim();
+        const cur = rec.task?.title || '';
+        if (!v || v === cur) { input.value = cur; return; }
+        store.updateTask(rec.id, { title: v });
+      };
+      input.addEventListener('change', commit);
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          input.value = rec.task?.title || '';
+          store.setEditing(null);
+        }
+      });
+
+      rec.title.replaceWith(input);
+      rec.title = input;
+    } else {
+      const span = h('span', 'todo-title');
+      span.textContent = task.title || '';
+      span.title = task.title || '';
+      rec.title.replaceWith(span);
+      rec.title = span;
+    }
+  }
+
   // ---------------------------------------------------------- 아이템 갱신
   function updateItem(rec, task, selectedDate) {
     rec.task = task;
@@ -962,12 +989,11 @@ export function createTodoPanel({ root, store }) {
       rec.time.title = task.endTime ? `${task.startTime}–${task.endTime}` : task.startTime;
     }
 
-    if (rec.titleInput) {
-      // 인라인 편집 중이면 제목 텍스트를 건드리지 않는다
-    } else if (rec.title.textContent !== task.title) {
-      rec.title.textContent = task.title;
+    // 펼친 항목의 제목은 그대로 입력칸이 된다 (아래 상세 영역에서 expanded 를 다시 쓴다)
+    if (!rec.titleInput) {
+      setTitleEditable(rec, store.getState().editingTaskId === task.id, task);
+      if (rec.title.tagName !== 'INPUT') rec.title.title = task.title;
     }
-    rec.title.title = task.title;
 
     // 메타(우선순위·태그·D-day) 재구성 — 버튼 포커스 이슈가 없어 통째로 다시 그린다
     const meta = rec.meta;
@@ -1166,13 +1192,6 @@ export function createTodoPanel({ root, store }) {
     const isToday = key === todayKey();
     dateLabel.textContent = formatDateLabel(key);
     todayBadge.hidden = !isToday;
-    // 버튼을 숨기지 않는다. 늘 같은 자리에 있어야 '오늘로 가는 버튼'이라고 익힌다.
-    // 이미 오늘이면 눌러도 갈 곳이 없으므로 흐리게 두고 비활성.
-    goTodayBtn.classList.toggle('is-current', isToday);
-    goTodayBtn.disabled = isToday;
-    goTodayNum.textContent = String(Number(todayKey().slice(8, 10)));
-    goTodayBtn.setAttribute('aria-label',
-      isToday ? '이미 오늘을 보고 있습니다' : `오늘(${formatDateLabel(todayKey())})로 이동`);
 
     const { total, done } = dayStats(st, key);
     progressText.textContent = `${done}/${total}`;
@@ -1430,8 +1449,6 @@ export function createTodoPanel({ root, store }) {
     else closeSearch();
   });
   searchClose.addEventListener('click', closeSearch);
-
-  goTodayBtn.addEventListener('click', () => store.selectDate(todayKey()));
 
   searchInput.addEventListener('input', () => {
     store.setFilter({ text: searchInput.value });
