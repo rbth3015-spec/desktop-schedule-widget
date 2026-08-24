@@ -25,7 +25,8 @@
 
 .todo-daterow {
   display: flex;
-  align-items: baseline;
+  /* 버튼이 섞여 있어 baseline 으로 맞추면 아이콘이 들쭉날쭉해진다 */
+  align-items: center;
   gap: 8px;
   min-width: 0;
 }
@@ -54,17 +55,78 @@
   border-bottom: 1.5px solid var(--accent);
 }
 
+/* 오늘로 가는 버튼.
+ * '오늘로' 라는 글자만 있으면 누르기 전까지 무슨 일이 생기는지 알기 어렵다.
+ * 달력장에 오늘 날짜를 새긴 모양으로 두면 '오늘'이라는 목적지가 눈에 보이고,
+ * 다른 날을 보는 동안에도 오늘이 며칠인지 함께 알려 준다. */
 .todo-gotoday {
   flex: 0 0 auto;
-  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 3px;
   border: 1px solid var(--rule);
-  border-radius: 2px;
+  border-radius: 3px;
+  background: none;
   font-size: 10.5px;
   letter-spacing: .04em;
   color: var(--text-dim);
-  transition: border-color .16s, color .16s;
+  cursor: pointer;
+  transition: border-color .16s, color .16s, opacity .16s;
 }
-.todo-gotoday:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 달력장 — 위에 붉은 띠를 두른 작은 종잇장 */
+.todo-gotoday__num {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid currentColor;
+  border-top-width: 3px;
+  border-radius: 2px;
+  font-family: var(--font-serif);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.todo-gotoday:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+/* 이미 오늘이면 갈 곳이 없다. 숨기지 않고 흐리게 둬서 자리를 기억하게 한다. */
+.todo-gotoday.is-current { opacity: .38; cursor: default; }
+
+/* 검색 — 평소에는 돋보기 하나로 접어 둔다 */
+.todo-searchbtn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .16s, border-color .16s, background .16s;
+}
+.todo-searchbtn:hover { color: var(--accent); border-color: var(--rule); }
+.todo-searchbtn.is-on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.todo-searchbtn .icon { width: 13px; height: 13px; }
+
+.todo-searchclose {
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .16s;
+}
+.todo-searchclose:hover { color: var(--accent); }
+.todo-searchclose .icon { width: 11px; height: 11px; }
 
 .todo-progress__text {
   margin-left: auto;
@@ -137,6 +199,7 @@
   gap: 7px;
   margin-top: 10px;
 }
+.todo-filters[hidden] { display: none; }
 
 .todo-search {
   flex: 1;
@@ -463,6 +526,22 @@
   padding: 4px 14px 14px 38px;
   border-top: 1px dashed var(--rule);
 }
+
+/* 제목 — 상세에서 가장 먼저 눈이 가야 하는 칸 */
+.todo-detail__title {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--bg-solid);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color .16s;
+}
+.todo-detail__title:focus { border-color: var(--accent); }
+.todo-detail__title::placeholder { color: var(--text-faint); font-weight: 400; }
 
 .todo-detail__notes {
   width: 100%;
@@ -892,6 +971,98 @@
 }
 .todo-detail__pin:hover { border-color: var(--accent); color: var(--accent); }
 .todo-detail__pin.is-on { border-color: var(--accent); color: var(--accent); }
+
+/* ------------------------------------------------------------ 언젠가 */
+/*
+ * '언젠가' 는 넣기만 하고 안 나오는 자리가 되기 쉽다.
+ * 꺼내 쓰는 버튼을 항목 위에 바로 둬서, 적어 둘 때만큼 가볍게 날짜를 주게 한다.
+ */
+
+.todo-plan {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity .14s;
+}
+.todo-item__row:hover .todo-plan,
+.todo-item:focus-within .todo-plan { opacity: 1; }
+
+.todo-plan__btn {
+  padding: 2px 7px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--bg-solid);
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .14s, color .14s, background .14s;
+}
+.todo-plan__btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 오래 묵은 항목 — 다그치지 않되 눈에는 띄게 */
+.todo-age {
+  flex: 0 0 auto;
+  font-family: var(--font-serif);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  letter-spacing: .02em;
+}
+
+/* ------------------------------------------------------------ 집중 모드 */
+/*
+ * 하나를 펼치면 나머지는 접는다. 좁은 패널에서 상세와 목록이 자리를 다투면
+ * 둘 다 못 쓰게 되므로, 고치는 동안에는 상세에 패널을 통째로 내준다.
+ */
+
+.todo-panel.is-focusmode .todo-body { overflow: hidden; }
+
+.todo-panel.is-focusmode .todo-section--focus {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 집중 모드의 머리글은 '여기서 나가는 길' 이기도 하다.
+   다른 섹션 머리글처럼 옅게 두면 갇힌 느낌이 되므로 띠를 둘러 분명히 한다. */
+.todo-panel.is-focusmode .todo-section--focus .todo-section__head {
+  border-bottom: 1px solid var(--rule);
+  background: var(--accent-soft);
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.todo-panel.is-focusmode .todo-section--focus .todo-section__title { color: var(--accent); }
+.todo-panel.is-focusmode .todo-section--focus .todo-section__count { display: none; }
+.todo-panel.is-focusmode .todo-section--focus .todo-list-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* 집중 모드에서는 접기 캐럿이 할 일이 없다 — 돌아가는 길만 남긴다 */
+.todo-panel.is-focusmode .todo-section--focus .todo-section__caret { display: none; }
+
+.todo-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px 4px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--bg-solid);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+  transition: border-color .16s, color .16s;
+}
+.todo-back:hover { background: var(--accent); color: var(--on-color); }
+.todo-back .icon { width: 10px; height: 10px; }
 
 /* ------------------------------------------------------------ 지난 일 */
 /*
