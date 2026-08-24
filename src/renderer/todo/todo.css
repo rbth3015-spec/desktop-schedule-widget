@@ -55,67 +55,31 @@
   border-bottom: 1.5px solid var(--accent);
 }
 
-/* 오늘로 가는 버튼.
- * '오늘로' 라는 글자만 있으면 누르기 전까지 무슨 일이 생기는지 알기 어렵다.
- * 달력장에 오늘 날짜를 새긴 모양으로 두면 '오늘'이라는 목적지가 눈에 보이고,
- * 다른 날을 보는 동안에도 오늘이 며칠인지 함께 알려 준다. */
-.todo-gotoday {
+/* 검색 — 돋보기만 덩그러니 두면 아이콘이 작아 눈에 안 띈다.
+   이름을 함께 적어 '무엇을 하는 버튼인지' 를 읽을 수 있게 한다. */
+.todo-searchbtn {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px 2px 3px;
+  padding: 4px 10px 4px 8px;
   border: 1px solid var(--rule);
   border-radius: 3px;
   background: none;
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: .04em;
   color: var(--text-dim);
   cursor: pointer;
-  transition: border-color .16s, color .16s, opacity .16s;
-}
-
-/* 달력장 — 위에 붉은 띠를 두른 작은 종잇장 */
-.todo-gotoday__num {
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  border: 1px solid currentColor;
-  border-top-width: 3px;
-  border-radius: 2px;
-  font-family: var(--font-serif);
-  font-size: 9.5px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.todo-gotoday:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-
-/* 이미 오늘이면 갈 곳이 없다. 숨기지 않고 흐리게 둬서 자리를 기억하게 한다. */
-.todo-gotoday.is-current { opacity: .38; cursor: default; }
-
-/* 검색 — 평소에는 돋보기 하나로 접어 둔다 */
-.todo-searchbtn {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  color: var(--text-faint);
-  cursor: pointer;
   transition: color .16s, border-color .16s, background .16s;
 }
-.todo-searchbtn:hover { color: var(--accent); border-color: var(--rule); }
+.todo-searchbtn:hover { color: var(--accent); border-color: var(--accent); }
 .todo-searchbtn.is-on {
-  color: var(--accent);
+  color: var(--on-color);
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--accent);
 }
 .todo-searchbtn .icon { width: 13px; height: 13px; }
+.todo-searchbtn__text { white-space: nowrap; }
 
 .todo-searchclose {
   flex: 0 0 auto;
@@ -526,22 +490,6 @@
   padding: 4px 14px 14px 38px;
   border-top: 1px dashed var(--rule);
 }
-
-/* 제목 — 상세에서 가장 먼저 눈이 가야 하는 칸 */
-.todo-detail__title {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  outline: none;
-  transition: border-color .16s;
-}
-.todo-detail__title:focus { border-color: var(--accent); }
-.todo-detail__title::placeholder { color: var(--text-faint); font-weight: 400; }
 
 .todo-detail__notes {
   width: 100%;
@@ -971,6 +919,31 @@
 }
 .todo-detail__pin:hover { border-color: var(--accent); color: var(--accent); }
 .todo-detail__pin.is-on { border-color: var(--accent); color: var(--accent); }
+
+/* 펼친 항목의 제목은 그대로 입력칸이 된다.
+   폼처럼 보이지 않게 글자 크기·굵기를 행의 제목과 똑같이 맞추고,
+   고칠 수 있다는 것만 옅은 밑줄로 알린다. */
+.todo-title--edit {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  border: none;
+  border-bottom: 1px dashed var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color .16s, background .16s;
+}
+.todo-title--edit:hover { border-bottom-color: var(--accent); }
+.todo-title--edit:focus {
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+.todo-title--edit::placeholder { color: var(--text-faint); }
 
 /* ------------------------------------------------------------ 언젠가 */
 /*
