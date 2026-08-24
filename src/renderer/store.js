@@ -30,7 +30,7 @@ let savePending = false;   // 디바운스 대기 중인 변경이 있는가
  * @property {number|null} doneAt
  */
 
-// 안료 계열. 형광빛 원색은 종이/가죽 배경과 따로 놀아서 채도를 낮췄다.
+// 안료 계열. 형광빛 원색은 두 테마의 배경과 따로 놀아서 채도를 낮췄다.
 // 전부 어두운 값이라 위에 얹는 글자색(--on-color)은 밝은 아이보리로 고정한다.
 export const COLORS = {
   blue:   '#3e5c76',   // 청람
@@ -44,7 +44,7 @@ export const COLORS = {
 export const PRIORITY_LABELS = ['보통', '중요', '긴급'];
 
 const DEFAULT_SETTINGS = {
-  theme: 'light',         // 'light'(종이) | 'dark'(가죽)
+  theme: 'light',         // 'light' | 'dark'
   // 배경 투명도(0.4~1). 창 전체가 아니라 배경 알파만 조절하므로 글자는 또렷하게 남는다.
   // Windows 의 transparent 창에 setOpacity 를 걸면 합성이 불안정해 CSS 로 처리한다.
   opacity: 0.9,
