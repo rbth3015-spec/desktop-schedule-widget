@@ -981,7 +981,7 @@ function renderSettings() {
   frag.append(
     group('모양'),
 
-    row('테마', segmented([['light', '종이'], ['dark', '가죽']], s.theme, (v) =>
+    row('테마', segmented([['light', '라이트'], ['dark', '다크']], s.theme, (v) =>
       store.setSetting('theme', v))),
 
     row('배경 투명도', slider(0.4, 1, 0.02, s.opacity, (v) =>
