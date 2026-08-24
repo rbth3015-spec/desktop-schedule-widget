@@ -141,6 +141,26 @@ function notify(text) {
   document.dispatchEvent(new CustomEvent('app:toast', { detail: String(text) }));
 }
 
+/** 만든 지 며칠 됐나 */
+function daysSince(ts) {
+  if (!ts) return 0;
+  return Math.max(0, Math.floor((Date.now() - ts) / 86400000));
+}
+
+/** '2주째' / '3달째' — 오래 묵은 '언젠가' 를 눈에 띄게 한다 */
+function ageLabel(days) {
+  if (days < 30) return `${Math.floor(days / 7)}주째`;
+  if (days < 365) return `${Math.floor(days / 30)}달째`;
+  return `${Math.floor(days / 365)}년째`;
+}
+
+/** 다가오는 토요일 (오늘이 토요일이면 오늘) */
+function nextWeekendKey() {
+  const base = todayKey();
+  const day = fromKey(base).getDay();
+  return addDays(base, (6 - day + 7) % 7);
+}
+
 function isSpanTask(t) {
   return !!(t.start && t.end && t.end > t.start);
 }
@@ -161,14 +181,33 @@ export function createTodoPanel({ root, store }) {
   // 헤더 -------------------------------------------------------
   const header = h('header', 'todo-header');
 
+  const completedBtn = h('button', 'todo-toggle', '완료 표시');
+  completedBtn.type = 'button';
+  completedBtn.setAttribute('aria-pressed', 'false');
+
   const dateRow = h('div', 'todo-daterow');
   const dateLabel = h('div', 'todo-date');
   const todayBadge = h('span', 'todo-badge todo-badge--today', '오늘');
-  const goTodayBtn = h('button', 'todo-gotoday', '오늘로');
+
+  // '오늘로' 라는 글자만으로는 누르면 무슨 일이 생기는지 알기까지 한 박자 걸린다.
+  // 달력장 위에 오늘 날짜를 새긴 아이콘 + '오늘' 글자를 함께 둔다 —
+  // 오늘이 며칠인지도 같이 알려 주므로, 다른 날을 보다가도 기준을 잃지 않는다.
+  const goTodayBtn = h('button', 'todo-gotoday');
   goTodayBtn.type = 'button';
-  goTodayBtn.setAttribute('aria-label', '오늘 날짜로 이동');
+  const goTodayNum = h('span', 'todo-gotoday__num');
+  goTodayBtn.append(goTodayNum, h('span', 'todo-gotoday__text', '오늘'));
+
   const progressText = h('span', 'todo-progress__text', '0/0');
-  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText);
+
+  // 검색은 늘 펼쳐 둘 만큼 자주 쓰지 않는다. 평소에는 돋보기 하나로 접어 두고
+  // 그 자리를 날짜와 '오늘' 버튼에 내준다.
+  const searchBtn = h('button', 'todo-searchbtn');
+  searchBtn.type = 'button';
+  searchBtn.append(icon('search'));
+  searchBtn.setAttribute('aria-label', '검색 열기');
+  searchBtn.setAttribute('aria-expanded', 'false');
+
+  dateRow.append(dateLabel, todayBadge, goTodayBtn, progressText, searchBtn, completedBtn);
 
   // 일정을 만드는 유일한 입구다. 머리글 구석의 22px 아이콘으로 두면
   // '여기서 추가한다'는 걸 알아채는 데 시간이 걸린다 — 이름을 달고 크게 둔다.
@@ -184,16 +223,19 @@ export function createTodoPanel({ root, store }) {
   const progressFill = h('div', 'todo-progress__fill');
   progressBar.append(progressFill);
 
+  // 검색 줄 — 돋보기를 누를 때만 펼친다
   const filterRow = h('div', 'todo-filters');
+  filterRow.hidden = true;
   const searchInput = h('input', 'todo-search');
   searchInput.type = 'text';
-  searchInput.placeholder = '검색';
+  searchInput.placeholder = '전체 일정에서 검색';
   searchInput.spellcheck = false;
   searchInput.setAttribute('aria-label', '전체 일정 검색');
-  const completedBtn = h('button', 'todo-toggle', '완료 표시');
-  completedBtn.type = 'button';
-  completedBtn.setAttribute('aria-pressed', 'false');
-  filterRow.append(searchInput, completedBtn);
+  const searchClose = h('button', 'todo-searchclose');
+  searchClose.type = 'button';
+  searchClose.append(icon('close'));
+  searchClose.setAttribute('aria-label', '검색 닫기');
+  filterRow.append(searchInput, searchClose);
 
   const tagBar = h('div', 'todo-tagbar');
 
@@ -215,6 +257,7 @@ export function createTodoPanel({ root, store }) {
   };
   sections.inbox.collapsed = false;
   sections.overdue.el.classList.add('todo-section--overdue');
+  sections.focus.el.classList.add('todo-section--focus');
 
   // '오늘로 당기기' — 밀린 일을 한 번에 오늘로. 되돌리기 한 번으로 취소된다.
   const rollBtn = h('button', 'todo-rollup', '오늘로 당기기');
@@ -228,6 +271,16 @@ export function createTodoPanel({ root, store }) {
     if (n) notify(`${n}건을 오늘로 옮겼습니다`);
   });
   sections.overdue.actions.append(rollBtn);
+
+  // 집중 모드에서 목록으로 돌아가는 길. 상세를 닫으면 원래 목록이 그대로 돌아온다.
+  const backBtn = h('button', 'todo-back');
+  backBtn.type = 'button';
+  backBtn.append(icon('chevronLeft'), h('span', null, '목록으로'));
+  backBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    store.setEditing(null);
+  });
+  sections.focus.actions.append(backBtn);
 
   body.append(sections.search.el, sections.overdue.el, sections.focus.el,
               sections.day.el, sections.span.el, sections.inbox.el);
@@ -252,7 +305,8 @@ export function createTodoPanel({ root, store }) {
    *  폼 안에 이미 '취소 / 일정 추가' 가 있어서, 위에 같은 뜻의 버튼이 하나 더 있으면
    *  어느 쪽을 눌러야 하는지 다시 헷갈린다. */
   function syncAddBar() {
-    addBar.hidden = !compose.el.hidden;
+    // 집중 모드에서는 감춘다 — 지금 하는 일은 '고치기' 지 '만들기' 가 아니다.
+    addBar.hidden = !compose.el.hidden || el.classList.contains('is-focusmode');
   }
 
   /** 날짜·기간·링크까지 한 번에 지정하는 추가 폼 */
@@ -597,6 +651,30 @@ export function createTodoPanel({ root, store }) {
   function buildDetail(rec) {
     const d = h('div', 'todo-detail');
 
+    // 제목.
+    // 그동안 제목을 고치는 길은 '제목 더블클릭' 하나뿐이었다. 숨은 제스처라
+    // 항목을 펼쳐 놓고도 '제목은 왜 못 고치지' 로 막히는 자리였다.
+    // 상세를 열면 가장 위에서 바로 고칠 수 있어야 한다.
+    const titleIn = h('input', 'todo-detail__title');
+    titleIn.type = 'text';
+    titleIn.placeholder = '일정 이름';
+    titleIn.spellcheck = false;
+    titleIn.setAttribute('aria-label', '일정 이름');
+
+    const commitTitle = () => {
+      const v = titleIn.value.trim();
+      const cur = rec.task?.title || '';
+      if (!v || v === cur) { titleIn.value = cur; return; }
+      store.updateTask(rec.id, { title: v });
+    };
+    titleIn.addEventListener('change', commitTitle);
+    titleIn.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'Enter') { e.preventDefault(); titleIn.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); titleIn.value = rec.task?.title || ''; titleIn.blur(); }
+    });
+    titleIn.addEventListener('click', (e) => e.stopPropagation());
+
     const notes = h('textarea', 'todo-detail__notes');
     notes.placeholder = '메모';
     notes.rows = 2;
@@ -785,10 +863,10 @@ export function createTodoPanel({ root, store }) {
     const rowSeries = h('div', 'todo-detail__row');
     rowSeries.append(pinBtn, dropSeries);
 
-    d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
+    d.append(titleIn, notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
              rowExtra, rowSeries);
 
-    rec.detail = { el: d, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
+    rec.detail = { el: d, titleIn, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
                    prio, swatchBtns, tagsIn, linkIn, linkOpen,
                    remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
     return rec.detail;
@@ -805,6 +883,7 @@ export function createTodoPanel({ root, store }) {
   function updateDetail(rec, task) {
     const d = rec.detail;
     if (!d) return;
+    setValueSafe(d.titleIn, task.title || '');
     setValueSafe(d.notes, task.notes || '');
     setValueSafe(d.startIn, task.start || '');
     setValueSafe(d.endIn, task.end || task.start || '');
@@ -952,7 +1031,38 @@ export function createTodoPanel({ root, store }) {
       dd.title = `${formatShort(task.start)} ~ ${formatShort(task.end)}`;
       meta.append(dd);
     } else if (!task.start) {
-      meta.append(h('span', 'todo-dday todo-dday--none', '날짜 없음'));
+      // '언젠가' 항목.
+      //
+      // 그동안 여기 넣은 일은 잘 나오지 않았다. 날짜를 주려면 캘린더로 끌거나
+      // 상세를 펼쳐 날짜칸을 찾아야 했는데, 둘 다 '언젠가' 를 적어 둘 때의
+      // 가벼운 마음가짐에 비해 손이 많이 간다. 그래서 넣기만 하고 쌓였다.
+      //
+      // 꺼내 쓰는 길을 항목 위에 바로 둔다 — 한 번 누르면 그날로 잡힌다.
+      const age = daysSince(task.createdAt);
+      if (age >= 7) {
+        const a = h('span', 'todo-age', ageLabel(age));
+        a.title = `${age}일째 날짜가 없습니다`;
+        meta.append(a);
+      }
+
+      const plan = h('span', 'todo-plan');
+      for (const [label, key] of [
+        ['오늘', todayKey()],
+        ['내일', addDays(todayKey(), 1)],
+        ['주말', nextWeekendKey()],
+      ]) {
+        const b = h('button', 'todo-plan__btn', label);
+        b.type = 'button';
+        b.setAttribute('aria-label', `'${task.title || '일정'}' 을(를) ${label}로 잡기`);
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          store.moveTask(task.id, key);
+          store.selectDate(key);
+          notify(`'${task.title || '일정'}' 을(를) ${label}로 잡았습니다`);
+        });
+        plan.append(b);
+      }
+      meta.append(plan);
     }
 
     // 상세 영역
@@ -1031,7 +1141,9 @@ export function createTodoPanel({ root, store }) {
 
   function buildInboxEmpty() {
     const box = h('div', 'todo-empty todo-empty--slim');
-    box.append(h('div', 'todo-empty__desc', '날짜를 정하지 않은 일은 여기 모입니다. 항목을 캘린더로 끌어다 놓으면 날짜가 잡혀요.'));
+    box.append(h('div', 'todo-empty__desc',
+      '날짜를 정하기 애매한 일을 일단 여기 적어 두세요. '
+      + '꺼낼 때는 항목 위의 오늘·내일·주말 버튼을 누르면 그날로 잡힙니다.'));
     return box;
   }
 
@@ -1054,7 +1166,13 @@ export function createTodoPanel({ root, store }) {
     const isToday = key === todayKey();
     dateLabel.textContent = formatDateLabel(key);
     todayBadge.hidden = !isToday;
-    goTodayBtn.hidden = isToday;
+    // 버튼을 숨기지 않는다. 늘 같은 자리에 있어야 '오늘로 가는 버튼'이라고 익힌다.
+    // 이미 오늘이면 눌러도 갈 곳이 없으므로 흐리게 두고 비활성.
+    goTodayBtn.classList.toggle('is-current', isToday);
+    goTodayBtn.disabled = isToday;
+    goTodayNum.textContent = String(Number(todayKey().slice(8, 10)));
+    goTodayBtn.setAttribute('aria-label',
+      isToday ? '이미 오늘을 보고 있습니다' : `오늘(${formatDateLabel(todayKey())})로 이동`);
 
     const { total, done } = dayStats(st, key);
     progressText.textContent = `${done}/${total}`;
@@ -1215,36 +1333,47 @@ export function createTodoPanel({ root, store }) {
       : store.overdueTasks().filter((t) => !shown.has(t.id));
 
     sections.search.el.hidden = !searching;
-    sections.day.el.hidden = searching;
-    sections.inbox.el.hidden = searching;
-    sections.overdue.el.hidden = searching || overdue.length === 0;
     sections.overdue.titleEl.textContent =
       overdue.length ? `지난 일 · 아직 안 끝났어요` : '지난 일';
     if (searching) {
       sections.search.titleEl.textContent = `'${st.filter.text.trim()}' 검색 결과`;
     }
 
-    // 캘린더에서 막대를 클릭했는데 위 세 목록에 없는 항목이면 따로 띄워 준다
+    // ---- 편집 집중 모드 ----
+    //
+    // 오른쪽 패널은 좁다. 한 일정을 펼치면 상세가 패널 절반을 먹어서, 나머지 목록은
+    // 스크롤 저편으로 밀리고 지금 뭘 고치는 중인지도 흐려진다.
+    // 그래서 하나를 펼치면 **나머지는 접는다.** 스크롤로 밀어내지 않고 아예 치운다.
     const editingId = st.editingTaskId;
+    const editingTask = editingId ? st.tasks.find((x) => x.id === editingId) : null;
+    // 검색 중에는 결과를 계속 보여 줘야 하므로 집중 모드로 들어가지 않는다
+    const focusMode = !!editingTask && !searching;
+
     let focusTasks = [];
-    if (editingId) {
-      const visible = onDate.some((t) => t.id === editingId) || inboxTasks.some((t) => t.id === editingId);
-      if (!visible) {
-        const t = st.tasks.find((x) => x.id === editingId);
-        if (t) focusTasks = [t];
-      }
+    if (focusMode) {
+      // 어느 섹션에 있었든, 펼친 하나만 이 자리에서 보여 준다
+      const onDateHit = onDate.find((t) => t.id === editingId);
+      focusTasks = [onDateHit || editingTask];
     }
 
-    sections.focus.el.hidden = searching || focusTasks.length === 0;
+    el.classList.toggle('is-focusmode', focusMode);
+    sections.focus.el.hidden = !focusMode;
+    sections.focus.titleEl.textContent = '고치는 중';
+
+    // 집중 모드에서는 나머지 섹션을 통째로 감춘다
+    sections.overdue.el.hidden = focusMode || searching || overdue.length === 0;
+    sections.day.el.hidden = focusMode || searching;
+    sections.inbox.el.hidden = focusMode || searching;
+    sections.span.el.hidden = focusMode || searching || spanTasks.length === 0;
+
     sections.day.titleEl.textContent = key === todayKey() ? '오늘 할 일' : `${formatDateLabel(key)} 할 일`;
-    sections.span.el.hidden = searching || spanTasks.length === 0;
 
     renderSection(sections.search, searchResults, key, searching ? buildSearchEmpty : null);
-    renderSection(sections.overdue, overdue, key, null);
+    renderSection(sections.overdue, focusMode ? [] : overdue, key, null);
     renderSection(sections.focus, focusTasks, key, null);
-    renderSection(sections.day, dayTasks, key, buildDayEmpty);
-    renderSection(sections.span, spanTasks, key, null);
-    renderSection(sections.inbox, inboxTasks, key, buildInboxEmpty);
+    renderSection(sections.day, focusMode ? [] : dayTasks, key, buildDayEmpty);
+    renderSection(sections.span, focusMode ? [] : spanTasks, key, null);
+    renderSection(sections.inbox, focusMode ? [] : inboxTasks, key, buildInboxEmpty);
 
     // 캐시 정리 — DOM 에서 빠진 아이템 레코드 제거
     for (const [id, rec] of itemCache) {
@@ -1252,7 +1381,10 @@ export function createTodoPanel({ root, store }) {
     }
 
     // editingTaskId 가 외부(캘린더)에서 바뀌었으면 해당 항목으로 스크롤
-    if (editingId && editingId !== lastEditingId) {
+    // 집중 모드에서는 그 항목 하나뿐이라 스크롤할 이유가 없다.
+    // 그런데도 scrollIntoView 를 부르면 섹션 머리글('고치는 중 · 목록으로')이
+    // 위로 밀려 나가 빠져나갈 길이 화면에서 사라진다.
+    if (editingId && editingId !== lastEditingId && !focusMode) {
       const rec = itemCache.get(editingId);
       if (rec && rec.el.parentNode) {
         rec.el.scrollIntoView({ block: 'nearest' });
@@ -1273,21 +1405,39 @@ export function createTodoPanel({ root, store }) {
   }
 
   // ---------------------------------------------------------- 이벤트 연결
-  goTodayBtn.addEventListener('click', () => store.selectDate(todayKey()));
-
   completedBtn.addEventListener('click', () => {
     store.setSetting('showCompleted', !store.getState().settings.showCompleted);
   });
+
+  /** 검색 줄 열고 닫기. 닫으면 검색어도 비워 목록이 원래대로 돌아온다. */
+  function openSearch() {
+    filterRow.hidden = false;
+    searchBtn.classList.add('is-on');
+    searchBtn.setAttribute('aria-expanded', 'true');
+    searchInput.focus();
+    searchInput.select();
+  }
+  function closeSearch() {
+    filterRow.hidden = true;
+    searchBtn.classList.remove('is-on');
+    searchBtn.setAttribute('aria-expanded', 'false');
+    searchInput.value = '';
+    if (store.getState().filter.text) store.setFilter({ text: '' });
+  }
+
+  searchBtn.addEventListener('click', () => {
+    if (filterRow.hidden) openSearch();
+    else closeSearch();
+  });
+  searchClose.addEventListener('click', closeSearch);
+
+  goTodayBtn.addEventListener('click', () => store.selectDate(todayKey()));
 
   searchInput.addEventListener('input', () => {
     store.setFilter({ text: searchInput.value });
   });
   searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      searchInput.value = '';
-      store.setFilter({ text: '' });
-    }
+    if (e.key === 'Escape') { e.preventDefault(); closeSearch(); }
   });
 
   const unsubscribe = store.subscribe(scheduleRender);
