@@ -136,15 +136,6 @@ export function createCalendar({ root, store }) {
     }
   }
 
-  /** 장기 계획 막대를 통째로 드래그 (기간은 store.moveTask 가 보존) */
-  function onDragStart(e) {
-    const bar = e.target.closest && e.target.closest('.cal-bar');
-    if (!bar || !e.dataTransfer) return;
-    e.dataTransfer.setData('application/x-task-id', bar.dataset.taskId);
-    e.dataTransfer.setData('text/plain', bar.dataset.taskId);
-    e.dataTransfer.effectAllowed = 'move';
-  }
-
   function onKeyDown(e) {
     if (isTypingTarget(document.activeElement) || isTypingTarget(e.target)) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -290,6 +281,135 @@ export function createCalendar({ root, store }) {
     store.requestCompose(a < b ? a : b, a < b ? b : a);
   }
 
+  // ---------------------------------------------------------------- 막대 끌기
+  //
+  // 캘린더 안에서 일정을 직접 잡아 옮기고, 양 끝을 잡아 기간을 늘리고 줄인다.
+  //
+  // HTML5 드래그를 쓰지 않는 이유:
+  //  - 끄는 동안 '어디로 가는지' 를 칸에 칠해 보여 줄 수 없다(고스트 이미지만 따라다닌다)
+  //  - 양 끝을 잡는 기간 조절과 옮기기를 한 방식으로 다룰 수 없다
+  //  - 놓을 자리가 캘린더 밖(D-Day)일 때의 처리가 갈린다
+  // 마우스로 직접 다루면 셋 다 같은 코드 경로가 된다.
+
+  const EDGE_PX = 7;          // 이 안쪽을 잡으면 기간 조절
+  let barDrag = null;         // { id, mode, origStart, origEnd, grabKey, moved }
+
+  function taskById(id) {
+    return store.getState().tasks.find((t) => t.id === id) || null;
+  }
+
+  /** 좌표 아래의 날짜 칸. 막대는 끄는 동안 pointer-events 를 꺼 두므로 칸이 잡힌다. */
+  function cellAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const cell = el && el.closest ? el.closest('.cal-day') : null;
+    return cell && !cell.hidden ? cell : null;
+  }
+
+  function onBarMouseDown(e) {
+    if (e.button !== 0) return;
+    const bar = e.target.closest?.('.cal-bar');
+    if (!bar) return;
+
+    e.preventDefault();
+    e.stopPropagation();      // 기간 드래그(빈 칸 끌기)로 번지지 않게
+
+    const task = taskById(bar.dataset.taskId);
+    if (!task) return;
+
+    if (bar.dataset.locked) {
+      notifyShell('반복 일정은 캘린더에서 옮길 수 없습니다');
+      return;
+    }
+
+    const r = bar.getBoundingClientRect();
+    // 이어지는 막대(cal-bar--cl/cr)는 그쪽 끝이 이번 주 밖이라 손잡이를 주지 않는다
+    const canStart = !bar.classList.contains('cal-bar--cl');
+    const canEnd = !bar.classList.contains('cal-bar--cr');
+    let mode = 'move';
+    if (canStart && e.clientX - r.left <= EDGE_PX) mode = 'start';
+    else if (canEnd && r.right - e.clientX <= EDGE_PX) mode = 'end';
+
+    const cell = cellAt(e.clientX, e.clientY);
+    barDrag = {
+      id: task.id,
+      mode,
+      origStart: task.start,
+      origEnd: task.end || task.start,
+      grabKey: cell ? cell.dataset.key : task.start,
+      moved: false,
+    };
+    els.grid.classList.add('cal-grid--ranging');
+    els.root.classList.add(`cal-root--drag-${mode}`);
+    hideAddButton();
+  }
+
+  /**
+   * 커서가 놓인 날짜로 계산한 새 기간.
+   * 끌기 상태(d)를 인자로 받는다 — mouseup 은 barDrag 를 비운 뒤에 이 값을 쓰기 때문에,
+   * 전역을 읽게 두면 그 순간 null 이라 조용히 실패한다(실제로 그렇게 안 먹혔다).
+   */
+  function dragRange(key, d) {
+    if (d.mode === 'move') {
+      const shift = date.diffDays(d.grabKey, key);
+      return { start: date.addDays(d.origStart, shift), end: date.addDays(d.origEnd, shift) };
+    }
+    if (d.mode === 'start') {
+      // 시작을 끝 너머로 밀지 않는다
+      return { start: key > d.origEnd ? d.origEnd : key, end: d.origEnd };
+    }
+    return { start: d.origStart, end: key < d.origStart ? d.origStart : key };
+  }
+
+  function onBarMouseMove(e) {
+    if (!barDrag) return;
+    const cell = cellAt(e.clientX, e.clientY);
+    if (!cell) return;
+    const { start, end } = dragRange(cell.dataset.key, barDrag);
+    if (start === barDrag.origStart && end === barDrag.origEnd && !barDrag.moved) return;
+    barDrag.moved = true;
+    paintRange(start, end);
+  }
+
+  function onBarMouseUp(e) {
+    if (!barDrag) return;
+    const d = barDrag;
+
+    // **놓을 자리를 먼저 읽는다.** clearRangePreview 가 cal-grid--ranging 을 벗기면
+    // 막대가 다시 마우스를 받게 되고, 막대는 날짜 칸의 자식이 아니라 형제 레이어라
+    // elementFromPoint 가 칸을 못 찾는다. 지우고 나서 읽으면 매번 놓치게 된다.
+    const dropEl = document.elementFromPoint(e.clientX, e.clientY);
+    const overDash = !!(dropEl && dropEl.closest && dropEl.closest('.dash-root'));
+    const cell = cellAt(e.clientX, e.clientY);
+
+    barDrag = null;
+    clearRangePreview();
+    els.root.classList.remove('cal-root--drag-move', 'cal-root--drag-start', 'cal-root--drag-end');
+
+    if (!d.moved) return;     // 제자리 — 클릭으로 처리된다
+    suppressClick = true;
+
+    // 캘린더 밖 D-Day 판 위에서 놓으면 고정한다
+    if (overDash) {
+      const t = taskById(d.id);
+      if (t && !t.repeat && t.end) {
+        if (store.setPinned(d.id, true)) notifyShell(`'${t.title || '일정'}' 을(를) 고정했습니다`, true);
+      }
+      return;
+    }
+
+    if (!cell) return;
+    const { start, end } = dragRange(cell.dataset.key, d);
+    if (start === d.origStart && end === d.origEnd) return;
+
+    if (d.mode === 'move') store.moveTask(d.id, start);
+    else store.updateTask(d.id, { start, end });
+  }
+
+  /** 셸에 짧은 문구를 부탁한다 (뷰 모듈끼리 직접 부르지 않는다) */
+  function notifyShell(text, undo = false) {
+    document.dispatchEvent(new CustomEvent('app:toast', { detail: { text, undo } }));
+  }
+
   // ---------------------------------------------------------------- 칸 위 추가 버튼
   //
   // 일정을 만드는 길이 여기저기 흩어져 있으면 '이 앱에서는 어떻게 추가하지'가
@@ -388,7 +508,11 @@ export function createCalendar({ root, store }) {
   }
 
   els.grid.addEventListener('contextmenu', onContextMenu);
+  // 막대가 먼저 잡아야 한다 — 빈 칸 끌기(기간 만들기)보다 앞선다
+  els.grid.addEventListener('mousedown', onBarMouseDown, true);
   els.grid.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onBarMouseMove);
+  window.addEventListener('mouseup', onBarMouseUp);
   // mouseover 가 아니라 mousemove 를 쓴다. 막대를 가려 둬도 같은 칸 안에서
   // 움직이는 동안 갱신이 필요하고, 칸 경계를 스칠 때 mouseover 를 놓치는 일이 있다.
   els.grid.addEventListener('mousemove', onMouseMove);
@@ -397,7 +521,6 @@ export function createCalendar({ root, store }) {
 
   els.root.addEventListener('click', onClick);
   els.root.addEventListener('keydown', onKeyDown);
-  els.grid.addEventListener('dragstart', onDragStart);
   document.addEventListener('dragstart', onDocDragStart, true);
   document.addEventListener('dragend', onDocDragEnd, true);
   document.addEventListener('drop', onDocDragEnd, true);
@@ -418,9 +541,11 @@ export function createCalendar({ root, store }) {
       if (ro) ro.disconnect();
       els.root.removeEventListener('click', onClick);
       els.root.removeEventListener('keydown', onKeyDown);
-      els.grid.removeEventListener('dragstart', onDragStart);
       els.grid.removeEventListener('contextmenu', onContextMenu);
+      els.grid.removeEventListener('mousedown', onBarMouseDown, true);
       els.grid.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onBarMouseMove);
+      window.removeEventListener('mouseup', onBarMouseUp);
       els.grid.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       els.root.removeEventListener('wheel', onWheel);
@@ -733,7 +858,11 @@ function makeBar(seg, m, st, store) {
   bar.className = cls;
 
   bar.dataset.taskId = task.id;
-  bar.draggable = true;
+  // HTML5 드래그를 쓰지 않는다. 마우스로 직접 끌어야 옮기는 중에 어디로 가는지
+  // 미리 칠해 보여 줄 수 있고, 양 끝을 잡아 기간을 늘리고 줄이는 것도 같은 방식으로 다룬다.
+  bar.draggable = false;
+  // 반복 일정은 규칙 하나를 공유하므로 한 회차만 옮길 수 없다
+  if (task.repeat) bar.dataset.locked = '1';
   // title 속성은 HTML 파싱되지 않으므로 사용자 입력을 그대로 넣어도 안전
   bar.title = `${task.title} (${task.start} ~ ${task.end})`;
   // 색은 CSS 변수로만 넘기고, 실제 칠하기(농도·획·완료 처리)는 calendar.css 가 맡는다
