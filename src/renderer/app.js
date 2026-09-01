@@ -1032,6 +1032,9 @@ function renderSettings() {
 
     group('패널'),
 
+    row('공휴일 표시', toggle(s.showHolidays !== false, (v) => store.setSetting('showHolidays', v)),
+      '우주항공청 월력요항 자료를 받아 대체공휴일까지 표시합니다. 한 번 받으면 오프라인에서도 보입니다.'),
+
     row('D-Day 대시보드', toggle(s.showDashboard, (v) => store.setSetting('showDashboard', v))),
 
     row('퀵 런처', toggle(s.showLauncher, (v) => store.setSetting('showLauncher', v))),

@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS = {
   // --- 패널 표시 ---
   showDashboard: true,    // Zone C: D-Day 대시보드
   showLauncher: true,     // Zone D: 퀵 런처 도크
+  showHolidays: true,     // 달력에 공휴일 표시
 
   // --- 브리핑 ---
   // 하루에 한 번, 앱을 처음 켠 날 아침에 오늘 몫을 한 장으로 요약해 준다.
@@ -102,6 +103,10 @@ const state = {
   editingTaskId: null,
   ready: false,
   loadNotice: null,
+  // 공휴일 { 'YYYY-MM-DD': ['명칭', ...] }. 메인이 받아 준 값을 담아 둔다.
+  // 영속화하지 않는다 — 캐시 파일은 메인이 관리한다.
+  holidays: {},
+  holidayYears: /** @type {Set<number>} */ (new Set()),
   saveError: null,      // 마지막 저장 실패 메시지. 성공하면 다시 null.
   // 캘린더에서 기간을 드래그하면 여기 담기고, 투두 패널이 추가 폼을 열면서 비운다.
   composeRequest: /** @type {{start:string,end:string}|null} */ (null),
@@ -1027,6 +1032,34 @@ export function setEditing(id) {
  * '오늘'을 기준으로 계산하는 것들 — 지난 일, D-Day, 오늘 할 일 머리글 — 은
  * 태스크가 하나도 안 바뀌어도 자정이 지나면 값이 달라진다.
  */
+/**
+ * 필요한 해의 공휴일을 채운다. 이미 받아 둔 해는 건너뛴다.
+ * 자료가 없는 해(아직 월력요항이 발표되지 않은 미래)는 다시 묻지 않도록 표시해 둔다.
+ */
+export async function ensureHolidays(years) {
+  const want = [...new Set(years)].filter((y) => !state.holidayYears.has(y));
+  if (!want.length) return;
+
+  // 요청을 보내는 즉시 표시해 둔다 — 달을 빠르게 넘길 때 같은 해를 여러 번 묻지 않게.
+  for (const y of want) state.holidayYears.add(y);
+
+  try {
+    const res = await window.api.holidays?.get(want);
+    if (!res) return;
+    Object.assign(state.holidays, res.days || {});
+    // 자료가 없는 해는 표시를 남겨 둔 채로 둔다(다시 묻지 않는다)
+    commit({ save: false });
+  } catch {
+    // 실패하면 다음에 다시 물을 수 있도록 표시를 지운다
+    for (const y of want) state.holidayYears.delete(y);
+  }
+}
+
+/** 그날의 공휴일 이름들 (없으면 null) */
+export function holidayOn(key) {
+  return state.holidays[key] || null;
+}
+
 export function touch() {
   commit({ save: false });
 }

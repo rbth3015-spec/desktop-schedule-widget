@@ -5,6 +5,7 @@
 import * as date from '../lib/date.js';
 import { icon } from '../lib/icons.js';
 import { showContextMenu } from '../lib/menu.js';
+import { isPublicHoliday, shortName, fullLabel } from '../lib/holidays.js';
 
 /** 레인이 하나도 안 들어갈 때의 최소값 */
 const MIN_LANES = 1;
@@ -46,6 +47,13 @@ export function createCalendar({ root, store }) {
       weekView ? '주간 보기 (누르면 월간)' : '월간 보기 (누르면 주간)');
     const today = date.todayKey();
     const selected = st.selectedDate;
+    const showHolidays = st.settings.showHolidays !== false;
+
+    // 화면에 걸친 해를 확보한다. 월 그리드는 앞뒤 달을 물고 있어 연말연시에 두 해가 겹친다.
+    if (showHolidays && keys.length) {
+      const years = new Set([Number(keys[0].slice(0, 4)), Number(keys[keys.length - 1].slice(0, 4))]);
+      store.ensureHolidays([...years]);
+    }
 
     els.title.textContent = weekView
       ? weekTitle(keys)
@@ -66,6 +74,21 @@ export function createCalendar({ root, store }) {
       cell.classList.toggle('cal-day--sel', key === selected);
 
       cell.refs.num.textContent = String(Number(key.slice(8, 10)));
+
+      // --- 공휴일 ---
+      // 이름은 좁은 칸에서 잘리므로 줄여 쓰고, 원래 이름은 툴팁에 남긴다.
+      const names = showHolidays ? store.holidayOn(key) : null;
+      const isRed = !!names && isPublicHoliday(names);
+      cell.classList.toggle('cal-day--holiday', isRed);
+      if (names) {
+        cell.refs.holiday.textContent = names.map(shortName).join('·');
+        cell.refs.holiday.hidden = false;
+        cell.title = fullLabel(names);
+      } else {
+        cell.refs.holiday.textContent = '';
+        cell.refs.holiday.hidden = true;
+        cell.removeAttribute('title');
+      }
 
       // 그날 걸쳐 있는 태스크(기간 포함) — 필터/정렬은 store 셀렉터가 처리
       const onDate = store.tasksOnDate(key);
@@ -626,12 +649,14 @@ function buildSkeleton(root) {
 
       const head = div('cal-day__head');
       const num = span('cal-day__num');
+      const holiday = span('cal-day__holiday');
+      holiday.hidden = true;
       const count = span('cal-day__count');
-      head.append(num, count);
+      head.append(num, holiday, count);
 
       const dots = div('cal-day__dots');
       cell.append(head, dots);
-      cell.refs = { num, count, dots };
+      cell.refs = { num, holiday, count, dots };
 
       days.appendChild(cell);
       cells.push(cell);
