@@ -209,12 +209,12 @@ export function createTodoPanel({ root, store }) {
   addBtn.type = 'button';
   addBtn.append(icon('plus'), h('span', 'todo-add__text', '일정 추가'));
 
-  // 매일 하는 일(운동 같은)을 만들려고 '반복 켜고 → 더보기 펼치고 → 체크리스트로만 누르고'
+  // 매일 하는 일(운동 같은)을 만들려고 '반복 켜고 → 더보기 펼치고 → 루틴 누르고'
   // 를 매번 거치는 건 너무 멀다. 아예 다른 물건이므로 입구를 따로 낸다.
   const routineBtn = h('button', 'todo-add todo-add--routine');
   routineBtn.type = 'button';
-  routineBtn.append(icon('repeat'), h('span', 'todo-add__text', '체크리스트'));
-  routineBtn.title = '매일·매주 반복하는 일. 달력에는 표시하지 않습니다.';
+  routineBtn.append(icon('repeat'), h('span', 'todo-add__text', '루틴'));
+  routineBtn.title = '운동처럼 되풀이하는 일. 달력에는 표시하지 않습니다.';
 
   const addBar = h('div', 'todo-addbar');
   addBar.append(addBtn, routineBtn);
@@ -251,7 +251,7 @@ export function createTodoPanel({ root, store }) {
     // 어제 못 끝낸 일이 어제 칸에 남아 시야에서 사라지는 게 이 앱의 가장 큰 구멍이었다.
     overdue: makeSection('overdue', '지난 일'),
     // 매일·매주 하는 일(운동 같은). 달력에는 그리지 않고 여기서만 체크한다.
-    routine: makeSection('routine', '체크리스트'),
+    routine: makeSection('routine', '루틴'),
     focus: makeSection('focus', '선택한 항목'),
     day: makeSection('day', '오늘 할 일'),
     span: makeSection('span', '진행 중인 장기 계획'),
@@ -1233,7 +1233,7 @@ export function createTodoPanel({ root, store }) {
     const box = h('div', 'todo-empty');
     box.append(h('div', 'todo-empty__title', '이 날은 아직 비어 있어요'));
     box.append(h('div', 'todo-empty__desc',
-      '약속은 「일정」, 운동처럼 매일 하는 일은 「체크리스트」로 만드세요. '
+      '약속은 「일정」, 운동처럼 되풀이하는 일은 「루틴」으로 만드세요. '
       + '달력에서 날짜를 옆으로 끌면 기간이 잡힙니다.'));
 
     const row = h('div', 'todo-empty__ctas');
@@ -1242,9 +1242,9 @@ export function createTodoPanel({ root, store }) {
     cta.type = 'button';
     cta.addEventListener('click', () => compose.open());
 
-    const routineCta = h('button', 'todo-empty__cta todo-empty__cta--ghost', '＋ 체크리스트');
+    const routineCta = h('button', 'todo-empty__cta todo-empty__cta--ghost', '＋ 루틴');
     routineCta.type = 'button';
-    routineCta.title = '매일·매주 반복하는 일. 달력에는 표시하지 않습니다.';
+    routineCta.title = '운동처럼 되풀이하는 일. 달력에는 표시하지 않습니다.';
     routineCta.addEventListener('click', () => compose.open({ routine: true }));
 
     row.append(cta, routineCta);
@@ -1484,7 +1484,7 @@ export function createTodoPanel({ root, store }) {
     if (routines.length) {
       const done = routines.filter((t) => t.done).length;
       sections.routine.titleEl.textContent =
-        done === routines.length ? '체크리스트 · 오늘 다 했어요' : '체크리스트';
+        done === routines.length ? '루틴 · 오늘 다 했어요' : '루틴';
     }
 
     sections.day.titleEl.textContent = key === todayKey() ? '오늘 할 일' : `${formatDateLabel(key)} 할 일`;
