@@ -263,8 +263,8 @@ export function createCompose({ store, onToggle }) {
   // 종료를 시작에서 며칠 뒤로 미는 버튼. '기간 일정'이라는 말을 안 써도
   // 눌러 보면 종료 칸이 따라 바뀌는 게 보이므로 설명이 필요 없다.
   const lenChips = chipGroup(
-    [['0', '하루'], ['1', '+1일'], ['2', '+2일'], ['4', '+4일'], ['6', '+1주']],
-    '0',
+    [['1', '+1일'], ['3', '+3일'], ['6', '+1주']],
+    null,
     (v) => {
       endIn.value = addDays(startIn.value || todayKey(), Number(v));
       syncWhen();
@@ -282,7 +282,13 @@ export function createCompose({ store, onToggle }) {
   summary.setAttribute('aria-live', 'polite');
 
   const whenBox = h('div', 'cmp-when');
-  whenBox.append(dayChips.el, startRow, endRow, lenChips.el, summary);
+  // 길이 칩과 요약을 한 줄에 둔다.
+  // 칩을 종료 줄에 붙였더니 좁은 패널에서 접혀 오히려 줄이 늘었다(내용 546px / 칸 374px).
+  // 둘 다 '거들어 주는' 정보라 나란히 두는 게 자연스럽다.
+  const tailRow = h('div', 'cmp-when__tail');
+  tailRow.append(lenChips.el, summary);
+
+  whenBox.append(dayChips.el, startRow, endRow, tailRow);
 
   // 시작이 바뀌기 직전의 값. change 이벤트가 올 때 input.value 는 이미 새 값이라
   // 여기 없으면 '며칠짜리였는지'를 알 수 없어 기간이 무너진다.
@@ -326,7 +332,7 @@ export function createCompose({ store, onToggle }) {
 
     // 며칠짜리인지에 맞춰 길이 칩을 켠다
     const span = String(diffDays(startIn.value, endIn.value));
-    lenChips.set(['0', '1', '2', '4', '6'].includes(span) ? span : null);
+    lenChips.set(['1', '3', '6'].includes(span) ? span : null);
 
     syncRemindOptions();
 
@@ -406,16 +412,16 @@ export function createCompose({ store, onToggle }) {
   const dayField = field('요일', dayPick);
   dayField.hidden = true;
 
-  // --- 루틴(체크리스트) ---
+  // --- 루틴 ---
   //
   // 매일 하는 일을 달력에 매일 막대로 그리면 정작 약속이 묻힌다.
-  // 달력에서 빼고 오른쪽 체크리스트에만 모은다.
+  // 달력에서 빼고 오른쪽 '루틴' 에만 모은다.
   const routineBtn = h('button', 'cmp-routine');
   routineBtn.type = 'button';
   routineBtn.setAttribute('aria-pressed', 'false');
   routineBtn.append(
     h('span', 'cmp-routine__mark', ''),
-    h('span', null, '체크리스트로만 (달력에 표시 안 함)'),
+    h('span', null, '루틴 — 달력에 표시하지 않음'),
   );
   let routineOn = false;
   routineBtn.addEventListener('click', () => {
@@ -523,13 +529,16 @@ export function createCompose({ store, onToggle }) {
   const headTitle = h('span', 'cmp-head__title', '새 일정');
   head.append(headTitle);
 
+  // 색과 중요도는 각각 한 줄을 차지할 만큼 크지 않다. 나란히 두면 줄 하나가 준다.
+  const styleRow = h('div', 'cmp-row2');
+  styleRow.append(field('색', swatches), field('중요도', prio.el));
+
   form.append(
     head,
     titleIn,
     consumedTag,
     whenBox,
-    field('색', swatches),
-    field('중요도', prio.el),
+    styleRow,
     moreBtn,
     moreBox,
     foot,
@@ -544,8 +553,8 @@ export function createCompose({ store, onToggle }) {
 
   /**
    * @param {{start?:string, end?:string, routine?:boolean}} [preset]
-   *   routine — '체크리스트' 버튼으로 열었을 때. 반복·달력 숨김을 미리 켜 둔다.
-   *   매일 하는 일을 만들려고 '반복 켜고 → 더보기 펼치고 → 체크리스트로만 누르고' 를
+   *   routine — '루틴' 버튼으로 열었을 때. 반복·달력 숨김을 미리 켜 둔다.
+   *   매일 하는 일을 만들려고 '반복 켜고 → 더보기 펼치고 → 루틴 누르고' 를
    *   매번 거치는 건 너무 멀다.
    */
   function open(preset) {
@@ -578,11 +587,11 @@ export function createCompose({ store, onToggle }) {
     moreBox.hidden = true;
     moreBtn.classList.remove('is-on');
     err.hidden = true;
-    saveBtn.textContent = preset?.routine ? '체크리스트 추가' : '일정 추가';
+    saveBtn.textContent = preset?.routine ? '루틴 추가' : '일정 추가';
     pickedColor = 'blue';
     for (const k of Object.keys(swatchBtns)) swatchBtns[k].classList.toggle('is-on', k === 'blue');
 
-    // '체크리스트' 로 열었으면 매일 반복 + 달력에 표시 안 함을 미리 켠다
+    // '루틴' 으로 열었으면 매일 반복 + 달력에 표시 안 함을 미리 켠다
     if (preset?.routine) {
       repeat.set('daily');
       routineOn = true;
@@ -596,7 +605,7 @@ export function createCompose({ store, onToggle }) {
       moreBtn.classList.add('is-on');
     }
     syncRepeatExtras();
-    headTitle.textContent = preset?.routine ? '새 체크리스트' : '새 일정';
+    headTitle.textContent = preset?.routine ? '새 루틴' : '새 일정';
 
     syncWhen();
     form.hidden = false;

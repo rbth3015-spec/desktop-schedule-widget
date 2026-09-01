@@ -383,7 +383,7 @@ function normalizeRepeat(r) {
     interval: Math.min(99, Math.max(1, Number(r.interval) || 1)),
     until: typeof r.until === 'string' && r.until ? r.until : null,   // 없으면 무기한
     days,
-    // 루틴(습관) — 달력에는 그리지 않고 체크리스트에만 모은다.
+    // 루틴 — 달력에는 그리지 않고 '루틴' 목록에만 모은다.
     // '운동' 처럼 매일 하는 일을 달력에 매일 막대로 그리면 정작 약속이 안 보인다.
     routine: !!r.routine,
   };
@@ -514,7 +514,7 @@ export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
   const out = [];
   for (const t of state.tasks) {
     if (t.repeat) {
-      // 루틴은 체크리스트에만 모은다 — 그날 할 일 목록과 달력에서는 뺀다.
+      // 루틴은 '루틴' 목록에만 모은다 — 그날 할 일과 달력에서는 뺀다.
       if (!!t.repeat.routine !== routines) continue;
       if (occursOn(t, key)) out.push(occurrenceOf(t, key));
     } else if (!routines && t.start && key >= t.start && key <= (t.end || t.start)) {
