@@ -681,10 +681,18 @@ export function createLauncher({ root, store }) {
     nameInput.value = item ? item.label : '';
     nameField.append(nameInput);
 
+    // 아이콘 칸은 이모지 한두 자만 받는 좁은 칸이다.
+    // 여기에 '비우면 기본 아이콘' 같은 안내를 placeholder 로 넣으면 '비우면 기' 까지만
+    // 보이고 잘린다 — 안내가 아니라 오히려 무슨 소린지 모를 글자가 된다.
+    // 안내는 커서를 올렸을 때 뜨는 설명으로 옮기고, 칸에는 예시 하나만 둔다.
+    const ICON_HINT = '이모지 한두 자. 비워 두면 이름 앞 글자로 인장을 새깁니다.';
     const iconField = field('아이콘');
     iconField.classList.add('lnch-field--icon');
+    iconField.title = ICON_HINT;
     const iconInput = textInput('🐍');
     iconInput.maxLength = 4;
+    iconInput.title = ICON_HINT;
+    iconInput.setAttribute('aria-label', `아이콘 — ${ICON_HINT}`);
     iconInput.value = item ? item.icon : '';
     iconField.append(iconInput);
 
@@ -782,7 +790,6 @@ export function createLauncher({ root, store }) {
       browseBtn.hidden = kind === 'url';
       argsField.hidden = !(kind === 'script' || kind === 'app');
 
-      if (!iconInput.value) iconInput.placeholder = '비우면 기본 아이콘';
 
       hint.classList.remove('is-warn');
       hint.textContent = kind === 'script'

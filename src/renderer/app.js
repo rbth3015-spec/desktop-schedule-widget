@@ -102,10 +102,13 @@ function showToast(text, { undo = false } = {}) {
   toastEl.append(label);
 
   if (undo && store.canUndo()) {
+    // 글자보다 화살표 하나가 짧고 알아보기 쉽다. 이름은 접근성 라벨로 남긴다.
     const btn = document.createElement('button');
     btn.className = 'toast__undo';
     btn.type = 'button';
-    btn.textContent = '되돌리기';
+    btn.append(icon('undo'));
+    btn.setAttribute('aria-label', '되돌리기');
+    btn.title = '되돌리기';
     btn.addEventListener('click', () => {
       const undone = store.undo();
       hideToast();
@@ -335,7 +338,7 @@ const HELP = [
     ['날짜를 눌러 옆으로 끌기', '그 기간짜리 일정을 바로 만듭니다'],
     ['목록 항목을 달력으로 끌기', '일정 날짜를 옮깁니다'],
     ['항목을 클릭', '펼쳐서 고칩니다. 제목이 그대로 입력칸이 되고, 나머지 목록은 접힙니다'],
-    ['Esc 또는 목록으로', '고치기를 끝내고 목록으로 돌아갑니다'],
+    ['Esc 또는 목록으로', '고치던 칸에 있어도 한 번에 목록으로 돌아갑니다'],
     ['제목을 더블클릭', '펼치지 않고 이름만 그 자리에서 고칩니다'],
     ['오른쪽 + 버튼', '일정을 만드는 유일한 입구입니다 (시작·종료를 눌러서 지정)'],
     ['달력에서 날짜에 커서', '그 칸에 + 가 떠요. 누르면 그 날짜로 만듭니다'],
@@ -1395,7 +1398,13 @@ function wireShortcuts() {
     const tag = active?.tagName;
     const isField = tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable;
     if (isField) {
-      if (e.key === 'Escape') { active.blur(); return; }
+      if (e.key === 'Escape') {
+        // 입력칸에서 나오는 것으로 끝내지 않는다. 일정을 고치던 중이었다면
+        // 한 번으로 편집까지 닫아 준다 — 두 번 눌러야 나가지는 건 갇힌 느낌이다.
+        active.blur();
+        if (store.getState().editingTaskId) store.setEditing(null);
+        return;
+      }
       const hasText = active.isContentEditable ? !!active.textContent : !!active.value;
       if (hasText) return;
     }
