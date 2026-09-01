@@ -520,7 +520,8 @@ export function createCompose({ store, onToggle }) {
 
   // ---------------------------------------------------------------- 조립
   const head = h('div', 'cmp-head');
-  head.append(h('span', 'cmp-head__title', '새 일정'));
+  const headTitle = h('span', 'cmp-head__title', '새 일정');
+  head.append(headTitle);
 
   form.append(
     head,
@@ -541,6 +542,12 @@ export function createCompose({ store, onToggle }) {
   });
   form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
 
+  /**
+   * @param {{start?:string, end?:string, routine?:boolean}} [preset]
+   *   routine — '체크리스트' 버튼으로 열었을 때. 반복·달력 숨김을 미리 켜 둔다.
+   *   매일 하는 일을 만들려고 '반복 켜고 → 더보기 펼치고 → 체크리스트로만 누르고' 를
+   *   매번 거치는 건 너무 멀다.
+   */
   function open(preset) {
     const sel = store.getState().selectedDate;
     const start = preset?.start || sel;
@@ -571,8 +578,25 @@ export function createCompose({ store, onToggle }) {
     moreBox.hidden = true;
     moreBtn.classList.remove('is-on');
     err.hidden = true;
+    saveBtn.textContent = preset?.routine ? '체크리스트 추가' : '일정 추가';
     pickedColor = 'blue';
     for (const k of Object.keys(swatchBtns)) swatchBtns[k].classList.toggle('is-on', k === 'blue');
+
+    // '체크리스트' 로 열었으면 매일 반복 + 달력에 표시 안 함을 미리 켠다
+    if (preset?.routine) {
+      repeat.set('daily');
+      routineOn = true;
+      routineBtn.classList.add('is-on');
+      routineBtn.setAttribute('aria-pressed', 'true');
+      endIn.disabled = true;
+      lenChips.el.classList.add('is-disabled');
+      for (const b of lenChips.el.children) b.disabled = true;
+      // 무엇이 켜져 있는지 보이도록 '더보기' 를 펼쳐 둔다
+      moreBox.hidden = false;
+      moreBtn.classList.add('is-on');
+    }
+    syncRepeatExtras();
+    headTitle.textContent = preset?.routine ? '새 체크리스트' : '새 일정';
 
     syncWhen();
     form.hidden = false;

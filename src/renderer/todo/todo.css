@@ -110,13 +110,16 @@
 
 .todo-addbar {
   flex: 0 0 auto;
+  display: flex;
+  gap: 7px;
   padding: 9px 14px 10px;
   border-bottom: 1px solid var(--rule);
 }
 .todo-addbar[hidden] { display: none; }
 
 .todo-add {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -139,6 +142,23 @@
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent);
 }
+
+/* 체크리스트 — 약속과는 다른 물건이라 입구를 따로 낸다.
+   다만 주된 동작은 '일정 추가' 이므로 무게를 낮춰 곁들인다. */
+.todo-add--routine {
+  flex: 0 0 auto;
+  border-color: var(--rule);
+  background: none;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.todo-add--routine:hover {
+  filter: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.todo-add--routine .icon { width: 11px; height: 11px; }
+
 .todo-add .icon { width: 12px; height: 12px; }
 .todo-add__text { white-space: nowrap; }
 
@@ -946,6 +966,19 @@
 .cmp-btn--ghost:hover { color: var(--text); border-color: var(--border-strong); }
 
 /* 빈 상태의 주 동작 — 처음 쓰는 사람이 다음에 뭘 해야 할지 바로 보이게 */
+.todo-empty__ctas {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.todo-empty__cta--ghost {
+  border-color: var(--rule);
+  color: var(--text-dim);
+}
+.todo-empty__cta--ghost:hover { border-color: var(--accent); color: var(--accent); }
+
 .todo-empty__cta {
   margin-top: 14px;
   padding: 8px 18px;

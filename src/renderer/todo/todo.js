@@ -209,8 +209,15 @@ export function createTodoPanel({ root, store }) {
   addBtn.type = 'button';
   addBtn.append(icon('plus'), h('span', 'todo-add__text', '일정 추가'));
 
+  // 매일 하는 일(운동 같은)을 만들려고 '반복 켜고 → 더보기 펼치고 → 체크리스트로만 누르고'
+  // 를 매번 거치는 건 너무 멀다. 아예 다른 물건이므로 입구를 따로 낸다.
+  const routineBtn = h('button', 'todo-add todo-add--routine');
+  routineBtn.type = 'button';
+  routineBtn.append(icon('repeat'), h('span', 'todo-add__text', '체크리스트'));
+  routineBtn.title = '매일·매주 반복하는 일. 달력에는 표시하지 않습니다.';
+
   const addBar = h('div', 'todo-addbar');
-  addBar.append(addBtn);
+  addBar.append(addBtn, routineBtn);
 
   const progressBar = h('div', 'todo-progress');
   const progressFill = h('div', 'todo-progress__fill');
@@ -294,6 +301,11 @@ export function createTodoPanel({ root, store }) {
 
   addBtn.addEventListener('click', () => {
     if (compose.el.hidden) compose.open();
+    else compose.close();
+  });
+
+  routineBtn.addEventListener('click', () => {
+    if (compose.el.hidden) compose.open({ routine: true });
     else compose.close();
   });
 
@@ -1221,12 +1233,22 @@ export function createTodoPanel({ root, store }) {
     const box = h('div', 'todo-empty');
     box.append(h('div', 'todo-empty__title', '이 날은 아직 비어 있어요'));
     box.append(h('div', 'todo-empty__desc',
-      '오른쪽 위 + 를 눌러 일정을 추가하거나, 달력에서 날짜를 옆으로 끌어 기간을 잡아 보세요.'));
+      '약속은 「일정」, 운동처럼 매일 하는 일은 「체크리스트」로 만드세요. '
+      + '달력에서 날짜를 옆으로 끌면 기간이 잡힙니다.'));
+
+    const row = h('div', 'todo-empty__ctas');
 
     const cta = h('button', 'todo-empty__cta', '＋ 일정 추가');
     cta.type = 'button';
     cta.addEventListener('click', () => compose.open());
-    box.append(cta);
+
+    const routineCta = h('button', 'todo-empty__cta todo-empty__cta--ghost', '＋ 체크리스트');
+    routineCta.type = 'button';
+    routineCta.title = '매일·매주 반복하는 일. 달력에는 표시하지 않습니다.';
+    routineCta.addEventListener('click', () => compose.open({ routine: true }));
+
+    row.append(cta, routineCta);
+    box.append(row);
     return box;
   }
 
