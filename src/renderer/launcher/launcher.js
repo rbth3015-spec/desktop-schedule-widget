@@ -49,17 +49,30 @@ function pigmentKeyFor(text, keys) {
   return keys[h % keys.length];
 }
 
-/** 이니셜 — 한글은 한 글자, 라틴은 두 글자까지가 판에 예쁘게 앉는다 */
+/**
+ * 이니셜 — 판 위에 새길 글자.
+ *
+ * 한 글자만 새기면 '주간 백업'도 '주소록'도 똑같이 '주' 라 무엇인지 알 수 없다.
+ * 두 글자까지 보여 주면 도크만 훑어도 구분이 된다.
+ * 여러 낱말이면 각 낱말의 첫 글자를 딴다('주간 백업' → '주백' 이 아니라 '주간' 이
+ * 더 읽히므로, 첫 낱말이 두 글자 이상이면 그 앞 두 글자를 쓴다).
+ */
 function monogramOf(label) {
   const t = String(label || '').trim();
   if (!t) return '·';
-  const chars = [...t];
-  // 라틴/숫자로 시작하면 두 글자 (GH, Sp …), 그 외(한글·한자 등)는 한 글자
-  if (/[A-Za-z0-9]/.test(chars[0])) {
-    const word = t.split(/\s+/)[0];
-    return [...word].slice(0, 2).join('').toUpperCase();
+
+  const words = t.split(/\s+/).filter(Boolean);
+  const first = [...words[0]];
+
+  // 라틴/숫자는 대문자 두 글자
+  if (/[A-Za-z0-9]/.test(first[0])) {
+    if (first.length >= 2) return first.slice(0, 2).join('').toUpperCase();
+    return (first[0] + (words[1]?.[0] || '')).toUpperCase();
   }
-  return chars[0];
+
+  // 한글 등 — 첫 낱말이 두 글자 이상이면 그 두 글자, 아니면 다음 낱말의 첫 글자를 붙인다
+  if (first.length >= 2) return first.slice(0, 2).join('');
+  return first[0] + (words[1] ? [...words[1]][0] : '');
 }
 
 const KIND_TARGET_LABELS = {
@@ -874,6 +887,17 @@ export function createLauncher({ root, store }) {
     showTip(el);
   }
 
+  // 키보드로 옮겨 다닐 때도 무엇인지 알려 준다.
+  // 아이콘 한두 글자로는 구분이 안 되므로 툴팁이 사실상 유일한 이름표다.
+  function onFocusIn(e) {
+    const el = closestItem(e.target);
+    if (el && tipAnchor !== el) showTip(el);
+  }
+  function onFocusOut(e) {
+    const el = closestItem(e.target);
+    if (el && tipAnchor === el) hideTip();
+  }
+
   function onOut(e) {
     const el = closestItem(e.target);
     if (!el) return;
@@ -959,6 +983,8 @@ export function createLauncher({ root, store }) {
   scroll.addEventListener('click', onScrollClick);
   scroll.addEventListener('mouseover', onOver);
   scroll.addEventListener('mouseout', onOut);
+  scroll.addEventListener('focusin', onFocusIn);
+  scroll.addEventListener('focusout', onFocusOut);
   scroll.addEventListener('focusin', onOver);
   scroll.addEventListener('focusout', onOut);
   scroll.addEventListener('dragstart', onDragStart);

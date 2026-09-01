@@ -984,6 +984,8 @@ function visibleDated(store, st, keys) {
 
   for (const key of keys) {
     for (const t of store.tasksOnDate(key)) {
+      // 루틴은 달력에 그리지 않는다 (tasksOnDate 가 이미 빼 주지만 뜻을 남겨 둔다)
+      if (t.repeat?.routine) continue;
       if (t.repeat) {
         // 회차마다 별개의 하루짜리 막대. 같은 날 같은 일정은 한 번만.
         const id = `${t.id}@${key}`;

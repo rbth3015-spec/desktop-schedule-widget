@@ -377,8 +377,66 @@ export function createCompose({ store, onToggle }) {
     endIn.disabled = !!v;
     lenChips.el.classList.toggle('is-disabled', !!v);
     for (const b of lenChips.el.children) b.disabled = !!v;
+    syncRepeatExtras();
     syncWhen();
   });
+
+  // --- 매주 반복의 요일 고르기 ---
+  //
+  // '월수금 운동' 처럼 요일이 정해진 습관이 흔하다. 요일을 고르지 않으면
+  // 예전처럼 시작일의 요일을 따른다.
+  const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  const picked = new Set();
+  const dayPick = h('div', 'cmp-weekdays');
+  const dayBtns = [];
+  WEEKDAYS.forEach((label, i) => {
+    const b = h('button', 'cmp-weekday', label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', `${label}요일`);
+    b.addEventListener('click', () => {
+      if (picked.has(i)) picked.delete(i); else picked.add(i);
+      b.classList.toggle('is-on', picked.has(i));
+      b.setAttribute('aria-pressed', String(picked.has(i)));
+      syncWhen();
+    });
+    dayBtns.push(b);
+    dayPick.append(b);
+  });
+  const dayField = field('요일', dayPick);
+  dayField.hidden = true;
+
+  // --- 루틴(체크리스트) ---
+  //
+  // 매일 하는 일을 달력에 매일 막대로 그리면 정작 약속이 묻힌다.
+  // 달력에서 빼고 오른쪽 체크리스트에만 모은다.
+  const routineBtn = h('button', 'cmp-routine');
+  routineBtn.type = 'button';
+  routineBtn.setAttribute('aria-pressed', 'false');
+  routineBtn.append(
+    h('span', 'cmp-routine__mark', ''),
+    h('span', null, '체크리스트로만 (달력에 표시 안 함)'),
+  );
+  let routineOn = false;
+  routineBtn.addEventListener('click', () => {
+    routineOn = !routineOn;
+    routineBtn.classList.toggle('is-on', routineOn);
+    routineBtn.setAttribute('aria-pressed', String(routineOn));
+  });
+  const routineField = field('', routineBtn);
+  routineField.hidden = true;
+
+  /** 반복 종류에 따라 요일·루틴 선택지를 보인다 */
+  function syncRepeatExtras() {
+    const freq = repeat ? repeat.get() : '';
+    dayField.hidden = freq !== 'weekly';
+    routineField.hidden = !freq;
+    if (!freq) {
+      routineOn = false;
+      routineBtn.classList.remove('is-on');
+      routineBtn.setAttribute('aria-pressed', 'false');
+    }
+  }
 
   // 시각이 있는 일정에만 뜻이 있는 상대 알림('30분 전')은 시각을 넣으면 나타난다.
   const remind = chipGroup(REMIND_OPTIONS, '');
@@ -414,6 +472,8 @@ export function createCompose({ store, onToggle }) {
   const moreBox = h('div', 'cmp-more');
   moreBox.append(
     field('반복', repeat.el),
+    dayField,
+    routineField,
     field('알림', remind.el),
     field('태그', tagsIn),
     tagSuggest,
@@ -498,6 +558,12 @@ export function createCompose({ store, onToggle }) {
     prio.set('0');
     repeat.set('');
     remind.set('');
+    picked.clear();
+    for (const b of dayBtns) { b.classList.remove('is-on'); b.setAttribute('aria-pressed', 'false'); }
+    routineOn = false;
+    routineBtn.classList.remove('is-on');
+    routineBtn.setAttribute('aria-pressed', 'false');
+    syncRepeatExtras();
     dayChips.set(start === todayKey() ? 'today' : null);
     endIn.disabled = false;
     lenChips.el.classList.remove('is-disabled');
@@ -568,7 +634,10 @@ export function createCompose({ store, onToggle }) {
       color: pickedColor,
       priority: Number(prio.get()) || 0,
       remind: remind.get(),
-      repeat: freq ? { freq, interval: 1 } : null,
+      repeat: freq
+        ? { freq, interval: 1, days: freq === 'weekly' && picked.size ? [...picked] : null,
+            routine: routineOn }
+        : null,
       tags: tagsIn.value.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean),
     });
 

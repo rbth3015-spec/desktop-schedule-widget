@@ -369,10 +369,23 @@ export const REPEAT_LABELS = {
 
 function normalizeRepeat(r) {
   if (!r || !REPEAT_FREQS.includes(r.freq)) return null;
+
+  // 매주 반복에서 요일을 골랐을 때만 의미가 있다 ('월수금 운동').
+  // 고르지 않으면 예전처럼 시작일의 요일을 따른다.
+  let days = null;
+  if (r.freq === 'weekly' && Array.isArray(r.days)) {
+    const picked = [...new Set(r.days.map(Number).filter((d) => d >= 0 && d <= 6))].sort();
+    if (picked.length) days = picked;
+  }
+
   return {
     freq: r.freq,
     interval: Math.min(99, Math.max(1, Number(r.interval) || 1)),
     until: typeof r.until === 'string' && r.until ? r.until : null,   // 없으면 무기한
+    days,
+    // 루틴(습관) — 달력에는 그리지 않고 체크리스트에만 모은다.
+    // '운동' 처럼 매일 하는 일을 달력에 매일 막대로 그리면 정작 약속이 안 보인다.
+    routine: !!r.routine,
   };
 }
 
@@ -391,6 +404,15 @@ export function occursOn(t, key) {
     return Math.round((b - a) / 86400000) % r.interval === 0;
   }
   if (r.freq === 'weekly') {
+    // 요일을 골랐으면 그 요일마다. interval 은 '몇 주마다' 로 해석한다.
+    if (r.days) {
+      if (!r.days.includes(b.getDay())) return false;
+      if (r.interval === 1) return true;
+      // 시작일이 속한 주의 일요일을 기준으로 몇 주 지났는지 센다
+      const weekStart = (d) => { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); return x; };
+      const weeks = Math.round((weekStart(b) - weekStart(a)) / (7 * 86400000));
+      return weeks >= 0 && weeks % r.interval === 0;
+    }
     return Math.round((b - a) / 86400000) % (7 * r.interval) === 0;
   }
   if (r.freq === 'monthly') {
@@ -488,16 +510,31 @@ function cryptoId() {
  *   트레이나 브리핑처럼 '화면 밖'에 보고할 때는 false 로 둔다. 태그 필터를 켜 둔
  *   상태에서 트레이가 걸러진 개수를 말하면 사실과 다른 보고가 된다.
  */
-export function tasksOnDate(key, { filtered = true } = {}) {
+export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
   const out = [];
   for (const t of state.tasks) {
     if (t.repeat) {
+      // 루틴은 체크리스트에만 모은다 — 그날 할 일 목록과 달력에서는 뺀다.
+      if (!!t.repeat.routine !== routines) continue;
       if (occursOn(t, key)) out.push(occurrenceOf(t, key));
-    } else if (t.start && key >= t.start && key <= (t.end || t.start)) {
+    } else if (!routines && t.start && key >= t.start && key <= (t.end || t.start)) {
       out.push(t);
     }
   }
   return (filtered ? out.filter(passesFilter) : out).sort(byOrder);
+}
+
+/**
+ * 그날 체크할 루틴(습관).
+ * 달력에 그리지 않는 반복 일정이다 — '운동' 을 매일 막대로 그리면 정작 약속이 묻힌다.
+ */
+export function routinesOn(key, opts = {}) {
+  return tasksOnDate(key, { ...opts, routines: true });
+}
+
+/** 루틴이 하나라도 있는가 (섹션을 보일지 결정) */
+export function hasRoutines() {
+  return state.tasks.some((t) => t.repeat?.routine);
 }
 
 /** 날짜 없는 '언젠가' 목록 */
