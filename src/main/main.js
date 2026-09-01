@@ -31,6 +31,7 @@ app.setPath('userData', path.join(app.getPath('appData'), 'schedule-widget'));
 const storage = require('./storage');
 const windowState = require('./windowState');
 const runner = require('./runner');
+const holidays = require('./holidays');
 
 // ---------------------------------------------------------------- 상수
 
@@ -466,6 +467,10 @@ function registerIpc() {
     traySummary = summary;
     refreshTrayMenu();
   });
+
+  // --- 공휴일 ---
+  // 렌더러는 CSP 때문에 네트워크를 쓸 수 없다. 받아오는 일은 메인이 맡고 결과만 넘긴다.
+  ipcMain.handle('holidays:get', (_e, years) => holidays.get(years));
 
   ipcMain.handle('data:load', () => storage.loadData());
   ipcMain.handle('data:save', (_e, data) => storage.saveData(data));

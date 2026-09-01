@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS = {
   // --- 패널 표시 ---
   showDashboard: true,    // Zone C: D-Day 대시보드
   showLauncher: true,     // Zone D: 퀵 런처 도크
+  showHolidays: true,     // 달력에 공휴일 표시
 
   // --- 브리핑 ---
   // 하루에 한 번, 앱을 처음 켠 날 아침에 오늘 몫을 한 장으로 요약해 준다.
@@ -102,6 +103,10 @@ const state = {
   editingTaskId: null,
   ready: false,
   loadNotice: null,
+  // 공휴일 { 'YYYY-MM-DD': ['명칭', ...] }. 메인이 받아 준 값을 담아 둔다.
+  // 영속화하지 않는다 — 캐시 파일은 메인이 관리한다.
+  holidays: {},
+  holidayYears: /** @type {Set<number>} */ (new Set()),
   saveError: null,      // 마지막 저장 실패 메시지. 성공하면 다시 null.
   // 캘린더에서 기간을 드래그하면 여기 담기고, 투두 패널이 추가 폼을 열면서 비운다.
   composeRequest: /** @type {{start:string,end:string}|null} */ (null),
@@ -364,10 +369,23 @@ export const REPEAT_LABELS = {
 
 function normalizeRepeat(r) {
   if (!r || !REPEAT_FREQS.includes(r.freq)) return null;
+
+  // 매주 반복에서 요일을 골랐을 때만 의미가 있다 ('월수금 운동').
+  // 고르지 않으면 예전처럼 시작일의 요일을 따른다.
+  let days = null;
+  if (r.freq === 'weekly' && Array.isArray(r.days)) {
+    const picked = [...new Set(r.days.map(Number).filter((d) => d >= 0 && d <= 6))].sort();
+    if (picked.length) days = picked;
+  }
+
   return {
     freq: r.freq,
     interval: Math.min(99, Math.max(1, Number(r.interval) || 1)),
     until: typeof r.until === 'string' && r.until ? r.until : null,   // 없으면 무기한
+    days,
+    // 루틴(습관) — 달력에는 그리지 않고 체크리스트에만 모은다.
+    // '운동' 처럼 매일 하는 일을 달력에 매일 막대로 그리면 정작 약속이 안 보인다.
+    routine: !!r.routine,
   };
 }
 
@@ -386,6 +404,15 @@ export function occursOn(t, key) {
     return Math.round((b - a) / 86400000) % r.interval === 0;
   }
   if (r.freq === 'weekly') {
+    // 요일을 골랐으면 그 요일마다. interval 은 '몇 주마다' 로 해석한다.
+    if (r.days) {
+      if (!r.days.includes(b.getDay())) return false;
+      if (r.interval === 1) return true;
+      // 시작일이 속한 주의 일요일을 기준으로 몇 주 지났는지 센다
+      const weekStart = (d) => { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); return x; };
+      const weeks = Math.round((weekStart(b) - weekStart(a)) / (7 * 86400000));
+      return weeks >= 0 && weeks % r.interval === 0;
+    }
     return Math.round((b - a) / 86400000) % (7 * r.interval) === 0;
   }
   if (r.freq === 'monthly') {
@@ -483,16 +510,31 @@ function cryptoId() {
  *   트레이나 브리핑처럼 '화면 밖'에 보고할 때는 false 로 둔다. 태그 필터를 켜 둔
  *   상태에서 트레이가 걸러진 개수를 말하면 사실과 다른 보고가 된다.
  */
-export function tasksOnDate(key, { filtered = true } = {}) {
+export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
   const out = [];
   for (const t of state.tasks) {
     if (t.repeat) {
+      // 루틴은 체크리스트에만 모은다 — 그날 할 일 목록과 달력에서는 뺀다.
+      if (!!t.repeat.routine !== routines) continue;
       if (occursOn(t, key)) out.push(occurrenceOf(t, key));
-    } else if (t.start && key >= t.start && key <= (t.end || t.start)) {
+    } else if (!routines && t.start && key >= t.start && key <= (t.end || t.start)) {
       out.push(t);
     }
   }
   return (filtered ? out.filter(passesFilter) : out).sort(byOrder);
+}
+
+/**
+ * 그날 체크할 루틴(습관).
+ * 달력에 그리지 않는 반복 일정이다 — '운동' 을 매일 막대로 그리면 정작 약속이 묻힌다.
+ */
+export function routinesOn(key, opts = {}) {
+  return tasksOnDate(key, { ...opts, routines: true });
+}
+
+/** 루틴이 하나라도 있는가 (섹션을 보일지 결정) */
+export function hasRoutines() {
+  return state.tasks.some((t) => t.repeat?.routine);
 }
 
 /** 날짜 없는 '언젠가' 목록 */
@@ -1027,6 +1069,34 @@ export function setEditing(id) {
  * '오늘'을 기준으로 계산하는 것들 — 지난 일, D-Day, 오늘 할 일 머리글 — 은
  * 태스크가 하나도 안 바뀌어도 자정이 지나면 값이 달라진다.
  */
+/**
+ * 필요한 해의 공휴일을 채운다. 이미 받아 둔 해는 건너뛴다.
+ * 자료가 없는 해(아직 월력요항이 발표되지 않은 미래)는 다시 묻지 않도록 표시해 둔다.
+ */
+export async function ensureHolidays(years) {
+  const want = [...new Set(years)].filter((y) => !state.holidayYears.has(y));
+  if (!want.length) return;
+
+  // 요청을 보내는 즉시 표시해 둔다 — 달을 빠르게 넘길 때 같은 해를 여러 번 묻지 않게.
+  for (const y of want) state.holidayYears.add(y);
+
+  try {
+    const res = await window.api.holidays?.get(want);
+    if (!res) return;
+    Object.assign(state.holidays, res.days || {});
+    // 자료가 없는 해는 표시를 남겨 둔 채로 둔다(다시 묻지 않는다)
+    commit({ save: false });
+  } catch {
+    // 실패하면 다음에 다시 물을 수 있도록 표시를 지운다
+    for (const y of want) state.holidayYears.delete(y);
+  }
+}
+
+/** 그날의 공휴일 이름들 (없으면 null) */
+export function holidayOn(key) {
+  return state.holidays[key] || null;
+}
+
 export function touch() {
   commit({ save: false });
 }

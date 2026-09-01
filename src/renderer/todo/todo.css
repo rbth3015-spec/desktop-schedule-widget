@@ -680,6 +680,56 @@
   font-weight: 600;
 }
 
+/* --- 매주 반복의 요일 --- */
+.cmp-weekdays { display: flex; gap: 4px; }
+
+.cmp-weekday {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color .14s, background .14s, color .14s;
+}
+.cmp-weekday:hover { border-color: var(--border-strong); color: var(--text); }
+.cmp-weekday.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-color);
+  font-weight: 700;
+}
+
+/* --- 체크리스트로만 --- */
+.cmp-routine {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: none;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color .14s, color .14s;
+}
+.cmp-routine__mark {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  transition: background .14s, border-color .14s;
+}
+.cmp-routine:hover { border-color: var(--accent); color: var(--accent); }
+.cmp-routine.is-on { border-color: var(--accent); color: var(--accent); }
+.cmp-routine.is-on .cmp-routine__mark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 /* --- 제목칸이 걷어간 토큰 --- */
 /* '@내일' 을 치면 그 자리에서 날짜칸으로 옮겨 간다. 무엇이 옮겨졌는지 잠깐 보여 준다. */
 .cmp-consumed {
@@ -944,6 +994,19 @@
   background: var(--accent-soft);
 }
 .todo-title--edit::placeholder { color: var(--text-faint); }
+
+/* 검색·지난 일에 붙는 날짜 — 다른 달의 일정이 섞이는 자리라 언제인지 함께 보여 준다 */
+.todo-when {
+  flex: 0 0 auto;
+  font-family: var(--font-serif);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  letter-spacing: .01em;
+}
+
+/* 체크리스트(루틴) — 달력에 그리지 않는 반복 */
+.todo-section--routine .todo-section__title { letter-spacing: .16em; }
 
 /* ------------------------------------------------------------ 언젠가 */
 /*

@@ -208,6 +208,32 @@
   pointer-events: none;
 }
 
+/* ------------------------------------------------------------ 공휴일 */
+/*
+ * 쉬는 날은 일요일과 같은 붉은빛으로. 이름은 좁은 칸에서 잘리므로 줄여 쓰고
+ * (대체공휴일 → '대체') 원래 이름은 칸 툴팁에 남긴다.
+ */
+.cal-day--holiday .cal-day__num { color: var(--sun); }
+
+.cal-day__holiday {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: -.02em;
+  color: var(--sun);
+  opacity: .85;
+}
+.cal-day__holiday[hidden] { display: none; }
+
+/* 관공서 공휴일이 아닌 기념일(노동절·제헌절)은 이름만, 붉은빛은 주지 않는다 */
+.cal-day:not(.cal-day--holiday) .cal-day__holiday { color: var(--text-faint); }
+
+/* 지난달·다음달 칸은 전체가 흐리므로 공휴일도 함께 물러난다 */
+.cal-day--out .cal-day__holiday { opacity: .4; }
+
 /* 날짜 숫자 — 명조, 고정폭 */
 .cal-day__num {
   min-width: 16px;

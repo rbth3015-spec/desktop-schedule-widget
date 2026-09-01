@@ -58,6 +58,28 @@
 
   let win = { x: 100, y: 100, width: 980, height: 620 };
 
+  // 미리보기용 표본 — 실제 앱은 메인 프로세스가 월력요항 자료를 받아 온다
+  const SAMPLE_HOLIDAYS = {
+    '2026-01-01': ['1월 1일'],
+    '2026-02-16': ['설날 전날'], '2026-02-17': ['설날'], '2026-02-18': ['설날 다음 날'],
+    '2026-03-01': ['3ㆍ1절'], '2026-03-02': ['대체공휴일(3ㆍ1절)'],
+    '2026-05-01': ['노동절'], '2026-05-05': ['어린이날'],
+    '2026-05-24': ['부처님 오신 날'], '2026-05-25': ['대체공휴일(부처님 오신 날)'],
+    '2026-06-06': ['현충일'], '2026-07-17': ['제헌절'],
+    '2026-08-15': ['광복절'], '2026-08-17': ['대체공휴일(광복절)'],
+    '2026-09-24': ['추석 전날'], '2026-09-25': ['추석'], '2026-09-26': ['추석 다음 날'],
+    '2026-10-03': ['개천절'], '2026-10-05': ['대체공휴일(개천절)'],
+    '2026-10-09': ['한글날'], '2026-12-25': ['기독탄신일'],
+  };
+
+  function sampleHolidays(years) {
+    const days = {};
+    for (const [k, v] of Object.entries(SAMPLE_HOLIDAYS)) {
+      if (years.includes(Number(k.slice(0, 4)))) days[k] = v;
+    }
+    return { days, missing: [] };
+  }
+
   window.api = {
     loadData: async () => {
       const raw = localStorage.getItem(KEY);
@@ -122,6 +144,8 @@
       getAutoLaunch: async () => ({ ok: true, enabled: false, dev: true }),
       setAutoLaunch: async () => ({ ok: false, dev: true, error: '개발 실행 중에는 설정되지 않습니다.' }),
     },
+
+    holidays: { get: async (years) => sampleHolidays(years) },
 
     openExternal: async (url) => {
       console.log('[dev] openExternal', url);

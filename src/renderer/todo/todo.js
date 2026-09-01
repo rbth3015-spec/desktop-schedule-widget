@@ -243,6 +243,8 @@ export function createTodoPanel({ root, store }) {
     // 기한이 지났는데 안 끝난 일. 고른 날짜와 무관하게 언제나 맨 위에 온다 —
     // 어제 못 끝낸 일이 어제 칸에 남아 시야에서 사라지는 게 이 앱의 가장 큰 구멍이었다.
     overdue: makeSection('overdue', '지난 일'),
+    // 매일·매주 하는 일(운동 같은). 달력에는 그리지 않고 여기서만 체크한다.
+    routine: makeSection('routine', '체크리스트'),
     focus: makeSection('focus', '선택한 항목'),
     day: makeSection('day', '오늘 할 일'),
     span: makeSection('span', '진행 중인 장기 계획'),
@@ -250,6 +252,7 @@ export function createTodoPanel({ root, store }) {
   };
   sections.inbox.collapsed = false;
   sections.overdue.el.classList.add('todo-section--overdue');
+  sections.routine.el.classList.add('todo-section--routine');
   sections.focus.el.classList.add('todo-section--focus');
 
   // '오늘로 당기기' — 밀린 일을 한 번에 오늘로. 되돌리기 한 번으로 취소된다.
@@ -276,7 +279,7 @@ export function createTodoPanel({ root, store }) {
   sections.focus.actions.append(backBtn);
 
   body.append(sections.search.el, sections.overdue.el, sections.focus.el,
-              sections.day.el, sections.span.el, sections.inbox.el);
+              sections.day.el, sections.routine.el, sections.span.el, sections.inbox.el);
 
   // 일정 추가 폼 -----------------------------------------------
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
@@ -545,7 +548,17 @@ export function createTodoPanel({ root, store }) {
     const toggleExpand = () => {
       if (destroyed) return;
       const cur = store.getState().editingTaskId;
-      store.setEditing(cur === taskId ? null : taskId);
+      const opening = cur !== taskId;
+      store.setEditing(opening ? taskId : null);
+
+      // 펼칠 때 달력도 그 날로 옮긴다.
+      // 검색 결과나 '지난 일' 은 다른 달의 일정일 수 있어서, 고치는 동안 달력이
+      // 엉뚱한 달을 보고 있으면 앞뒤 맥락을 알 수 없다.
+      const t = rec.task;
+      if (opening && t?.start) {
+        const target = t.occDate || t.start;
+        if (target !== store.getState().selectedDate) store.selectDate(target);
+      }
     };
     li.addEventListener('click', (e) => {
       if (e.target.closest('.todo-check, .todo-del, .todo-defer, .todo-plan, .todo-detail, .todo-tag')) return;
@@ -1089,6 +1102,17 @@ export function createTodoPanel({ root, store }) {
       meta.append(lk);
     }
 
+    // 검색 결과는 여러 달에 흩어져 있다. 제목만 보여 주면 언제 일인지 알 수 없어
+    // 눌러 보기 전에는 고를 수가 없다. 날짜를 함께 적는다.
+    if (rec.showDate && task.start) {
+      const when = h('span', 'todo-when', formatShort(task.start)
+        + (task.startTime ? ` ${task.startTime}` : ''));
+      when.title = isSpanTask(task)
+        ? `${formatShort(task.start)} ~ ${formatShort(task.end)}`
+        : formatDateLabel(task.start);
+      meta.append(when);
+    }
+
     if (isSpanTask(task)) {
       const left = diffDays(selectedDate, task.end);
       let label;
@@ -1163,6 +1187,8 @@ export function createTodoPanel({ root, store }) {
     if (!sec.collapsed) {
       for (const task of tasks) {
         const rec = getItem(task.id);
+        // 검색·지난 일은 다른 날의 일정이 섞이므로 날짜를 함께 보여 준다
+        rec.showDate = sec.key === 'search' || sec.key === 'overdue';
         updateItem(rec, task, selectedDate);
         els.push(rec.el);
       }
@@ -1388,6 +1414,7 @@ export function createTodoPanel({ root, store }) {
     const spanTasks = onDate.filter(isSpanTask);
     const dayTasks = onDate.filter((t) => !isSpanTask(t));
     const inboxTasks = searching ? [] : store.inboxTasks();
+    const routines = searching ? [] : store.routinesOn(key);
 
     // 밀린 일은 고른 날짜와 무관하다. 오늘 이전에 끝났어야 하는데 안 끝난 것 전부.
     // 단, 이미 그날 목록에 보이는 항목은 두 번 나오지 않게 뺀다.
@@ -1429,6 +1456,12 @@ export function createTodoPanel({ root, store }) {
     sections.day.el.hidden = focusMode || searching;
     sections.inbox.el.hidden = focusMode || searching;
     sections.span.el.hidden = focusMode || searching || spanTasks.length === 0;
+    sections.routine.el.hidden = focusMode || searching || routines.length === 0;
+    if (routines.length) {
+      const done = routines.filter((t) => t.done).length;
+      sections.routine.titleEl.textContent =
+        done === routines.length ? '체크리스트 · 오늘 다 했어요' : '체크리스트';
+    }
 
     sections.day.titleEl.textContent = key === todayKey() ? '오늘 할 일' : `${formatDateLabel(key)} 할 일`;
 
@@ -1436,6 +1469,7 @@ export function createTodoPanel({ root, store }) {
     renderSection(sections.overdue, focusMode ? [] : overdue, key, null);
     renderSection(sections.focus, focusTasks, key, null);
     renderSection(sections.day, focusMode ? [] : dayTasks, key, buildDayEmpty);
+    renderSection(sections.routine, focusMode ? [] : routines, key, null);
     renderSection(sections.span, focusMode ? [] : spanTasks, key, null);
     renderSection(sections.inbox, focusMode ? [] : inboxTasks, key, buildInboxEmpty);
 

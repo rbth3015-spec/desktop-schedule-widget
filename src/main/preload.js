@@ -70,6 +70,13 @@ const api = {
     },
   },
 
+  // ------------------------------------------------------------ 공휴일
+  // 연도 배열을 넘기면 { days: {'YYYY-MM-DD': ['명칭', ...]}, missing: [자료없는 연도] }
+  holidays: {
+    get: (years) => ipcRenderer.invoke('holidays:get',
+      (Array.isArray(years) ? years : []).slice(0, 12).map(Number)),
+  },
+
   // ------------------------------------------------------------ 외부 링크
   // 일정에 붙은 링크를 기본 브라우저로 연다. 프로토콜 검증은 메인이 다시 한다.
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', String(url)),
