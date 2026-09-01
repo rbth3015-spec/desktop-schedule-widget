@@ -689,7 +689,9 @@ export function createLauncher({ root, store }) {
     const iconField = field('아이콘');
     iconField.classList.add('lnch-field--icon');
     iconField.title = ICON_HINT;
-    const iconInput = textInput('🐍');
+    // placeholder 를 비운다. 예시 이모지를 넣어 두면 '왜 뱀이 있지' 가 되고,
+    // 설명을 넣으면 좁은 칸에서 잘린다. 안내는 커서를 올렸을 때만 뜨게 한다.
+    const iconInput = textInput('');
     iconInput.maxLength = 4;
     iconInput.title = ICON_HINT;
     iconInput.setAttribute('aria-label', `아이콘 — ${ICON_HINT}`);

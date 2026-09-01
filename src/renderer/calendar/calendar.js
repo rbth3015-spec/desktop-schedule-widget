@@ -226,9 +226,14 @@ export function createCalendar({ root, store }) {
   let rangeDragged = false;
   let suppressClick = false;
 
-  function clearRangePreview() {
+  /**
+   * 미리보기 지우기.
+   * @param {boolean} done 끌기가 끝났는가. false 면 아직 끄는 중이라
+   *   막대의 pointer-events 를 다시 켜지 않는다(켜면 칸을 못 찾는다).
+   */
+  function clearRangePreview(done = true) {
     for (const c of els.cells) c.classList.remove('cal-day--range', 'cal-day--range-end');
-    els.grid.classList.remove('cal-grid--ranging');
+    if (done) els.grid.classList.remove('cal-grid--ranging');
     els.rangeTag.hidden = true;
   }
 
@@ -385,11 +390,18 @@ export function createCalendar({ root, store }) {
 
   function onBarMouseMove(e) {
     if (!barDrag) return;
+    barDrag.moved = true;
+
+    // D-Day 판 위로 가면 '여기 놓으면 고정' 이라고 알린다.
+    // 표시가 없으면 놓을 수 있는 자리인 줄을 알 수가 없다.
+    const dash = document.querySelector('.dash-root');
+    const overDash = !!document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.dash-root');
+    if (dash) dash.classList.toggle('is-drop', overDash);
+    if (overDash) { clearRangePreview(false); return; }
+
     const cell = cellAt(e.clientX, e.clientY);
     if (!cell) return;
     const { start, end } = dragRange(cell.dataset.key, barDrag);
-    if (start === barDrag.origStart && end === barDrag.origEnd && !barDrag.moved) return;
-    barDrag.moved = true;
     paintRange(start, end);
   }
 
@@ -406,6 +418,7 @@ export function createCalendar({ root, store }) {
 
     barDrag = null;
     clearRangePreview();
+    document.querySelector('.dash-root')?.classList.remove('is-drop');
     els.root.classList.remove('cal-root--drag-move', 'cal-root--drag-start', 'cal-root--drag-end');
 
     if (!d.moved) return;     // 제자리 — 클릭으로 처리된다
