@@ -202,8 +202,13 @@
 .cal-day__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 2px;
+  /*
+   * space-between 으로 두면 공휴일 이름이 칸 오른쪽 끝까지 밀려서
+   * 다음 날 숫자 바로 옆에 붙는다 — '25 옆의 추석' 처럼 읽혀 하루가 어긋나 보인다.
+   * 이름은 자기 날짜 숫자에 딱 붙이고, 개수만 오른쪽 끝으로 보낸다.
+   */
+  justify-content: flex-start;
+  gap: 3px;
   height: 16px;          /* --cal-top-pad 와 맞춘다 */
   pointer-events: none;
 }
@@ -218,6 +223,8 @@
 .cal-day__holiday {
   flex: 0 1 auto;
   min-width: 0;
+  /* 숫자와 한 덩어리로 읽히도록 바짝 붙인다 */
+  margin-left: -1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -289,6 +296,7 @@
 /* 그날의 미완료 건수 — 날짜 숫자와 경쟁하지 않도록 아주 조용하게.
    여러 개일 때만 의미가 있으므로 1건이면 JS 가 비워 둔 것과 같게 취급한다. */
 .cal-day__count {
+  margin-left: auto;     /* 개수만 오른쪽 끝으로 */
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);

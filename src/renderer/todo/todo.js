@@ -1454,7 +1454,9 @@ export function createTodoPanel({ root, store }) {
     // 집중 모드에서는 나머지 섹션을 통째로 감춘다
     sections.overdue.el.hidden = focusMode || searching || overdue.length === 0;
     sections.day.el.hidden = focusMode || searching;
-    sections.inbox.el.hidden = focusMode || searching;
+    // 비어 있으면 감춘다. 안내 문구만 남은 섹션이 늘 자리를 차지하고 있었다.
+    // 없애 버리지는 않는다 — 날짜 없는 일정을 만들면 갈 곳이 있어야 한다.
+    sections.inbox.el.hidden = focusMode || searching || inboxTasks.length === 0;
     sections.span.el.hidden = focusMode || searching || spanTasks.length === 0;
     sections.routine.el.hidden = focusMode || searching || routines.length === 0;
     if (routines.length) {
@@ -1471,7 +1473,7 @@ export function createTodoPanel({ root, store }) {
     renderSection(sections.day, focusMode ? [] : dayTasks, key, buildDayEmpty);
     renderSection(sections.routine, focusMode ? [] : routines, key, null);
     renderSection(sections.span, focusMode ? [] : spanTasks, key, null);
-    renderSection(sections.inbox, focusMode ? [] : inboxTasks, key, buildInboxEmpty);
+    renderSection(sections.inbox, focusMode ? [] : inboxTasks, key, null);
 
     // 캐시 정리 — DOM 에서 빠진 아이템 레코드 제거
     for (const [id, rec] of itemCache) {
