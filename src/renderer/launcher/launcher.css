@@ -375,6 +375,8 @@
   gap: 3px;
   min-width: 0;
 }
+/* hidden 이 display:flex 를 이기지 못한다 — 짝이 되는 규칙이 있어야 실제로 감춰진다 */
+.lnch-field[hidden] { display: none; }
 
 .lnch-field__label {
   font-size: 10px;
