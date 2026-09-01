@@ -13,6 +13,9 @@ import { toBackupJSON, parseBackup, toICS, fileStamp } from './lib/exchange.js';
 
 const $ = (sel) => document.querySelector(sel);
 
+/** 의견을 받을 주소. 배포처를 바꾸면 여기만 고치면 된다. */
+const FEEDBACK_TO = 'rbth3015@gmail.com';
+
 const els = {
   root: $('#widget'),
   calendar: $('#calendar-root'),
@@ -1088,6 +1091,14 @@ function renderSettings() {
   // 대신 새 버전이 있는지 직접 확인할 수 있는 통로만 둔다.
   frag.append(group('앱 정보'));
 
+  // 의견 보내기.
+  //
+  // 워딩은 '버그 신고' 대신 '의견 보내기' 로 잡았다. 고장만 받겠다는 뜻이 되면
+  // '이런 게 있었으면' 같은 말은 안 오게 된다. 실제로 필요한 건 그쪽이다.
+  frag.append(row('의견 보내기',
+    actions([['메일 쓰기', sendFeedback]]),
+    '불편했던 점이나 있었으면 하는 기능을 적어 보내 주세요. 메일 앱이 열립니다.'));
+
   const versionRow = row('버전',
     actions([['릴리스 페이지 열기', () => {
       window.api.openExternal('https://github.com/rbth3015-spec/desktop-schedule-widget/releases');
@@ -1115,6 +1126,42 @@ function renderSettings() {
   frag.append(close);
 
   els.settings.append(frag);
+}
+
+/**
+ * 의견 보내기 — 기본 메일 앱을 연다.
+ *
+ * 앱 안에 입력창을 두고 어딘가로 보내려면 서버가 필요하고, 그 서버가 죽으면
+ * 사용자가 쓴 글이 조용히 사라진다. 메일 앱을 열어 주면 보낸 편지함에 남고
+ * 답장도 그대로 오간다.
+ *
+ * 버전·OS 는 미리 적어 둔다 — '어떤 버전 쓰세요?' 를 한 번 덜 묻기 위해서다.
+ */
+async function sendFeedback() {
+  let version = '';
+  try {
+    const info = await window.api.app?.getVersion?.();
+    version = info?.version || '';
+  } catch { /* 못 읽어도 메일은 열어야 한다 */ }
+
+  const subject = '일정관리 비서 — 의견';
+  const body = [
+    '어떤 점이 불편했나요? 또는 어떤 기능이 있었으면 하나요?',
+    '',
+    '',
+    '---',
+    `버전: ${version || '알 수 없음'}`,
+    `환경: ${navigator.userAgent.includes('Windows') ? 'Windows' : navigator.platform}`,
+  ].join(String.fromCharCode(10));
+
+  const href = `mailto:${FEEDBACK_TO}`
+    + `?subject=${encodeURIComponent(subject)}`
+    + `&body=${encodeURIComponent(body)}`;
+
+  const res = await window.api.openExternal(href);
+  if (res && res.ok === false) {
+    showToast('메일 앱을 열지 못했습니다');
+  }
 }
 
 // --- 설정 위젯 빌더들 ---

@@ -432,11 +432,34 @@ export function createCompose({ store, onToggle }) {
   const routineField = field('', routineBtn);
   routineField.hidden = true;
 
+  /**
+   * 루틴 모드 — 약속용 칸을 걷어낸다.
+   *
+   * 루틴은 '언제 하루' 가 아니라 '얼마마다' 가 전부다. 시작·종료 날짜와 시각,
+   * 기간 칩, 중요도, 링크는 쓸 일이 없는데 자리만 차지하고 눈을 흩뜨린다.
+   * (시작일은 오늘로 조용히 잡는다 — 습관을 언제부터 할지 고르게 할 이유가 없다)
+   */
+  function applyRoutineMode(on) {
+    whenBox.hidden = on;
+    prioField.hidden = on;
+    linkField.hidden = on;
+    // 반복은 루틴의 본질이라 '더보기' 뒤에 숨기지 않고 앞으로 꺼낸다.
+    repeatField.querySelector('.cmp-field__label').textContent = on ? '주기' : '반복';
+    // '루틴으로 만들기' 토글은 이미 루틴 모드이므로 보일 이유가 없다
+    routineField.hidden = on || !repeat?.get();
+    // '안 함' 은 루틴에서 뜻이 없다
+    const noneBtn = repeat?.button('');
+    if (noneBtn) noneBtn.hidden = on;
+
+    moreBtn.hidden = on;
+    form.classList.toggle('cmp--routine', on);
+  }
+
   /** 반복 종류에 따라 요일·루틴 선택지를 보인다 */
   function syncRepeatExtras() {
     const freq = repeat ? repeat.get() : '';
     dayField.hidden = freq !== 'weekly';
-    routineField.hidden = !freq;
+    routineField.hidden = !freq || routineOn;
     if (!freq) {
       routineOn = false;
       routineBtn.classList.remove('is-on');
@@ -476,14 +499,17 @@ export function createCompose({ store, onToggle }) {
   // ---------------------------------------------------------------- 더보기
   // 처음 보는 사람에게 선택지를 한꺼번에 쏟지 않는다. 기본은 접어 둔다.
   const moreBox = h('div', 'cmp-more');
+  const repeatField = field('반복', repeat.el);
+  const linkField = field('링크', linkIn);
+
   moreBox.append(
-    field('반복', repeat.el),
+    repeatField,
     dayField,
     routineField,
     field('알림', remind.el),
     field('태그', tagsIn),
     tagSuggest,
-    field('링크', linkIn),
+    linkField,
   );
   moreBox.hidden = true;
 
@@ -530,8 +556,9 @@ export function createCompose({ store, onToggle }) {
   head.append(headTitle);
 
   // 색과 중요도는 각각 한 줄을 차지할 만큼 크지 않다. 나란히 두면 줄 하나가 준다.
+  const prioField = field('중요도', prio.el);
   const styleRow = h('div', 'cmp-row2');
-  styleRow.append(field('색', swatches), field('중요도', prio.el));
+  styleRow.append(field('색', swatches), prioField);
 
   form.append(
     head,
@@ -586,6 +613,7 @@ export function createCompose({ store, onToggle }) {
     for (const b of lenChips.el.children) b.disabled = false;
     moreBox.hidden = true;
     moreBtn.classList.remove('is-on');
+    applyRoutineMode(false);
     err.hidden = true;
     saveBtn.textContent = preset?.routine ? '루틴 추가' : '일정 추가';
     pickedColor = 'blue';
@@ -600,10 +628,11 @@ export function createCompose({ store, onToggle }) {
       endIn.disabled = true;
       lenChips.el.classList.add('is-disabled');
       for (const b of lenChips.el.children) b.disabled = true;
-      // 무엇이 켜져 있는지 보이도록 '더보기' 를 펼쳐 둔다
+      // 주기·요일은 루틴의 본질이라 접어 두지 않는다
       moreBox.hidden = false;
       moreBtn.classList.add('is-on');
     }
+    applyRoutineMode(!!preset?.routine);
     syncRepeatExtras();
     headTitle.textContent = preset?.routine ? '새 루틴' : '새 일정';
 
@@ -650,7 +679,8 @@ export function createCompose({ store, onToggle }) {
     // syncWhen 이 이미 시작/종료를 정리해 두므로 여기서 되돌릴 조합은 없다.
     // (종료가 앞서면 시작에 맞추고, 시각 조합도 그때 정돈된다)
     syncWhen();
-    const start = startIn.value || store.getState().selectedDate;
+    // 루틴은 '오늘부터' 다. 날짜 칸을 감췄으므로 값도 여기서 확정한다.
+    const start = routineOn ? todayKey() : (startIn.value || store.getState().selectedDate);
     const freq = repeat.get();
     const end = freq ? start : (endIn.value || start);
 

@@ -609,8 +609,11 @@ function registerIpc() {
     } catch {
       return { ok: false, error: '올바른 주소가 아닙니다.' };
     }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return { ok: false, error: 'http/https 주소만 열 수 있습니다.' };
+    // mailto 는 '의견 보내기' 가 쓴다. 메일 클라이언트를 여는 것뿐이라
+    // 파일·명령을 실행하는 다른 프로토콜과 위험도가 다르다.
+    const ALLOWED = ['http:', 'https:', 'mailto:'];
+    if (!ALLOWED.includes(parsed.protocol)) {
+      return { ok: false, error: 'http / https / mailto 주소만 열 수 있습니다.' };
     }
     shell.openExternal(parsed.href);
     return { ok: true };
