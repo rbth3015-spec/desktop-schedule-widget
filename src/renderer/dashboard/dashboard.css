@@ -266,22 +266,17 @@
 .dash-card.is-done .dash-card__title { text-decoration: line-through; }
 
 /* 임박(3일 이하) — 아주 은은한 맥박 */
-@keyframes dash-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
 /*
- * 임박 표시. 창이 활성일 때만 뛴다.
- * 트레이로 내려가 있거나 다른 창을 쓰는 동안에도 계속 뛰면, 아무도 안 보는 화면을
- * 60fps 로 다시 그리느라 배터리만 닳는다.
+ * 임박 표시는 **가만히 있는다**.
+ *
+ * 예전에는 막대가 2.6초마다 숨을 쉬었다. 이 창은 테두리 없는 투명 창이라
+ * 한 픽셀이라도 바뀌면 DWM 이 창 전체를 알파 합성으로 다시 올린다 —
+ * 재어 보니 맥박 하나에 코어 16%였고(끄면 0.1%), 흐림 효과를 걷어내도 같았다.
+ * 늘 켜 두는 위젯에서 '보고 있는 동안 계속 16%' 는 낼 수 없는 값이다.
+ *
+ * 급한 일이라는 건 색과 'D-3' 이 이미 말하고 있다. 움직임까지 필요하지는 않다.
+ * (여기에 무엇이든 움직이는 것을 다시 넣으려면 먼저 CPU 를 재 볼 것)
  */
-.dash-card--urgent .dash-card__fill {
-  animation: dash-pulse 2.6s ease-in-out infinite;
-}
-html.is-inactive .dash-card--urgent .dash-card__fill,
-html[data-hidden="1"] .dash-card--urgent .dash-card__fill {
-  animation: none;
-}
 
 /* ------------------------------------------------------------ 빈 상태 */
 

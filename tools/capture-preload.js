@@ -55,11 +55,15 @@ const SAMPLE = {
     t({ id: 's4', title: '월간 보고서 마감', start: day(3), end: day(3), color: 'rose', priority: 2, tags: ['업무'], pinned: true, remind: '1@18:00', order: 3 }),
 
     // 오늘 — 시각이 있는 것은 목록 위쪽에 시간순으로 선다
-    t({ id: 't0', title: '운동 40분', start: day(0), end: day(0), startTime: '07:00', color: 'amber', tags: ['건강'], repeat: { freq: 'weekly', interval: 1, until: null }, order: 4 }),
+    // 루틴 — 달력에는 올라가지 않고 오른쪽 '루틴' 에만 모인다.
+    // 스크린샷만 보고도 그 규칙이 보이도록 두 개 둔다(하나는 평일, 하나는 매일).
+    t({ id: 't0', title: '운동 40분', start: day(0), end: day(0), color: 'amber', tags: ['건강'],
+        repeat: { freq: 'weekly', interval: 1, days: [1, 2, 3, 4, 5], routine: true }, order: 4 }),
+    t({ id: 't0b', title: '영양제 챙기기', start: day(0), end: day(0), color: 'green',
+        repeat: { freq: 'daily', interval: 1, routine: true }, order: 14 }),
     t({ id: 't1', title: '아침 스탠드업', notes: '지난주 액션 아이템 확인', start: day(0), end: day(0), startTime: '09:30', endTime: '10:00', color: 'blue', priority: 1, tags: ['업무'], link: 'https://meet.google.com/abc-defg', remind: '-10m', order: 5 }),
     t({ id: 't2', title: '디자인 리뷰', start: day(0), end: day(0), startTime: '14:00', color: 'violet', tags: ['업무'], order: 6 }),
     t({ id: 't3', title: '치과 예약', start: day(0), end: day(0), startTime: '18:30', color: 'rose', priority: 1, remind: '-60m', order: 7 }),
-    t({ id: 't4', title: '장보기 — 우유, 계란', start: day(0), end: day(0), color: 'green', tags: ['개인'], order: 8 }),
     t({ id: 't5', title: '이메일 정리', start: day(0), end: day(0), done: true, doneAt: Date.now(), color: 'slate', order: 9 }),
 
     // 기한이 지났는데 안 끝난 일 — '지난 일' 섹션과 아침 브리핑에 잡힌다
