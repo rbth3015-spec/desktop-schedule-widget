@@ -27,13 +27,17 @@ const REMIND_PRESETS = [
   ['7@18:00', '일주일 전 오후 6시'],
 ];
 
+// 평일·주말은 요일을 미리 고른 '매주' 다(store.DAY_PRESETS). 목록에 넣어 두지 않으면
+// 추가 폼에서 평일로 만든 루틴이 여기서는 '매주' 로 보여서 서로 다른 말을 하게 된다.
 /** 반복 프리셋 */
 const REPEAT_PRESETS = [
-  ['',        '반복 안 함'],
-  ['daily',   '매일'],
-  ['weekly',  '매주'],
-  ['monthly', '매월'],
-  ['yearly',  '매년'],
+  ['',         '반복 안 함'],
+  ['daily',    '매일'],
+  ['weekdays', '평일 (월–금)'],
+  ['weekends', '주말 (토·일)'],
+  ['weekly',   '매주'],
+  ['monthly',  '매월'],
+  ['yearly',   '매년'],
 ];
 
 function repeatSelect(cls) {
@@ -213,7 +217,9 @@ export function createTodoPanel({ root, store }) {
   // 를 매번 거치는 건 너무 멀다. 아예 다른 물건이므로 입구를 따로 낸다.
   const routineBtn = h('button', 'todo-add todo-add--routine');
   routineBtn.type = 'button';
-  routineBtn.append(icon('repeat'), h('span', 'todo-add__text', '루틴'));
+  // 아이콘은 '＋'. 되풀이 화살표를 달아 두니 되돌리기 버튼처럼 읽혔다 —
+  // 둘 다 '만드는' 입구이므로 같은 기호를 쓰고, 무엇을 만드는지는 이름이 말한다.
+  routineBtn.append(icon('plus'), h('span', 'todo-add__text', '루틴'));
   routineBtn.title = '운동처럼 되풀이하는 일. 달력에는 표시하지 않습니다.';
 
   const addBar = h('div', 'todo-addbar');
@@ -829,10 +835,15 @@ export function createTodoPanel({ root, store }) {
 
     const applyRepeat = () => {
       if (!repeatIn.value) { store.setRepeat(rec.id, null); return; }
+      // 이 칸에서 고칠 수 없는 것(고른 요일·루틴 여부)은 그대로 이어 간다.
+      // 여기서 빠뜨리면 반복 종료일만 바꿨는데 루틴이 달력으로 튀어나온다.
+      const prev = store.getState().tasks.find((t) => t.id === rec.id)?.repeat;
+      const picked = repeatIn.value === 'weekly' ? prev?.days : null;
       store.setRepeat(rec.id, {
-        freq: repeatIn.value,
-        interval: 1,
+        ...store.repeatFreqDays(repeatIn.value, picked),
+        interval: prev?.interval || 1,
         until: untilIn.value || null,
+        routine: !!prev?.routine,
       });
     };
     repeatIn.addEventListener('change', applyRepeat);
@@ -898,7 +909,7 @@ export function createTodoPanel({ root, store }) {
           end: task.end || task.start,
           startTime: task.startTime,
           endTime: task.endTime,
-          freq: task.repeat?.freq || '',
+          freq: store.repeatChoice(task.repeat),
         })
       : '날짜 없음 · 언젠가 할 일';
     setValueSafe(d.prio, String(task.priority || 0));
@@ -907,7 +918,7 @@ export function createTodoPanel({ root, store }) {
     d.linkOpen.disabled = !task.link;
     syncRemindOptions(d.remindIn, !!task.startTime);
     setValueSafe(d.remindIn, task.remind || '');
-    setValueSafe(d.repeatIn, task.repeat?.freq || '');
+    setValueSafe(d.repeatIn, store.repeatChoice(task.repeat));
     setValueSafe(d.untilIn, task.repeat?.until || '');
     d.untilField.hidden = !task.repeat;
     d.dropSeries.hidden = !task.repeat;
@@ -1087,7 +1098,10 @@ export function createTodoPanel({ root, store }) {
       const rp = h('span', 'todo-repeat');
       rp.append(icon('repeat'));
       const every = task.repeat.interval > 1 ? `${task.repeat.interval}` : '';
-      rp.title = `반복: ${every}${store.REPEAT_LABELS[task.repeat.freq] || ''}` +
+      // 루틴은 '매일' 인지 '평일' 인지가 목록에서 바로 보여야 한다.
+      // 아이콘만 달아 두면 둘이 똑같아 보이고, 확인하려면 상세를 열어야 한다.
+      if (task.repeat.routine) rp.append(h('span', null, store.repeatLabel(task.repeat)));
+      rp.title = `반복: ${every}${store.repeatLabel(task.repeat)}` +
                  (task.repeat.until ? ` (${task.repeat.until} 까지)` : '');
       meta.append(rp);
     }

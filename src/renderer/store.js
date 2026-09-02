@@ -367,6 +367,52 @@ export const REPEAT_LABELS = {
   yearly: '매년',
 };
 
+/**
+ * 화면에서 고르는 주기에는 '평일'·'주말' 이 있지만, 저장은 **요일을 고른 매주 반복** 하나로 한다.
+ * 규칙 종류를 늘리면 occursOn·달력·알림이 전부 갈라진다. 이름만 화면에서 붙여 준다.
+ */
+export const DAY_PRESETS = { weekdays: [1, 2, 3, 4, 5], weekends: [0, 6] };
+
+const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** 저장된 규칙 → 화면에서 고를 값. 평일/주말과 정확히 맞을 때만 그 이름을 쓴다. */
+export function repeatChoice(r) {
+  if (!r || !r.freq) return '';
+  if (r.freq === 'weekly' && Array.isArray(r.days) && r.days.length) {
+    const key = [...r.days].sort((a, b) => a - b).join(',');
+    for (const [name, days] of Object.entries(DAY_PRESETS)) {
+      if (days.join(',') === key) return name;
+    }
+  }
+  return r.freq;
+}
+
+/**
+ * 화면에서 고른 값 → 저장할 {freq, days}.
+ * @param {string} choice '' | 'daily' | 'weekdays' | 'weekends' | 'weekly' | 'monthly' | 'yearly'
+ * @param {number[]|null} [days] '매주' 에서 직접 고른 요일
+ */
+export function repeatFreqDays(choice, days) {
+  if (!choice) return null;
+  const preset = DAY_PRESETS[choice];
+  if (preset) return { freq: 'weekly', days: [...preset] };
+  return {
+    freq: choice,
+    days: choice === 'weekly' && days && days.length ? [...days] : null,
+  };
+}
+
+/** 반복을 사람 말로 — '매일' · '평일' · '월·수·금' */
+export function repeatLabel(r) {
+  const choice = repeatChoice(r);
+  if (choice === 'weekdays') return '평일';
+  if (choice === 'weekends') return '주말';
+  if (r && r.freq === 'weekly' && Array.isArray(r.days) && r.days.length) {
+    return r.days.map((d) => DAY_NAMES[d]).join('·');
+  }
+  return REPEAT_LABELS[choice] || '';
+}
+
 function normalizeRepeat(r) {
   if (!r || !REPEAT_FREQS.includes(r.freq)) return null;
 

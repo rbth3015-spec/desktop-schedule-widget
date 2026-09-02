@@ -39,9 +39,10 @@ function chipGroup(options, initial, onChange) {
   let value = initial;
   const buttons = new Map();
 
-  for (const [val, label] of options) {
+  for (const [val, label, hint] of options) {
     const b = h('button', 'cmp-chip', label);
     b.type = 'button';
+    if (hint) b.title = hint;
     b.addEventListener('click', () => {
       set(val);
       onChange?.(val);
@@ -102,9 +103,13 @@ function nextMonday(base) {
 
 const PRIORITY_OPTIONS = [['0', '보통'], ['1', '중요'], ['2', '긴급']];
 
+// '평일'·'주말' 은 새 반복 규칙이 아니라 요일을 미리 고른 '매주' 다(store.DAY_PRESETS).
+// 운동·약 먹기 같은 습관은 대부분 이 둘 아니면 매일이라, 요일을 다섯 번 누르게 두지 않는다.
 const REPEAT_OPTIONS = [
-  ['', '안 함'], ['daily', '매일'], ['weekly', '매주'],
-  ['monthly', '매월'], ['yearly', '매년'],
+  ['', '안 함'], ['daily', '매일'],
+  ['weekdays', '평일', '월 · 화 · 수 · 목 · 금'],
+  ['weekends', '주말', '토 · 일'],
+  ['weekly', '매주'], ['monthly', '매월'], ['yearly', '매년'],
 ];
 
 const REPEAT_LABEL_MAP = Object.fromEntries(REPEAT_OPTIONS.filter(([v]) => v));
@@ -383,6 +388,14 @@ export function createCompose({ store, onToggle }) {
     endIn.disabled = !!v;
     lenChips.el.classList.toggle('is-disabled', !!v);
     for (const b of lenChips.el.children) b.disabled = !!v;
+    // 주기 칩과 요일 칸은 늘 같은 것을 가리켜야 한다.
+    // '매일' 은 7일 전부고, '평일' 은 월–금이다. 골라 두면 요일 칸에 그대로 켜지므로
+    // 거기서 하루만 빼는 식으로 다듬을 수 있다 — 무엇을 뜻하는지 설명할 필요가 없다.
+    const preset = v === 'daily' ? ALL_DAYS : store.DAY_PRESETS[v];
+    if (preset) setDays(preset);
+    // '매주' 는 고른 요일을 그대로 물려받는다 — 평일에서 하루만 빼려고 넘어오는 길이다.
+    // '매월'·'매년' 에서는 요일이 뜻이 없으므로 켜 둔 채로 두면 거짓말이 된다.
+    else if (v !== 'weekly') setDays([]);
     syncRepeatExtras();
     syncWhen();
   });
@@ -392,6 +405,7 @@ export function createCompose({ store, onToggle }) {
   // '월수금 운동' 처럼 요일이 정해진 습관이 흔하다. 요일을 고르지 않으면
   // 예전처럼 시작일의 요일을 따른다.
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
   const picked = new Set();
   const dayPick = h('div', 'cmp-weekdays');
   const dayBtns = [];
@@ -401,9 +415,14 @@ export function createCompose({ store, onToggle }) {
     b.setAttribute('aria-pressed', 'false');
     b.setAttribute('aria-label', `${label}요일`);
     b.addEventListener('click', () => {
-      if (picked.has(i)) picked.delete(i); else picked.add(i);
-      b.classList.toggle('is-on', picked.has(i));
-      b.setAttribute('aria-pressed', String(picked.has(i)));
+      // 요일이 뜻을 갖는 주기에서 전부 꺼 버리면 '아무 날도 아닌 매주' 가 된다.
+      // 막았다고 알리지 않고 그냥 켜진 채로 둔다 — 하나는 있어야 한다는 게 눌러 보면 보인다.
+      if (picked.has(i)) {
+        if (picked.size === 1 && daysMatter()) return;
+        picked.delete(i);
+      } else picked.add(i);
+      paintDays();
+      syncFreqChip();
       syncWhen();
     });
     dayBtns.push(b);
@@ -411,6 +430,41 @@ export function createCompose({ store, onToggle }) {
   });
   const dayField = field('요일', dayPick);
   dayField.hidden = true;
+
+  /** 고른 요일을 버튼에 칠한다 */
+  function paintDays() {
+    dayBtns.forEach((b, i) => {
+      b.classList.toggle('is-on', picked.has(i));
+      b.setAttribute('aria-pressed', String(picked.has(i)));
+    });
+  }
+
+  /** 요일 묶음을 통째로 고른다 (평일·주말 칩) */
+  function setDays(list) {
+    picked.clear();
+    for (const d of list) picked.add(d);
+    paintDays();
+  }
+
+  /**
+   * 요일을 손대면 주기 칩을 되맞춘다.
+   * 평일에서 금요일을 빼면 그건 더 이상 '평일' 이 아니라 '매주' 다 —
+   * 칩이 그대로 켜져 있으면 화면이 거짓말을 하게 된다.
+   */
+  function syncFreqChip() {
+    const now = [...picked].sort((a, b) => a - b).join(',');
+    if (now === ALL_DAYS.join(',')) { repeat.set('daily'); return; }
+    for (const [value, days] of Object.entries(store.DAY_PRESETS)) {
+      if (days.join(',') === now) { repeat.set(value); return; }
+    }
+    repeat.set('weekly');
+  }
+
+  /** 지금 주기에서 요일이 뜻을 갖는가 (매주·평일·주말) */
+  function daysMatter() {
+    const freq = repeat ? repeat.get() : '';
+    return freq === 'weekly' || !!store.DAY_PRESETS[freq];
+  }
 
   // --- 루틴 ---
   //
@@ -424,6 +478,8 @@ export function createCompose({ store, onToggle }) {
     h('span', null, '루틴 — 달력에 표시하지 않음'),
   );
   let routineOn = false;
+  /** '루틴' 입구로 연 폼인가 — 요일 칸을 늘 열어 둘지를 가른다 */
+  let routineMode = false;
   routineBtn.addEventListener('click', () => {
     routineOn = !routineOn;
     routineBtn.classList.toggle('is-on', routineOn);
@@ -440,6 +496,7 @@ export function createCompose({ store, onToggle }) {
    * (시작일은 오늘로 조용히 잡는다 — 습관을 언제부터 할지 고르게 할 이유가 없다)
    */
   function applyRoutineMode(on) {
+    routineMode = on;
     whenBox.hidden = on;
     prioField.hidden = on;
     linkField.hidden = on;
@@ -447,9 +504,14 @@ export function createCompose({ store, onToggle }) {
     repeatField.querySelector('.cmp-field__label').textContent = on ? '주기' : '반복';
     // '루틴으로 만들기' 토글은 이미 루틴 모드이므로 보일 이유가 없다
     routineField.hidden = on || !repeat?.get();
-    // '안 함' 은 루틴에서 뜻이 없다
-    const noneBtn = repeat?.button('');
-    if (noneBtn) noneBtn.hidden = on;
+    // '안 함' 은 루틴에서 뜻이 없다.
+    // '매년' 도 마찬가지다 — 일 년에 한 번 하는 건 습관이 아니라 기념일이다.
+    // (덕분에 주기 칩이 한 줄에 들어가서 루틴 폼은 스크롤 없이 유지된다)
+    for (const value of ['', 'yearly']) {
+      const btn = repeat?.button(value);
+      if (btn) btn.hidden = on;
+      if (on && repeat?.get() === value) repeat.set('daily');
+    }
 
     moreBtn.hidden = on;
     form.classList.toggle('cmp--routine', on);
@@ -458,7 +520,9 @@ export function createCompose({ store, onToggle }) {
   /** 반복 종류에 따라 요일·루틴 선택지를 보인다 */
   function syncRepeatExtras() {
     const freq = repeat ? repeat.get() : '';
-    dayField.hidden = freq !== 'weekly';
+    // 루틴은 '월·수·금 운동' 처럼 요일을 직접 고르는 일이 흔하다 — 늘 열어 둔다.
+    // 일정에서는 반복 자체가 곁가지라 '매주' 를 골랐을 때만 꺼낸다.
+    dayField.hidden = routineMode ? false : freq !== 'weekly';
     routineField.hidden = !freq || routineOn;
     if (!freq) {
       routineOn = false;
@@ -602,7 +666,7 @@ export function createCompose({ store, onToggle }) {
     repeat.set('');
     remind.set('');
     picked.clear();
-    for (const b of dayBtns) { b.classList.remove('is-on'); b.setAttribute('aria-pressed', 'false'); }
+    paintDays();
     routineOn = false;
     routineBtn.classList.remove('is-on');
     routineBtn.setAttribute('aria-pressed', 'false');
@@ -622,6 +686,7 @@ export function createCompose({ store, onToggle }) {
     // '루틴' 으로 열었으면 매일 반복 + 달력에 표시 안 함을 미리 켠다
     if (preset?.routine) {
       repeat.set('daily');
+      setDays(ALL_DAYS);   // '매일' 은 요일 칸에서 7일 전부로 보여야 한다
       routineOn = true;
       routineBtn.classList.add('is-on');
       routineBtn.setAttribute('aria-pressed', 'true');
@@ -697,9 +762,10 @@ export function createCompose({ store, onToggle }) {
       color: pickedColor,
       priority: Number(prio.get()) || 0,
       remind: remind.get(),
+      // '평일'·'주말' 은 여기서 요일을 고른 매주 반복으로 풀린다
       repeat: freq
-        ? { freq, interval: 1, days: freq === 'weekly' && picked.size ? [...picked] : null,
-            routine: routineOn }
+        ? { ...store.repeatFreqDays(freq, [...picked].sort((a, b) => a - b)),
+            interval: 1, routine: routineOn }
         : null,
       tags: tagsIn.value.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean),
     });

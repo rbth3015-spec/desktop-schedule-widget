@@ -437,6 +437,15 @@
 }
 .todo-dday--none { color: var(--text-faint); font-family: var(--font); font-size: 10.5px; }
 
+.todo-repeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.todo-repeat .icon { width: .95em; height: .95em; }
+
 .todo-remind {
   display: inline-flex;
   align-items: center;

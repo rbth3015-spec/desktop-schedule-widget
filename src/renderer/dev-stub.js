@@ -36,8 +36,10 @@
         color: 'green', priority: 0, tags: ['개인'], order: 5, createdAt: Date.now() },
       { id: 't3', title: '이메일 정리', notes: '', start: day(0), end: day(0), done: true,
         color: 'slate', priority: 0, tags: [], order: 6, createdAt: Date.now(), doneAt: Date.now() },
+      // 루틴 — 달력에는 올라가지 않는다 (capture-preload.js 의 표본과 맞춰 둔다)
       { id: 't4', title: '운동 40분', notes: '', start: day(0), end: day(0),
-        color: 'amber', priority: 0, tags: ['건강'], order: 7, createdAt: Date.now() },
+        color: 'amber', priority: 0, tags: ['건강'], order: 7, createdAt: Date.now(),
+        repeat: { freq: 'weekly', interval: 1, days: [1, 2, 3, 4, 5], routine: true } },
       { id: 't5', title: '치과 예약 확인', notes: '', start: day(1), end: day(1),
         color: 'rose', priority: 1, tags: [], order: 8, createdAt: Date.now() },
       { id: 't6', title: '전기요금 납부', notes: '', start: day(2), end: day(2),
