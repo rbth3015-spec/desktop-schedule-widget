@@ -193,7 +193,8 @@
 .cal-day:hover { background: var(--pane-hover); }
 .cal-day--out { opacity: .28; }
 
-.cal-day--sel { background: var(--accent-soft); }
+/* 고른 날 세로줄 — 늘 떠 있는 넓은 면이라 옅은 쪽을 쓴다 */
+.cal-day--sel { background: var(--accent-wash); }
 .cal-day.is-drop {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1.5px var(--accent);

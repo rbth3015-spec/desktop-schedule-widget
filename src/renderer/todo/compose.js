@@ -71,7 +71,7 @@ function pretty(key) {
  * 만들어질 일정을 사람 말로 한 줄 되읽어 준다.
  * 이 줄이 폼 아래에 늘 있으면 '시작=종료면 하루' 같은 규칙을 따로 설명할 필요가 없다.
  */
-export function whenSummary({ start, end, startTime, endTime, freq }) {
+export function whenSummary({ start, end, startTime, endTime, freq, dailyCheck }) {
   if (!start) return '';
 
   const repeatPart = freq ? `${REPEAT_LABEL_MAP[freq] || ''} 반복 · ` : '';
@@ -80,7 +80,8 @@ export function whenSummary({ start, end, startTime, endTime, freq }) {
   if (!freq && end && end > start) {
     const days = diffDays(start, end) + 1;
     const time = startTime ? ` · ${startTime} 시작` : '';
-    return `${pretty(start)} → ${pretty(end)} · ${days}일간${time}`;
+    const check = dailyCheck ? ` · 매일 체크 (${days}칸)` : '';
+    return `${pretty(start)} → ${pretty(end)} · ${days}일간${time}${check}`;
   }
 
   // 하루짜리
@@ -276,11 +277,27 @@ export function createCompose({ store, onToggle }) {
     }
   );
 
+  // 장기 계획을 한 번에 끝낼지, 하루하루 체크할지.
+  //
+  // '이사 준비'는 끝나면 한 번 체크하면 되지만 '기출 5개년 정리'는 오늘 했는지가
+  // 매일 궁금하다. 둘은 다른 일이라 여기서 고른다.
+  // 하루짜리 일정에는 물어볼 것이 없으므로 그때는 줄 자체를 감춘다.
+  const checkChips = chipGroup(
+    [['once', '한 번에', '기간이 끝나면 한 번 체크한다'],
+     ['daily', '매일 체크', '기간의 하루하루를 따로 체크한다']],
+    'once',
+    () => syncWhen(),
+  );
+
   const startRow = h('div', 'cmp-when__row');
   startRow.append(h('span', 'cmp-when__key', '시작'), startIn, startTimeIn);
 
   const endRow = h('div', 'cmp-when__row');
   endRow.append(h('span', 'cmp-when__key', '종료'), endIn, endTimeIn);
+
+  const checkRow = h('div', 'cmp-when__row');
+  checkRow.append(h('span', 'cmp-when__key', '체크'), checkChips.el);
+  checkRow.hidden = true;
 
   // 만들어질 일정을 그대로 되읽어 주는 줄. 도움말을 대신한다.
   const summary = h('div', 'cmp-when__summary');
@@ -293,7 +310,7 @@ export function createCompose({ store, onToggle }) {
   const tailRow = h('div', 'cmp-when__tail');
   tailRow.append(lenChips.el, summary);
 
-  whenBox.append(dayChips.el, startRow, endRow, tailRow);
+  whenBox.append(dayChips.el, startRow, endRow, checkRow, tailRow);
 
   // 시작이 바뀌기 직전의 값. change 이벤트가 올 때 input.value 는 이미 새 값이라
   // 여기 없으면 '며칠짜리였는지'를 알 수 없어 기간이 무너진다.
@@ -341,12 +358,18 @@ export function createCompose({ store, onToggle }) {
 
     syncRemindOptions();
 
+    // 기간이 이틀 이상일 때만 체크 방식을 묻는다
+    const isSpan = !repeatFreq() && endIn.value > startIn.value;
+    checkRow.hidden = !isSpan;
+    if (!isSpan) checkChips.set('once');
+
     summary.textContent = whenSummary({
       start: startIn.value,
       end: endIn.value,
       startTime: startTimeIn.value,
       endTime: endTimeIn.value,
       freq: repeatFreq(),
+      dailyCheck: isSpan && checkChips.get() === 'daily',
     });
 
     prevStartKey = startIn.value;
@@ -667,6 +690,8 @@ export function createCompose({ store, onToggle }) {
     remind.set('');
     picked.clear();
     paintDays();
+    checkChips.set('once');
+    checkRow.hidden = true;
     routineOn = false;
     routineBtn.classList.remove('is-on');
     routineBtn.setAttribute('aria-pressed', 'false');
@@ -760,6 +785,8 @@ export function createCompose({ store, onToggle }) {
       endTime: endTimeIn.value || null,
       link,
       color: pickedColor,
+      // 반복 일정은 당일짜리라 '매일 체크'가 성립하지 않는다
+      dailyCheck: !freq && end > start && checkChips.get() === 'daily',
       priority: Number(prio.get()) || 0,
       remind: remind.get(),
       // '평일'·'주말' 은 여기서 요일을 고른 매주 반복으로 풀린다

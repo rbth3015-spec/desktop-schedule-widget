@@ -772,9 +772,26 @@ export function createTodoPanel({ root, store }) {
 
     const whenRow = (labelText, dateEl, timeEl) => {
       const r = h('div', 'todo-detail__whenrow');
-      r.append(h('span', 'todo-detail__whenkey', labelText), dateEl, timeEl);
+      r.append(h('span', 'todo-detail__whenkey', labelText), dateEl);
+      if (timeEl) r.append(timeEl);
       return r;
     };
+
+    // 장기 계획을 한 번에 끝낼지, 하루하루 체크할지.
+    // 시작·종료와 같은 줄 규격에 두는 이유 — 이건 기간에 딸린 성질이지
+    // 알림이나 반복 같은 딴 설정이 아니다.
+    const checkIn = h('select', 'todo-detail__select');
+    for (const [value, label] of [['once', '한 번에 체크'], ['daily', '매일 체크']]) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      checkIn.append(opt);
+    }
+    checkIn.addEventListener('change', () => {
+      store.setDailyCheck(rec.id, checkIn.value === 'daily');
+    });
+    const checkRow = whenRow('체크', checkIn);
+    checkRow.hidden = true;
 
     // 무엇으로 저장돼 있는지 한 줄로 되읽어 준다 — 추가 폼과 같은 문구를 쓴다
     const whenSummaryEl = h('div', 'todo-detail__whensummary');
@@ -784,6 +801,7 @@ export function createTodoPanel({ root, store }) {
     rowDates.append(
       whenRow('시작', startIn, startTimeIn),
       whenRow('종료', endIn, endTimeIn),
+      checkRow,
       whenSummaryEl,
     );
 
@@ -877,6 +895,7 @@ export function createTodoPanel({ root, store }) {
              rowExtra, rowSeries);
 
     rec.detail = { el: d, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
+                   checkIn, checkRow,
                    prio, swatchBtns, tagsIn, linkIn, linkOpen,
                    remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
     return rec.detail;
@@ -910,6 +929,7 @@ export function createTodoPanel({ root, store }) {
           startTime: task.startTime,
           endTime: task.endTime,
           freq: store.repeatChoice(task.repeat),
+          dailyCheck: !!task.dailyCheck,
         })
       : '날짜 없음 · 언젠가 할 일';
     setValueSafe(d.prio, String(task.priority || 0));
@@ -918,6 +938,9 @@ export function createTodoPanel({ root, store }) {
     d.linkOpen.disabled = !task.link;
     syncRemindOptions(d.remindIn, !!task.startTime);
     setValueSafe(d.remindIn, task.remind || '');
+    // 체크 방식은 기간이 이틀 이상일 때만 물을 것이 있다
+    d.checkRow.hidden = !isSpanTask(task) || !!task.repeat;
+    setValueSafe(d.checkIn, task.dailyCheck ? 'daily' : 'once');
     setValueSafe(d.repeatIn, store.repeatChoice(task.repeat));
     setValueSafe(d.untilIn, task.repeat?.until || '');
     d.untilField.hidden = !task.repeat;
@@ -1148,6 +1171,15 @@ export function createTodoPanel({ root, store }) {
       const dd = h('span', 'todo-dday', label);
       dd.title = `${formatShort(task.start)} ~ ${formatShort(task.end)}`;
       meta.append(dd);
+
+      // 매일 체크하는 계획은 '며칠 남았나' 만큼 '며칠 했나' 가 궁금하다
+      const prog = store.spanProgress(task);
+      if (prog) {
+        const pr = h('span', 'todo-count', `${prog.done}/${prog.total}`);
+        pr.classList.toggle('is-full', prog.done >= prog.total);
+        pr.title = `${prog.total}일 중 ${prog.done}일 체크`;
+        meta.append(pr);
+      }
     } else if (!task.start) {
       // '언젠가' 항목.
       //
