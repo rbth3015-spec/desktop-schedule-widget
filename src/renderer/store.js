@@ -334,6 +334,12 @@ function normalize(t) {
     repeat: normalizeRepeat(t.repeat),
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.slice() : [],  // 건너뛴 회차 날짜
     doneDates: Array.isArray(t.doneDates) ? t.doneDates.slice() : [],     // 완료한 회차 날짜
+
+    // 장기 계획을 하루하루 체크할 것인가.
+    // '이사 준비'는 끝나면 한 번 체크하면 되지만, '기출 5개년 정리'는 오늘 했는지가
+    // 매일 궁금하다. 둘은 다른 일이라 사용자가 고른다. 체크한 날짜는 위 doneDates 에
+    // 함께 쌓는다 — 반복 일정과 뜻이 같으므로 그릇을 하나 더 만들 이유가 없다.
+    dailyCheck: !!t.dailyCheck,
   };
 }
 
@@ -475,6 +481,33 @@ export function occursOn(t, key) {
   return false;
 }
 
+/**
+ * 하루하루 체크하는 장기 계획인가.
+ * 기간이 이틀 이상이어야 뜻이 있고, 반복 일정은 애초에 당일짜리라 해당 없다.
+ */
+export function isDailyCheck(t) {
+  return !!(t && t.dailyCheck && !t.repeat && t.start && t.end && t.end > t.start);
+}
+
+/** 매일 체크 장기 계획의 진행 — {done, total}. 아니면 null */
+export function spanProgress(t) {
+  if (!isDailyCheck(t)) return null;
+  const total = diffDays(t.start, t.end) + 1;
+  // 기간을 줄이면 범위 밖 기록이 남는다. 세지 않되 지우지도 않는다 —
+  // 기간을 도로 늘리면 하던 기록이 그대로 살아난다.
+  const done = t.doneDates.filter((k) => k >= t.start && k <= t.end).length;
+  return { done, total };
+}
+
+/** 기간을 전부 체크했으면 계획이 끝난 것이다. 목록·달력이 보는 done 을 맞춰 준다. */
+function syncSpanDone(t) {
+  const p = spanProgress(t);
+  if (!p) return;
+  const all = p.done >= p.total;
+  t.done = all;
+  t.doneAt = all ? (t.doneAt || Date.now()) : null;
+}
+
 /** 특정 날짜의 회차를 '그날짜짜리 일정'처럼 보이게 만든 사본.
  *  id 는 원본 그대로라 기존 편집 경로(updateTask/setEditing)가 그대로 동작하고,
  *  occDate 로 '몇 번째 회차인지'를 구분한다. */
@@ -564,7 +597,11 @@ export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
       if (!!t.repeat.routine !== routines) continue;
       if (occursOn(t, key)) out.push(occurrenceOf(t, key));
     } else if (!routines && t.start && key >= t.start && key <= (t.end || t.start)) {
-      out.push(t);
+      // 매일 체크하는 장기 계획은 그날치 체크 상태를 달고 나간다.
+      // start/end 는 그대로 둔다 — 기간 막대와 D-N 표시가 이 값을 본다.
+      out.push(isDailyCheck(t)
+        ? { ...t, occDate: key, done: t.doneDates.includes(key) }
+        : t);
     }
   }
   return (filtered ? out.filter(passesFilter) : out).sort(byOrder);
@@ -667,7 +704,12 @@ export function allTags() {
 
 function passesFilter(t) {
   const { text, tag } = state.filter;
-  if (!state.settings.showCompleted && t.done) return false;
+
+  // '완료 숨김' 은 끝나면 치우는 할 일을 위한 것이다.
+  // 매일 체크하는 것(루틴·매일 체크 장기 계획)의 **그날치**는 여기서 빼지 않는다 —
+  // 오늘 했는지 보려고 체크하는 건데 체크하는 순간 사라지면 확인할 방법이 없다.
+  // occDate 가 붙은 사본만 해당한다. 계획 전체가 끝난 경우(원본의 done)는 평소대로 숨는다.
+  if (!state.settings.showCompleted && t.done && !t.occDate) return false;
   if (tag && !t.tags.includes(tag)) return false;
   if (text) {
     const q = text.toLowerCase();
@@ -728,6 +770,42 @@ export function updateTask(id, patch) {
     t.remindedAt = null;
   }
 
+  // 기간이 바뀌면 '전부 체크했는가'의 기준도 바뀐다
+  syncSpanDone(t);
+
+  commit();
+}
+
+/**
+ * 장기 계획을 한 번에 끝낼지, 하루하루 체크할지 고른다.
+ *
+ * 어느 쪽으로 바꾸든 이미 표시해 둔 것을 잃지 않는다 —
+ * '끝냈다'고 해 둔 계획을 매일 체크로 바꾸면 모든 날이 체크된 상태로 옮겨 가고,
+ * 도로 한 번에로 바꾸면 '전부 체크했는가'가 그대로 완료 여부가 된다.
+ */
+export function setDailyCheck(id, on) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t || t.repeat || !t.start || !t.end || t.end <= t.start) return;
+  if (!!t.dailyCheck === !!on) return;
+
+  pushUndo(on ? '매일 체크로' : '한 번에 체크로');
+  if (on) {
+    // '끝냈다'고 표시해 둔 계획이라면 모든 날을 체크된 것으로 옮긴다
+    if (t.done) {
+      for (let k = t.start; k <= t.end; k = addDays(k, 1)) {
+        if (!t.doneDates.includes(k)) t.doneDates.push(k);
+      }
+    }
+    t.dailyCheck = true;
+    syncSpanDone(t);
+  } else {
+    // 끄기 전에 읽어야 한다 — 플래그를 내리면 spanProgress 가 null 을 준다
+    const p = spanProgress(t);
+    const all = !!p && p.done >= p.total;
+    t.dailyCheck = false;
+    t.done = all;
+    t.doneAt = all ? (t.doneAt || Date.now()) : null;
+  }
   commit();
 }
 
@@ -736,11 +814,13 @@ export function toggleDone(id, occDate) {
   if (!t) return;
 
   // 반복 일정은 회차마다 완료 상태가 따로다 (이번 주는 했고 다음 주는 아직).
-  if (t.repeat && occDate) {
+  // 매일 체크하는 장기 계획도 하루하루가 따로라 같은 길을 탄다.
+  if ((t.repeat || isDailyCheck(t)) && occDate) {
     const i = t.doneDates.indexOf(occDate);
     pushUndo(i === -1 ? '완료 처리' : '완료 취소');
     if (i === -1) t.doneDates.push(occDate);
     else t.doneDates.splice(i, 1);
+    syncSpanDone(t);
     commit();
     return;
   }
@@ -780,6 +860,9 @@ export function setRepeat(id, patch) {
   if (!t) return;
   pushUndo(patch ? '반복 설정' : '반복 해제');
   t.repeat = normalizeRepeat(patch);
+  // 반복은 당일짜리라 '매일 체크하는 장기 계획'과 양립하지 않는다.
+  // 플래그를 남겨 두면 나중에 반복을 풀고 기간을 늘렸을 때 난데없이 되살아난다.
+  if (t.repeat) t.dailyCheck = false;
   if (t.repeat) {
     // 반복은 당일 일정만 지원한다 (기간 반복은 캘린더 막대 배치가 급격히 복잡해진다)
     t.end = t.start;
