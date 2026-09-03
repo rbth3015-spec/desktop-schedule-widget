@@ -31,6 +31,7 @@ const els = {
   btnMin: $('#btn-min'),
   btnClose: $('#btn-close'),
   title: document.querySelector('.titlebar__title'),
+  year: document.getElementById('titlebar-year'),
 };
 
 let calendar = null;
@@ -622,6 +623,20 @@ function checkDayChange() {
   }
 }
 
+/**
+ * 커버의 콜로폰 — 연도를 로마숫자로.
+ * 장식이지만 다이어리 겉장에 찍힌 연도라는 뜻이 있어서, 해가 바뀌면 따라가야 한다.
+ */
+function romanYear(n) {
+  const table = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+                 [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+  let out = '';
+  for (const [v, s] of table) while (n >= v) { out += s; n -= v; }
+  return out;
+}
+
+if (els.year) els.year.textContent = romanYear(new Date().getFullYear());
+
 // ---------------------------------------------------------------- 아침 브리핑
 //
 // 이 앱은 그동안 '물어봐야 답하는 장부'였다. 창을 열고, 날짜를 고르고, 목록을 봐야
@@ -1001,6 +1016,12 @@ function renderSettings() {
 
     row('테마', segmented([['light', '라이트'], ['dark', '다크']], s.theme, (v) =>
       store.setSetting('theme', v))),
+
+    // 시간표 머리의 칩과 **같은 값**을 본다. 두 자리에서 고르되 상태는 하나다.
+    row('오늘 시간표', segmented([['strip', '스트립'], ['compressed', '압축']],
+      s.todayView === 'compressed' ? 'compressed' : 'strip',
+      (v) => store.setSetting('todayView', v)),
+      '스트립은 오전·오후 두 띠에 네모로 하루의 모양을 그립니다. 압축은 일정이 있는 시간대만 펼치고 빈 시간을 접습니다.'),
 
     row('배경 투명도', slider(0.4, 1, 0.02, s.opacity, (v) =>
       store.setSetting('opacity', v), (v) => `${Math.round(v * 100)}%`),

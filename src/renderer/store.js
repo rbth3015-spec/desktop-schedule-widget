@@ -32,13 +32,16 @@ let savePending = false;   // 디바운스 대기 중인 변경이 있는가
 
 // 안료 계열. 형광빛 원색은 두 테마의 배경과 따로 놀아서 채도를 낮췄다.
 // 전부 어두운 값이라 위에 얹는 글자색(--on-color)은 밝은 아이보리로 고정한다.
+// 핸드오프의 '항목 색 6종'.
+// **키 이름은 건드리지 않는다** — 키를 바꾸면 이미 저장된 일정의 색이 전부 날아간다.
+// 자리는 그대로 두고 안료만 갈아 끼운 셈이다.
 export const COLORS = {
-  blue:   '#3e5c76',   // 청람
-  green:  '#5a7a58',   // 쑥
-  amber:  '#b0843f',   // 치자
-  rose:   '#a6544c',   // 다홍
-  violet: '#6f5b84',   // 자주
-  slate:  '#78736a',   // 회묵
+  blue:   '#4a5f7a',   // 청람
+  green:  '#5c6b4a',   // 이끼(moss)
+  amber:  '#9a7a2e',   // 치자(citron)
+  rose:   '#9c4a33',   // 주홍(vermilion)
+  violet: '#6d4a5e',   // 자두(plum)
+  slate:  '#4f4b45',   // 먹(charcoal)
 };
 
 export const PRIORITY_LABELS = ['보통', '중요', '긴급'];
@@ -69,6 +72,10 @@ const DEFAULT_SETTINGS = {
   showDashboard: true,    // Zone C: D-Day 대시보드
   showLauncher: true,     // Zone D: 퀵 런처 도크
   showHolidays: true,     // 달력에 공휴일 표시
+
+  // 오늘 시간표 시안. 'strip'(기본) | 'compressed'
+  // 시간표 머리의 칩과 설정의 '오늘 시간표' 행이 이 값 하나를 함께 본다.
+  todayView: 'strip',
 
   // --- 브리핑 ---
   // 하루에 한 번, 앱을 처음 켠 날 아침에 오늘 몫을 한 장으로 요약해 준다.

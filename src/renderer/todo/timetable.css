@@ -1,0 +1,420 @@
+/* 오늘 시간표 — 스트립 / 압축.
+   치수는 design_handoff_schedule_assistant/README.md 의 "화면 2 · 시간표" 를 따른다.
+   면을 색으로 채우지 않는 원칙의 유일한 예외가 스트립 네모의 20% 틴트다. */
+
+.tt[hidden] { display: none; }
+
+.tt {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 10px;
+}
+
+/* ---- 머리 ---- */
+.tt__head[hidden] { display: none; }
+.tt__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tt__title {
+  flex: 0 0 auto;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 11.5px;
+  letter-spacing: .18em;
+  color: var(--ink-soft);
+}
+.tt__rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--rule);
+}
+.tt__add {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-chip);
+  color: var(--ink-faint);
+  transition: border-color .16s, color .16s;
+}
+.tt__add .icon { width: 11px; height: 11px; }
+.tt__add:hover { border-color: var(--gold); color: var(--gold-deep); }
+
+.tt__views { display: flex; gap: 5px; flex: 0 0 auto; }
+.tt__view {
+  padding: 3px 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-chip);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  transition: border-color .16s, color .16s, background .16s;
+}
+.tt__view:hover { border-color: var(--gold); color: var(--gold-deep); }
+.tt__view.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
+
+.tt__note {
+  margin-top: 5px;
+  font-size: 10px;
+  letter-spacing: .02em;
+  color: var(--ink-faint);
+}
+
+.tt__empty {
+  padding: 14px 0 4px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+/* 왼쪽 라벨 — '종일' · '오전' · '오후' 의 폭을 맞춰 세로로 정렬한다 */
+.tt__key {
+  flex: 0 0 34px;
+  width: 34px;
+  padding-top: 2px;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: var(--ink-soft);
+}
+
+/* ---- 종일 띠 ---- */
+.tt__allday[hidden] { display: none; }
+.tt__allday {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 7px 0 8px;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule-soft);
+}
+.tt__chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+
+.tt-allday__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 9px;
+  /* 항목 색은 --item 으로 받는다. --ink 를 쓰면 카드 안 글자색까지 물든다. */
+  border: 1px dashed var(--item, var(--rule));
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+}
+.tt-allday__title {
+  font-size: 11.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-allday__meta { font-size: 10px; color: var(--ink-faint); }
+.tt-allday__chip.is-done .tt-allday__title {
+  text-decoration: line-through;
+  color: var(--ink-faint);
+}
+
+/* ---- 체크박스 (시간표 어디서든 같은 모양) ---- */
+.tt-check {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius-chip);
+  color: var(--gold-deep);
+  transition: border-color .16s;
+}
+.tt-check:hover { border-color: var(--gold); }
+.tt-check.is-on { border-color: var(--gold); }
+.tt-check .icon { width: 9px; height: 9px; }
+
+/* 색 캡 — 3×11 세로 막대 */
+.tt-cap { flex: 0 0 auto; width: 3px; height: 11px; }
+
+/* ---- 스트립 ---- */
+.tt-strip { display: flex; flex-direction: column; }
+
+.tt-strip__lane {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 0 2px;
+}
+.tt-strip__canvas { position: relative; display: block; height: 68px; }
+
+.tt-strip__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule);
+}
+.tt-strip__ticklabel {
+  position: absolute;
+  top: 0;
+  margin-left: 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink);
+}
+/* 눈금 줄과 네모 밴드를 가르는 실선 */
+.tt-strip__base {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 15px;
+  height: 1px;
+  background: var(--rule-soft);
+}
+
+/* 네모 — 글자가 없다. 위치·길이·색만으로 읽는다. */
+.tt-strip__bar {
+  position: absolute;
+  top: 19px;
+  height: 31px;
+  box-sizing: border-box;
+  border: 1px solid var(--item);
+  border-left: 3px solid var(--item);
+  border-radius: var(--radius-chip);
+  /* 면을 색으로 채우지 않는 원칙의 유일한 예외 — 20% 틴트 */
+  background: color-mix(in srgb, var(--item) 20%, var(--paper));
+  cursor: pointer;
+  z-index: 2;
+  transition: opacity .16s, box-shadow .16s;
+}
+.tt-strip__bar.is-past { opacity: .55; }
+.tt-strip__bar:hover {
+  opacity: 1;
+  box-shadow: 0 1px 4px rgba(34, 32, 29, .18);
+}
+
+/* 지금 — 라벨은 밴드 **아래**에 둔다. 위에 두면 네모와 겹쳐 둘 다 안 읽힌다. */
+.tt-strip__now {
+  position: absolute;
+  top: 13px;
+  height: 39px;
+  width: 1px;
+  background: var(--seal);
+  z-index: 4;
+}
+.tt-strip__nowdot {
+  position: absolute;
+  left: -3px;
+  top: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--seal);
+}
+.tt-strip__nowlabel {
+  position: absolute;
+  left: 5px;
+  top: 41px;
+  padding: 1px 5px;
+  border: 1px solid var(--seal);
+  border-radius: var(--radius-chip);
+  background: var(--paper);
+  font-size: 9.5px;
+  letter-spacing: .04em;
+  color: var(--seal);
+  white-space: nowrap;
+}
+
+/* 이름은 이 목록이 맡는다 */
+.tt-strip__list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+  margin-top: 13px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule-soft);
+}
+.tt-strip__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+.tt-strip__at {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  letter-spacing: .03em;
+  color: var(--gold-deep);
+}
+.tt-strip__item.is-past .tt-strip__at { color: var(--ink-faint); }
+.tt-strip__item.is-past .tt-check { border-color: var(--gold); }
+.tt-strip__name {
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-strip__routine { flex: 0 0 auto; font-size: 10px; color: var(--success); }
+
+/* ---- 압축 ---- */
+.tt-comp { display: flex; flex-direction: column; margin-top: 12px; }
+
+.tt-comp__row { display: grid; grid-template-columns: 46px 1fr; }
+.tt-comp__at {
+  text-align: right;
+  padding-right: 11px;
+  padding-top: 9px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.tt-comp__card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 11px;
+  border: 1px solid var(--item);
+  border-left: 3px solid var(--item);
+  border-radius: var(--radius-chip);
+  cursor: pointer;
+  transition: background .16s;
+}
+.tt-comp__card:hover { background: var(--paper-2); }
+.tt-comp__card.is-past { opacity: .62; }
+
+.tt-comp__line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.tt-comp__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-comp__bang { flex: 0 0 auto; font-size: 12px; color: var(--seal); }
+.tt-comp__routine { flex: 0 0 auto; font-size: 10px; color: var(--success); }
+.tt-comp__line .icon { flex: 0 0 auto; width: 11px; height: 11px; color: var(--gold-deep); }
+.tt-comp__range { flex: 0 0 auto; font-size: 11px; color: var(--ink-faint); }
+.tt-comp__note {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 빈 시간 — 60분 이상이면 한 줄로 접는다 */
+.tt-comp__gap {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  align-items: center;
+  height: 28px;
+}
+.tt-comp__gapline { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tt-comp__dash { flex: 1 1 auto; border-top: 1px dashed var(--rule); }
+.tt-comp__dash--short { flex: 0 0 14px; }
+.tt-comp__gaplabel {
+  flex: 0 0 auto;
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: .05em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.tt-comp__gaplabel.is-now { color: var(--seal); }
+.tt-comp__open { flex: 0 0 auto; font-size: 10px; letter-spacing: .04em; color: var(--gold-deep); }
+
+/* ---- 자세한 창 ---- */
+.tt-peek[hidden] { display: none; }
+.tt-peek {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: rgba(34, 32, 29, .34);
+}
+.tt-peek__card {
+  width: 356px;
+  max-width: calc(100vw - 40px);
+  padding: 20px 22px 16px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--peek-ink, var(--gold));
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .32);
+}
+
+.tt-peek__top { display: flex; align-items: baseline; gap: 10px; }
+.tt-peek__range { flex: 1 1 auto; font-size: 22px; color: var(--ink); }
+.tt-peek__len { flex: 0 0 auto; font-size: 11.5px; color: var(--ink-faint); }
+
+.tt-peek__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 17px;
+  color: var(--ink);
+}
+.tt-peek__bang { font-size: 15px; color: var(--seal); }
+.tt-peek__routine { font-size: 13px; color: var(--success); }
+
+.tt-peek__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.tt-peek__cap { flex: 0 0 auto; width: 3px; height: 11px; background: var(--peek-ink, var(--gold)); }
+.tt-peek__hr { flex: 1 1 auto; height: 1px; background: var(--rule-soft); }
+.tt-peek__rel { flex: 0 0 auto; color: var(--seal); }
+
+.tt-peek__note {
+  margin-top: 11px;
+  padding: 9px 11px;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-2);
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+}
+
+.tt-peek__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 15px;
+}
+.tt-peek__act {
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-chip);
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  transition: border-color .16s, color .16s, background .16s;
+}
+.tt-peek__act:hover { border-color: var(--gold); color: var(--gold-deep); }
+.tt-peek__act--gold { border-color: var(--gold); color: var(--gold-deep); }
+.tt-peek__act--gold:hover { background: var(--gold-ghost); }
+.tt-peek__act--ghost { margin-left: auto; color: var(--ink-faint); }

@@ -125,19 +125,25 @@
   justify-content: center;
   gap: 7px;
   padding: 9px 12px;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  background: var(--accent);
-  color: var(--on-color);
+  /* 핸드오프 원칙: 면을 색으로 채우지 않는다. 강조는 테두리와 글자색으로.
+     굵게도 쓰지 않는다(최대 500). */
+  border: 1px solid var(--gold);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--gold-deep);
   font-family: var(--font-serif);
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 400;
+  letter-spacing: .06em;
   letter-spacing: .06em;
   cursor: pointer;
   transition: filter .16s, box-shadow .16s;
 }
-.todo-add:hover { filter: brightness(1.12); }
-.todo-add:active { filter: brightness(.94); }
+.todo-add:hover { background: var(--gold-ghost); }
+.todo-add:active { background: var(--gold-ghost); filter: brightness(.97); }
+/* '루틴' 은 곁들이 입구라 테두리를 괘선으로 낮춘다 */
+.todo-add--routine { border-color: var(--rule); color: var(--ink-soft); }
+.todo-add--routine:hover { border-color: var(--gold); color: var(--gold-deep); }
 .todo-add:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent);
@@ -844,11 +850,12 @@
   transition: border-color .16s, color .16s, background .16s;
 }
 .cmp-chip:hover { border-color: var(--border-strong); color: var(--text); }
+/* 고른 칩 = 금박 테두리 + 금박 글자 + 아주 옅은 금박 면 (핸드오프) */
 .cmp-chip.is-on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-color);
-  font-weight: 600;
+  background: var(--gold-ghost);
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  font-weight: 400;
 }
 
 /* 두 항목을 한 줄에 — 색·중요도처럼 각각 한 줄이 아까운 것들 */
