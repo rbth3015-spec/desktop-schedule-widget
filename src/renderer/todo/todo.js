@@ -6,6 +6,7 @@ import { todayKey, toKey, fromKey, addDays, diffDays, WEEKDAY_LABELS } from '../
 import { remindLabel } from '../reminders.js';
 import { icon } from '../lib/icons.js';
 import { createCompose, whenSummary } from './compose.js';
+import { createTimetable } from './timetable.js';
 import { COLOR_NAMES } from './parse.js';
 import { showContextMenu } from '../lib/menu.js';
 
@@ -441,6 +442,20 @@ export function createTodoPanel({ root, store }) {
   // 빠른 입력이 문법을 외워야 하는 반면, 이쪽은 클릭만으로 전부 지정할 수 있는 경로다.
   // 폼이 열리고 닫힐 때마다 추가 버튼 줄을 맞춘다(취소·Esc·제출 모두 포함).
   const compose = createCompose({ store, onToggle: () => syncAddBar() });
+
+  // 오늘 시간표 — 하루의 '모양' 을 맡는다.
+  // 목록은 무엇이 있는지는 알려 줘도, 그 앞이 비었는지 붙어 있는지는 말해 주지 않았다.
+  // 담을 것이 하나라도 있으면 '오늘 할 일' 자리를 이쪽이 가져간다.
+  const timetable = createTimetable({
+    store,
+    onDetail: (id) => store.setEditing(id),
+    onAdd: () => {
+      const key = store.getState().selectedDate;
+      compose.open({ start: key, end: key });
+    },
+  });
+  timetable.el.hidden = true;
+  body.insertBefore(timetable.el, sections.day.el);
 
   // 일정을 만드는 입구는 헤더의 '+' 하나뿐이다.
   // 전용 입력칸이 따로 있으면 같은 일을 하는 길이 둘로 갈려 매번 어느 쪽인지 고민하게 된다.
@@ -1704,7 +1719,13 @@ export function createTodoPanel({ root, store }) {
 
     // 집중 모드에서는 나머지 섹션을 통째로 감춘다
     sections.overdue.el.hidden = focusMode || searching || overdue.length === 0;
-    sections.day.el.hidden = focusMode || searching;
+    // 시간표가 담을 것이 있으면 그쪽이 '오늘 할 일' 을 대신한다.
+    // 비어 있을 때만 예전 목록을 남긴다 — 빈 상태 안내와 첫 일정 만드는 길이 거기 있다.
+    const ttCount = (focusMode || searching)
+      ? 0
+      : timetable.update(key, addDays(key, 1));
+    timetable.el.hidden = ttCount === 0;
+    sections.day.el.hidden = focusMode || searching || ttCount > 0;
     // 비어 있으면 감춘다. 안내 문구만 남은 섹션이 늘 자리를 차지하고 있었다.
     // 없애 버리지는 않는다 — 날짜 없는 일정을 만들면 갈 곳이 있어야 한다.
     sections.inbox.el.hidden = focusMode || searching || inboxTasks.length === 0;

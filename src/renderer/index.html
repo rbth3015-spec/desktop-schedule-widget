@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="calendar/calendar.css" />
   <link rel="stylesheet" href="todo/todo.css" />
+  <link rel="stylesheet" href="todo/timetable.css" />
   <link rel="stylesheet" href="dashboard/dashboard.css" />
   <link rel="stylesheet" href="launcher/launcher.css" />
 </head>
@@ -19,6 +20,8 @@
       <div class="titlebar__drag">
         <span class="titlebar__dot"></span>
         <span class="titlebar__title">일정관리 비서</span>
+        <span class="titlebar__rule"></span>
+        <span id="titlebar-year" class="titlebar__year"></span>
       </div>
       <div class="titlebar__actions">
         <button id="btn-help" class="iconbtn" title="도움말"></button>
@@ -30,17 +33,21 @@
       </div>
     </header>
 
+    <!-- 펼침면 — 왼쪽은 늘 펼쳐진 달력, 오른쪽은 기록면 -->
     <main class="panes">
       <section id="calendar-root" class="pane pane--calendar"></section>
       <div id="splitter" class="splitter" title="드래그해서 비율 조절"></div>
       <section id="todo-root" class="pane pane--todo"></section>
     </main>
 
-    <!-- Zone C: D-Day 대시보드 -->
-    <section id="dash-root" class="zone zone--dash"></section>
+    <!-- 아래 리본 — D-Day 와 퀵 런처가 한 장에 얹힌다 -->
+    <div class="ribbon">
+      <!-- Zone C: D-Day 대시보드 -->
+      <section id="dash-root" class="zone zone--dash"></section>
 
-    <!-- Zone D: 퀵 런처 도크 -->
-    <footer id="launcher-root" class="zone zone--launcher"></footer>
+      <!-- Zone D: 퀵 런처 도크 -->
+      <footer id="launcher-root" class="zone zone--launcher"></footer>
+    </div>
 
     <div id="settings-root" class="settings" hidden></div>
   </div>

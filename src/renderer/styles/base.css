@@ -91,106 +91,152 @@
    면이 아니라 가느다란 괘선으로 나누는 구조. 장식은 최소로. */
 
 /* ── 라이트 ────────────────────────────────────────────────────── */
+/*
+ * 색은 design_handoff_schedule_assistant/README.md 의 Design Tokens 표가 원본이다.
+ * 위 블록(핸드오프 토큰)에만 값을 적고, 아래 '기존 이름' 은 거기에 잇기만 한다 —
+ * 그래야 4천 줄 넘는 기존 CSS 를 한 줄도 건드리지 않고 통째로 갈아입힐 수 있다.
+ */
 :root,
 :root[data-theme="light"] {
-  /* --glass-a 는 '배경 투명도' 설정이 덮어쓴다.
-     창(window) 불투명도가 아니라 배경 알파를 조절하므로 글자는 또렷하게 남는다. */
+  /* '배경 투명도' 설정이 덮어쓴다. 창 불투명도가 아니라 배경 알파라 글자는 또렷하게 남는다. */
   --glass-a:       0.90;
-  --paper:         255, 253, 248;                    /* 종이 — 흰색에 가깝게, 노란 쪽으로만 따뜻하게 */
-  --bg:            rgba(var(--paper), var(--glass-a));
-  --bg-solid:      #fffdf8;
 
-  /* 면과 괘선은 **노란 쪽으로만** 따뜻한 회색이다.
-     찬 회색을 미색 종이에 얹으면 섞여서 자주빛이 되고,
-     반대로 붉은 쪽으로 데우면(R−G 가 10 넘게 벌어지면) 버건디와 겹쳐 분홍으로 읽힌다.
-     그래서 R−G 는 3~4 로 좁히고 G−B 만 벌린다. 따뜻함은 붉은 쪽이 아니라 노란 쪽이다.
-     명도(≈70/59)는 예전 값 그대로 둔다 — 밝기가 바뀌면 위계가 흐트러진다. */
-  --pane:          rgba(74, 70, 54, 0.035);          /* 종이 위 옅은 면 */
-  --pane-hover:    rgba(74, 70, 54, 0.07);
-  --edge:          rgba(62, 59, 45, 0.28);           /* 바깥 테두리 */
-  --rule:          rgba(62, 59, 45, 0.16);           /* 괘선 */
+  /* ── 핸드오프 토큰 ── */
+  --paper:         #f5f2ec;   /* 종이 3단 */
+  --paper-2:       #efebe3;
+  --paper-3:       #e6e1d6;
+  --ink:           #22201d;   /* 잉크 3단 */
+  --ink-soft:      #5d5951;
+  --ink-faint:     #98928a;
+  --rule:          color-mix(in srgb, #22201d 15%, transparent);
+  --rule-soft:     color-mix(in srgb, #22201d 8%, transparent);
+  --gold:          #b68235;
+  --gold-deep:     #7d5411;
+  --gold-ghost:    color-mix(in srgb, #b68235 14%, transparent);
+  --seal:          #8d3a2c;   /* 인주 — 오늘·지난 일·경고 */
+  --cover:         #3a332b;   /* 커버(크롬) */
+  --cover-ink:     #d6c4a0;
+  --cover-hi:      #e8dcc2;
+  --ribbon:        #f0ece4;   /* 아래 리본 */
+
+  /* ── 기존 이름 → 위 토큰 ── */
+  --paper-rgb:     245, 242, 236;   /* 배경 알파용. --paper 와 같은 색의 성분 값 */
+  --bg:            rgba(var(--paper-rgb), var(--glass-a));
+  --bg-solid:      #f5f2ec;
+
+  --pane:          var(--paper-2);
+  --pane-hover:    var(--paper-3);
+  --edge:          color-mix(in srgb, #22201d 22%, transparent);
   --border:        var(--rule);
-  --border-strong: rgba(62, 59, 45, 0.34);
+  --border-strong: color-mix(in srgb, #22201d 30%, transparent);
 
-  /* 만년필 잉크 — 순검정이 아닌 블루블랙. 대비를 확실히 준다.
-     이전 팔레트는 베이지 위 갈색이라 전부 바래 보였다. */
-  --text:          #1b2432;
-  --text-dim:      #4e5567;
-  --text-faint:    #8c93a3;
+  --text:          var(--ink);
+  --text-dim:      var(--ink-soft);
+  --text-faint:    var(--ink-faint);
 
-  --accent:        #7d2b38;                          /* 버건디 잉크 */
-  --accent-soft:   rgba(125, 43, 56, 0.10);
-  /* 넓은 면에 까는 옅은 강조.
-     hover 같은 손톱만 한 자리에 알맞은 분홍도, 화면의 한 칸을 통째로 덮으면
-     배경 자체가 분홍으로 읽힌다. 늘 떠 있는 넓은 면은 절반만 머금는다. */
-  --accent-wash:   rgba(125, 43, 56, 0.035);
-  --gold:          #9a7736;                          /* 금박 — 보조 강조 */
-  --danger:        #a3342c;
-  --success:       #3f6b52;
-  --warn:          #97701f;
+  --accent:        var(--seal);
+  --accent-soft:   color-mix(in srgb, #8d3a2c 10%, transparent);
+  --accent-wash:   color-mix(in srgb, #8d3a2c 4%, transparent);
+  --danger:        var(--seal);
+  --success:       #5c6b4a;   /* 이끼 */
+  --warn:          var(--gold-deep);
 
-  --on-color:      #fdfaf4;
-  --today:         var(--accent);
-  --sun:           #9e3f3f;
-  --sat:           #3d5878;
+  --on-color:      #f4ede1;   /* 일정 색은 전부 어두운 안료라 두 테마 모두 밝은 글자 */
+  --today:         var(--seal);
+  --sun:           var(--seal);
+  --sat:           var(--ink-soft);
 
-  --shadow:        0 8px 28px rgba(58, 44, 28, 0.16), 0 1px 2px rgba(58, 44, 28, 0.10);
-  --shadow-sm:     0 2px 8px rgba(58, 44, 28, 0.10);
+  --shadow:        0 30px 70px rgba(0, 0, 0, .5);
+  --shadow-sm:     0 2px 5px rgba(0, 0, 0, .28);
 }
 
 /* ── 다크 ──────────────────────────────────────────────────────── */
+/* 핸드오프에는 다크가 없다. 같은 성격(따뜻한 종이·금박·인주)을 어둠 쪽으로 뒤집어 만든다.
+   금박은 어두운 바탕에서 글자로 쓰이므로 --gold-deep 이 --gold 보다 **밝아야** 읽힌다. */
 :root[data-theme="dark"] {
   --glass-a:       0.88;
-  --paper:         28, 25, 22;
-  --bg:            rgba(var(--paper), var(--glass-a));
-  --bg-solid:      #1c1916;
 
-  --pane:          rgba(232, 216, 190, 0.05);
-  --pane-hover:    rgba(232, 216, 190, 0.10);
-  --edge:          rgba(232, 216, 190, 0.16);
-  --rule:          rgba(232, 216, 190, 0.13);
+  --paper:         #22201d;
+  --paper-2:       #2a2723;
+  --paper-3:       #33302a;
+  --ink:           #ece5d7;
+  --ink-soft:      #a9a294;
+  --ink-faint:     #6f6a60;
+  --rule:          color-mix(in srgb, #ece5d7 15%, transparent);
+  --rule-soft:     color-mix(in srgb, #ece5d7 8%, transparent);
+  --gold:          #c9a05a;
+  --gold-deep:     #dcbc80;
+  --gold-ghost:    color-mix(in srgb, #c9a05a 16%, transparent);
+  --seal:          #c0705c;
+  --cover:         #17150f;
+  --cover-ink:     #d6c4a0;
+  --cover-hi:      #e8dcc2;
+  --ribbon:        #2a2723;
+
+  --paper-rgb:     34, 32, 29;
+  --bg:            rgba(var(--paper-rgb), var(--glass-a));
+  --bg-solid:      #22201d;
+
+  --pane:          var(--paper-2);
+  --pane-hover:    var(--paper-3);
+  --edge:          color-mix(in srgb, #ece5d7 22%, transparent);
   --border:        var(--rule);
-  --border-strong: rgba(232, 216, 190, 0.26);
+  --border-strong: color-mix(in srgb, #ece5d7 30%, transparent);
 
-  --text:          #ece3d5;
-  --text-dim:      #a89b8a;
-  --text-faint:    #746859;
+  --text:          var(--ink);
+  --text-dim:      var(--ink-soft);
+  --text-faint:    var(--ink-faint);
 
-  --accent:        #c9756a;                          /* 어두운 배경에서 읽히는 적동색 */
-  --accent-soft:   rgba(201, 117, 106, 0.16);
-  --accent-wash:   rgba(201, 117, 106, 0.085);
-  --gold:          #c2a15e;
-  --danger:        #d4736a;
-  --success:       #7fa383;
-  --warn:          #c9a15e;
+  --accent:        var(--seal);
+  --accent-soft:   color-mix(in srgb, #c0705c 16%, transparent);
+  --accent-wash:   color-mix(in srgb, #c0705c 8%, transparent);
+  --danger:        var(--seal);
+  --success:       #8ea173;
+  --warn:          var(--gold-deep);
 
-  --on-color:      #f4ede1;   /* 태스크 색이 전부 어두운 안료라 두 테마 모두 밝은 글자 */
-  --today:         var(--accent);
-  --sun:           #cf7d74;
-  --sat:           #86a3bd;
+  --on-color:      #f4ede1;
+  --today:         var(--seal);
+  --sun:           var(--seal);
+  --sat:           var(--ink-soft);
 
-  --shadow:        0 10px 32px rgba(0, 0, 0, 0.52), 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm:     0 2px 10px rgba(0, 0, 0, 0.36);
+  --shadow:        0 30px 70px rgba(0, 0, 0, .62);
+  --shadow-sm:     0 2px 5px rgba(0, 0, 0, .4);
 }
 
 /* ── 공통 ──────────────────────────────────────────────────────── */
 :root {
-  --radius:        10px;
-  --radius-sm:     5px;
+  /* 핸드오프의 모양 규칙 — 1px 칩·블록 / 2px 버튼·입력·카드 / 3px 면 / 5px 커버 */
+  --radius:        3px;
+  --radius-sm:     2px;
+  --radius-chip:   1px;
+  --radius-cover:  5px;
 
   /* 백드롭 블러. dwm.exe GPU 점유를 감안해 10~20px 범위를 넘기지 않는다. */
   --blur:          14px;
   --sat-boost:     1.15;
 
   --fs:            13px;
-  --icon-stroke:   1.4;
+  --icon-stroke:   1.5;       /* 핸드오프: Lucide stroke 1.4–1.6 */
 
-  /* 본문 — 작은 글씨에서 또렷한 산세리프 */
+  /* 본문 — 작은 글씨에서 또렷한 산세리프 (핸드오프의 --sans) */
   --font-pick:       "Pretendard";
   --font-serif-pick: "Nanum Myeongjo";
   --font: var(--font-pick), "Malgun Gothic", "Apple SD Gothic Neo", "Segoe UI", system-ui, sans-serif;
-  /* 날짜·표제 — 앱에 포함한 명조. 시스템 폰트에 기대지 않는다. */
+  /* 날짜·표제 (핸드오프의 --serif) */
   --font-serif: var(--font-serif-pick), Georgia, serif;
+  /* 숫자 (핸드오프의 --num).
+     Cormorant Garamond 는 번들에 없다. 핸드오프가 적어 둔 폴백이 Noto Serif KR 이므로
+     같은 자리의 번들 명조로 간다 — 스택의 뜻을 그대로 따르는 셈이다. */
+  --font-num: var(--font-serif-pick), Georgia, serif;
+}
+
+/* 숫자는 자리가 흔들리면 안 된다 — 표처럼 읽혀야 하는 값에 tnum 을 건다 */
+.num,
+.cal-day__num, .cal-title__year, .dash-card__num, .dash-card__dday,
+.todo-time, .todo-dday, .todo-count, .todo-streak, .todo-defers {
+  font-family: var(--font-num);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
 }
 
 /* 글꼴 선택.
@@ -246,13 +292,44 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   display: flex;
   flex-direction: column;
   height: 100%;            /* body 의 콘텐츠 박스 = 100vh - padding */
-  background: var(--bg);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  /* 커버 — 다이어리 겉장. 안쪽 펼침면은 종이색이고 이 층은 가죽/천에 해당한다.
+     '배경 투명도' 설정은 이 층에 건다(글자는 종이 위에 있으므로 또렷하게 남는다). */
+  background: color-mix(in srgb, var(--cover) calc(var(--glass-a) * 100%), transparent);
+  border: 0;
+  border-radius: var(--radius-cover);
+  padding: 13px 13px 15px;
+  box-shadow: var(--shadow), inset 0 0 0 1px rgba(214, 196, 160, .18);
   overflow: hidden;
   backdrop-filter: blur(var(--blur)) saturate(var(--sat-boost));
   transition: opacity .28s ease;
+}
+
+/*
+ * 리본 책갈피. 빨간 새틴이 커버 위쪽에서 내려와 페이지 위를 지난다.
+ * 순수 장식이라 마우스를 먹지 않는다. 이것 때문에 머리글이 왼쪽으로 밀려 있다.
+ */
+.widget::before,
+.widget::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  width: 17px;
+  pointer-events: none;
+  z-index: 30;
+}
+/* 시안의 118px 은 펼침면이 훨씬 아래에서 시작하는 전제였다.
+   이 위젯은 머리글이 30px 로 얕아서 그대로 두면 리본이 달력 첫 주를 덮는다.
+   장식이 자료를 가리면 장식이 아니다 — 겉장 안에서 끝나게 줄인다. */
+.widget::before {
+  top: 0;
+  height: 44px;
+  background: linear-gradient(180deg, #8d3a2c, #752f24);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, .34);
+}
+.widget::after {
+  top: 44px;
+  height: 9px;
+  background: linear-gradient(135deg, #752f24 50%, transparent 50%);
 }
 
 /*
@@ -278,9 +355,9 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 36px;
-  padding: 0 7px 0 14px;
-  border-bottom: 1px solid var(--rule);
+  height: 30px;
+  /* 리본이 왼쪽 22~39px 를 지나므로 머리글을 그 뒤로 민다 */
+  padding: 0 2px 0 56px;
   flex: 0 0 auto;
 }
 
@@ -295,20 +372,22 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 }
 
 /* 표지의 각인 같은 작은 마름모 */
+/* 커버 각인 — 이름 앞의 작은 마름모 */
 .titlebar__dot {
   width: 5px;
   height: 5px;
   transform: rotate(45deg);
-  background: var(--accent);
+  background: var(--cover-ink);
+  opacity: .8;
   flex: 0 0 auto;
 }
 
 .titlebar__title {
   font-family: var(--font-serif);
-  font-size: 12.5px;
-  font-weight: 600;
-  letter-spacing: .06em;
-  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: .34em;
+  color: var(--cover-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -333,12 +412,48 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 .iconbtn--danger:hover { background: var(--accent-soft); color: var(--accent); }
 .iconbtn.is-active { color: var(--accent); background: var(--accent-soft); }
 
+/* 커버 위에 놓인 것들은 종이가 아니라 겉장 위에 있다 — 글자색이 다르다 */
+.titlebar .iconbtn {
+  width: 27px;
+  height: 27px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: rgba(214, 196, 160, .75);
+  background: transparent;
+}
+.titlebar .iconbtn:hover {
+  border-color: rgba(214, 196, 160, .4);
+  color: var(--cover-hi);
+  background: transparent;
+}
+.titlebar .iconbtn.is-active { color: var(--cover-hi); border-color: rgba(214, 196, 160, .4); }
+.titlebar .iconbtn--danger:hover { color: #dd9a86; border-color: rgba(221, 154, 134, .5); }
+
+/* 콜로폰 — 이름 뒤의 구분선과 로마숫자 연도 */
+.titlebar__rule {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 1px;
+  background: rgba(214, 196, 160, .45);
+}
+.titlebar__year {
+  flex: 0 0 auto;
+  font-family: var(--font-num);
+  font-size: 12px;
+  letter-spacing: .14em;
+  color: rgba(214, 196, 160, .6);
+}
+
+/* 펼침면 — 두 면이 한 장의 종이 위에 있다 */
 .panes {
   position: relative;
   z-index: 1;
   display: flex;
   flex: 1;
   min-height: 0;
+  border-radius: var(--radius);
+  background: var(--paper);
+  overflow: hidden;
 }
 
 .pane {
@@ -350,15 +465,26 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 }
 
 .pane--calendar { flex: 0 0 56%; }   /* app.js 가 설정값으로 덮어씀 */
-.pane--todo     { flex: 1; border-left: 1px solid var(--rule); }
+.pane--todo     { flex: 1; }
+
+/* 아래 리본 — D-Day 와 퀵 런처가 한 장에 얹힌다 */
+.ribbon {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin-top: 12px;
+  border-radius: var(--radius);
+  background: var(--ribbon);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+  overflow: hidden;
+}
+.ribbon:empty { display: none; }
 
 /* Zone C — D-Day 대시보드 */
 .zone--dash {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
-  border-top: 1px solid var(--rule);
-  background: var(--pane);
   overflow: hidden;
 }
 .zone--dash[hidden] { display: none; }
@@ -374,15 +500,41 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 }
 .zone--launcher[hidden] { display: none; }
 
+/* 제본선 — 두 면이 접히는 골. 가운데 실땀이 박혀 있다.
+   폭을 잡고 끌면 여전히 두 면의 비율이 바뀐다. */
 .splitter {
   position: relative;
   z-index: 1;
-  flex: 0 0 5px;
+  flex: 0 0 30px;
   cursor: col-resize;
-  background: transparent;
-  transition: background .14s;
+  background: linear-gradient(90deg,
+    var(--paper), var(--paper-3) 45%, var(--paper-3) 55%, var(--paper));
 }
-.splitter:hover, .splitter.is-dragging { background: var(--accent-soft); }
+/* 골의 중심선 */
+.splitter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-.5px);
+  background: var(--rule);
+}
+/* 실땀 일곱 개 */
+.splitter::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  transform: translateX(-1.5px);
+  border-radius: 2px;
+  background: repeating-linear-gradient(180deg,
+    transparent 0 6%, var(--rule) 6% 8.6%, transparent 8.6% 14%);
+}
+.splitter:hover, .splitter.is-dragging { background: var(--paper-3); }
 
 /* ------------------------------------------------------------ 스크롤바 */
 
