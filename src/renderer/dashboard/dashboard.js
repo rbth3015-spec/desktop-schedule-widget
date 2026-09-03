@@ -296,9 +296,17 @@ export function createDashboard({ root, store }) {
     unpin.title = '고정 해제';
     unpin.setAttribute('aria-label', '고정 해제');
 
-    card.append(unpin, cardHead, num, date, track);
+    // 마감이 사는 자리가 여기다. 미래의 마감은 오늘 목록에 뜨지 않으니
+    // '언제부터 준비할까' 를 물어볼 자리도 여기여야 한다.
+    const plan = h('button', 'dash-plan');
+    plan.append(icon('calendar'));
+    plan.type = 'button';
+    plan.title = '마감까지 계획 세우기';
+    plan.setAttribute('aria-label', '마감까지 계획 세우기');
 
-    const rec = { el: card, dot, title, num, date, fill, unpin, task: null };
+    card.append(unpin, plan, cardHead, num, date, track);
+
+    const rec = { el: card, dot, title, num, date, fill, unpin, plan, task: null };
 
     card.addEventListener('click', () => open(rec.task));
     card.addEventListener('keydown', (e) => {
@@ -309,6 +317,12 @@ export function createDashboard({ root, store }) {
     unpin.addEventListener('click', (e) => {
       e.stopPropagation();
       if (rec.task) store.togglePinned(rec.task.id);
+    });
+    plan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!rec.task) return;
+      // 계획 폼은 투두 패널이 갖고 있다 — 여기서는 부탁만 한다
+      document.dispatchEvent(new CustomEvent('app:plan-deadline', { detail: rec.task.id }));
     });
 
     return rec;
@@ -335,6 +349,7 @@ export function createDashboard({ root, store }) {
     rec.el.classList.toggle('dash-card--over', t.overdue);
     rec.el.classList.toggle('dash-card--urgent', t.remaining <= 3);
     rec.el.classList.toggle('is-done', !!t.done);
+    rec.plan.hidden = !store.canPlanDeadline(t);
 
     rec.dot.style.background = COLORS[t.color] || COLORS.blue;
 

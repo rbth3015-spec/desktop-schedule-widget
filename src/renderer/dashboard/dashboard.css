@@ -228,6 +228,31 @@
 }
 
 /* 고정 해제 — 호버(또는 키보드 포커스) 때만 노출 */
+/* 카드 구석의 작은 동작 둘 — 고정 해제와 계획 세우기.
+   둘 다 카드에 마우스를 올렸을 때만 나타난다. */
+.dash-plan[hidden] { display: none; }
+
+.dash-plan {
+  position: absolute;
+  top: 4px;
+  right: 25px;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity .16s, color .16s, background .16s;
+}
+.dash-plan .icon { width: 12px; height: 12px; }
+.dash-card:hover .dash-plan { opacity: 1; }
+.dash-plan:focus-visible { opacity: 1; color: var(--accent); }
+.dash-plan:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .dash-unpin {
   position: absolute;
   top: 4px;

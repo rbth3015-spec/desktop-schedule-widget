@@ -666,7 +666,8 @@ export function createCompose({ store, onToggle }) {
   form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
 
   /**
-   * @param {{start?:string, end?:string, routine?:boolean}} [preset]
+   * @param {{start?:string, end?:string, routine?:boolean,
+   *           title?:string, dailyCheck?:boolean, color?:string, tags?:string[]}} [preset]
    *   routine — '루틴' 버튼으로 열었을 때. 반복·달력 숨김을 미리 켜 둔다.
    *   매일 하는 일을 만들려고 '반복 켜고 → 더보기 펼치고 → 루틴 누르고' 를
    *   매번 거치는 건 너무 멀다.
@@ -676,7 +677,7 @@ export function createCompose({ store, onToggle }) {
     const start = preset?.start || sel;
     const end = preset?.end || start;
 
-    titleIn.value = '';
+    titleIn.value = preset?.title || '';
     consumedTag.replaceChildren();
     clearTimeout(consumedTimer);
     startIn.value = start;
@@ -684,13 +685,13 @@ export function createCompose({ store, onToggle }) {
     startTimeIn.value = '';
     endTimeIn.value = '';
     linkIn.value = '';
-    tagsIn.value = '';
+    tagsIn.value = (preset?.tags || []).join(' ');
     prio.set('0');
     repeat.set('');
     remind.set('');
     picked.clear();
     paintDays();
-    checkChips.set('once');
+    checkChips.set(preset?.dailyCheck ? 'daily' : 'once');
     checkRow.hidden = true;
     routineOn = false;
     routineBtn.classList.remove('is-on');
@@ -705,8 +706,10 @@ export function createCompose({ store, onToggle }) {
     applyRoutineMode(false);
     err.hidden = true;
     saveBtn.textContent = preset?.routine ? '루틴 추가' : '일정 추가';
-    pickedColor = 'blue';
-    for (const k of Object.keys(swatchBtns)) swatchBtns[k].classList.toggle('is-on', k === 'blue');
+    pickedColor = preset?.color && swatchBtns[preset.color] ? preset.color : 'blue';
+    for (const k of Object.keys(swatchBtns)) {
+      swatchBtns[k].classList.toggle('is-on', k === pickedColor);
+    }
 
     // '루틴' 으로 열었으면 매일 반복 + 달력에 표시 안 함을 미리 켠다
     if (preset?.routine) {
@@ -730,6 +733,9 @@ export function createCompose({ store, onToggle }) {
     form.hidden = false;
     notifyToggle();
     titleIn.focus();
+    // 이름을 미리 채워 열었으면 통째로 골라 둔다 —
+    // 그대로 쓰든 갈아 쓰든 한 동작으로 끝난다.
+    if (preset?.title) titleIn.select();
   }
 
   function close() {
