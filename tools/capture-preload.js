@@ -34,6 +34,27 @@ const day = (n) => {
 
 const t = (o) => ({ notes: '', tags: [], priority: 0, color: 'blue', done: false, createdAt: Date.now(), ...o });
 
+/** 오늘부터 거슬러 n일 안의 평일들 (연속 기록 표본용) */
+const recentWeekdays = (n) => {
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const k = day(-i);
+    const d = new Date(`${k}T00:00:00`);
+    if (d.getDay() >= 1 && d.getDay() <= 5) out.push(k);
+  }
+  return out;
+};
+
+/** 오늘 직전 n일 (매일 루틴의 연속 기록용) */
+const recentDays = (n) => Array.from({ length: n }, (_, i) => day(-(i + 1)));
+
+/** 지난 n번째 같은 요일 (되풀이해 적어 온 일 표본용) */
+const lastWeekdays = (count) => {
+  const out = [];
+  for (let i = 1; i <= count; i++) out.push(day(-7 * i));
+  return out;
+};
+
 const SAMPLE = {
   version: 1,
   // 첫 실행 안내와 아침 브리핑은 다른 컷을 덮으므로 기본은 꺼 둔다.
@@ -57,10 +78,20 @@ const SAMPLE = {
     // 오늘 — 시각이 있는 것은 목록 위쪽에 시간순으로 선다
     // 루틴 — 달력에는 올라가지 않고 오른쪽 '루틴' 에만 모인다.
     // 스크린샷만 보고도 그 규칙이 보이도록 두 개 둔다(하나는 평일, 하나는 매일).
-    t({ id: 't0', title: '운동 40분', start: day(0), end: day(0), color: 'amber', tags: ['건강'],
-        repeat: { freq: 'weekly', interval: 1, days: [1, 2, 3, 4, 5], routine: true }, order: 4 }),
-    t({ id: 't0b', title: '영양제 챙기기', start: day(0), end: day(0), color: 'green',
-        repeat: { freq: 'daily', interval: 1, routine: true }, order: 14 }),
+    // 루틴은 '오늘 시작한 것' 이 아니라 '해 오던 것' 이다 — 시작일을 뒤로 두어야
+    // 연속 기록이 뜻을 갖는다(routineStreak 는 시작일보다 앞은 세지 않는다).
+    t({ id: 't0', title: '운동 40분', start: day(-60), end: day(-60), color: 'amber', tags: ['건강'],
+        repeat: { freq: 'weekly', interval: 1, days: [1, 2, 3, 4, 5], routine: true },
+        doneDates: recentWeekdays(20), order: 4 }),
+    t({ id: 't0b', title: '영양제 챙기기', start: day(-60), end: day(-60), color: 'green',
+        repeat: { freq: 'daily', interval: 1, routine: true },
+        doneDates: recentDays(5), order: 14 }),
+
+    // 매주 같은 요일에 손으로 새로 적어 온 일 — 앱이 알아보고 루틴을 권한다
+    ...lastWeekdays(3).map((k, i) => t({
+      id: `w${i}`, title: '주간 보고서 정리', start: k, end: k,
+      color: 'slate', tags: ['업무'], done: true, doneAt: Date.now(), order: 20 + i,
+    })),
     t({ id: 't1', title: '아침 스탠드업', notes: '지난주 액션 아이템 확인', start: day(0), end: day(0), startTime: '09:30', endTime: '10:00', color: 'blue', priority: 1, tags: ['업무'], link: 'https://meet.google.com/abc-defg', remind: '-10m', order: 5 }),
     t({ id: 't2', title: '디자인 리뷰', start: day(0), end: day(0), startTime: '14:00', color: 'violet', tags: ['업무'], order: 6 }),
     t({ id: 't3', title: '치과 예약', start: day(0), end: day(0), startTime: '18:30', color: 'rose', priority: 1, remind: '-60m', order: 7 }),

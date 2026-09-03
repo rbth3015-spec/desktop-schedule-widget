@@ -76,6 +76,9 @@ const DEFAULT_SETTINGS = {
   showBrief: true,
   lastBriefDate: '',      // 마지막으로 브리핑을 띄운 날 ('YYYY-MM-DD')
 
+  // '이거 루틴으로 만들까요?' 를 거절한 제목들. 한 번 아니라고 한 것을 다시 묻지 않는다.
+  hiddenRoutineHints: [],
+
   // 처음 켰을 때 한 번만 보여 주는 안내. 빈 패널 네 개를 마주하게 두지 않는다.
   seenWelcome: false,
 };
@@ -334,6 +337,10 @@ function normalize(t) {
     repeat: normalizeRepeat(t.repeat),
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.slice() : [],  // 건너뛴 회차 날짜
     doneDates: Array.isArray(t.doneDates) ? t.doneDates.slice() : [],     // 완료한 회차 날짜
+
+    // 시작일을 뒤로 민 횟수. 세 번쯤 밀린 일은 '안 할 일'이거나 '너무 큰 일'이다.
+    // 물어봐 주는 쪽이 낫다. 사용자가 적는 값이 아니라 앱이 세는 값이다.
+    deferCount: Math.max(0, Number(t.deferCount) || 0),
 
     // 장기 계획을 하루하루 체크할 것인가.
     // '이사 준비'는 끝나면 한 번 체크하면 되지만, '기출 5개년 정리'는 오늘 했는지가
@@ -618,6 +625,186 @@ export function routinesOn(key, opts = {}) {
 /** 루틴이 하나라도 있는가 (섹션을 보일지 결정) */
 export function hasRoutines() {
   return state.tasks.some((t) => t.repeat?.routine);
+}
+
+/**
+ * 이 루틴을 며칠째 이어 오고 있는가.
+ *
+ * **하기로 한 날만 센다.** 평일 루틴이 주말에 끊겼다고 하면 억울하다.
+ * 오늘 아직 안 했으면 어제까지로 센다 — 하루가 끝나지도 않았는데 0 이라고
+ * 말하면 어제까지 쌓은 것이 없던 일이 된다.
+ */
+export function routineStreak(task, key = todayKey()) {
+  // 목록이 넘겨 주는 건 그날치 사본이라 start/end 가 그날로 바뀌어 있다.
+  // 되짚으려면 원본이 필요하다.
+  const t = state.tasks.find((x) => x.id === task?.id) || task;
+  if (!t?.repeat?.routine || !t.start) return 0;
+  let cur = key;
+  if (occursOn(t, cur) && !t.doneDates.includes(cur)) cur = addDays(cur, -1);
+
+  let n = 0;
+  // 400 일이면 넉넉하다. 그보다 긴 기록은 세어 봐야 화면에 쓸 데가 없다.
+  for (let i = 0; i < 400 && cur >= t.start; i++) {
+    if (occursOn(t, cur)) {
+      if (!t.doneDates.includes(cur)) break;
+      n++;
+    }
+    cur = addDays(cur, -1);
+  }
+  return n;
+}
+
+/**
+ * 손으로 되풀이해 적어 온 일 — 루틴으로 만들 만한 것.
+ *
+ * 같은 이름을 서로 다른 날에 세 번 넘게 적었다면, 그건 일정이 아니라 습관이다.
+ * 매번 새로 적게 두는 대신 앱이 먼저 알아보고 물어본다.
+ *
+ * 요일은 지어내지 않고 **실제로 적어 온 날**을 그대로 옮긴다 —
+ * 늘 수요일이었으면 매주 수요일, 평일에 흩어져 있었으면 평일.
+ */
+export function routineSuggestions(limit = 1) {
+  const hidden = new Set(state.settings.hiddenRoutineHints || []);
+  const already = new Set(
+    state.tasks.filter((t) => t.repeat?.routine).map((t) => t.title.trim().toLowerCase())
+  );
+  const cutoff = addDays(todayKey(), -120);   // 아주 옛날 기록으로 조르지 않는다
+
+  const byTitle = new Map();
+  for (const t of state.tasks) {
+    if (t.repeat || !t.start || t.start < cutoff) continue;
+    const key = t.title.trim().toLowerCase();
+    if (key.length < 2 || hidden.has(key) || already.has(key)) continue;
+    if (!byTitle.has(key)) byTitle.set(key, []);
+    byTitle.get(key).push(t);
+  }
+
+  const out = [];
+  for (const [key, list] of byTitle) {
+    const dates = [...new Set(list.map((t) => t.start))];
+    if (dates.length < 3) continue;   // 같은 날 세 개는 되풀이가 아니다
+
+    const days = [...new Set(dates.map((k) => fromKeyLocal(k).getDay()))].sort();
+    let picked;
+    if (days.length === 1) picked = days;                                  // 늘 같은 요일
+    else if (days.length >= 3 && days.every((d) => d >= 1 && d <= 5)) picked = [1, 2, 3, 4, 5];
+    else picked = days;
+
+    out.push({
+      key,
+      title: list[0].title.trim(),
+      count: dates.length,
+      color: list[0].color,
+      tags: list[0].tags.slice(),
+      repeat: { freq: 'weekly', interval: 1, days: picked, routine: true },
+    });
+  }
+  return out.sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+/** '아니요' — 이 제목은 다시 묻지 않는다 */
+export function hideRoutineHint(key) {
+  const list = state.settings.hiddenRoutineHints || [];
+  if (list.includes(key)) return;
+  setSetting('hiddenRoutineHints', [...list, key].slice(-60));
+}
+
+/**
+ * 제안을 받아들여 루틴을 만든다.
+ * 예전에 적어 둔 일정은 건드리지 않는다 — 지나간 기록을 지울 이유가 없다.
+ */
+export function makeRoutineFromHint(hint) {
+  if (!hint) return null;
+  const task = addTask({
+    title: hint.title,
+    start: todayKey(),
+    end: todayKey(),
+    color: hint.color,
+    tags: hint.tags,
+    repeat: hint.repeat,
+  });
+  hideRoutineHint(hint.key);
+  return task;
+}
+
+/**
+ * 지금 할 일 하나를 골라 준다.
+ *
+ * 할 일 목록은 결국 '골라야 하는 짐' 이다. 비서라면 골라 줘야 한다.
+ * 소요 시간을 묻지 않기로 했으므로 재료는 시각·마감·우선순위·밀린 정도뿐인데,
+ * 그것만으로도 순서는 분명하다:
+ *
+ *   지금 그 시간인 것 → 곧 시작하는 것 → 밀린 것 → 오늘 몫 → 오늘 체크할 것
+ *
+ * 이유를 말로 만들지 않고 종류(kind)와 근거(at)만 돌려준다.
+ * 문장은 화면이 만든다 — store 가 표시용 날짜 형식을 알 이유가 없다.
+ *
+ * @returns {{list: {task:Object, kind:string, at:string|null}[], freeMinutes:number|null}}
+ */
+export function pickNow(key = todayKey()) {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const isToday = key === todayKey();
+
+  const list = [];
+  const seen = new Set();
+  const add = (task, kind, at = null) => {
+    const id = `${task.id}@${task.occDate || ''}`;
+    if (!task || task.done || seen.has(id)) return;
+    seen.add(id);
+    list.push({ task, kind, at });
+  };
+
+  const today = tasksOnDate(key).filter((t) => !t.done);
+  const timed = today
+    .filter((t) => t.startTime)
+    .sort((a, b) => timeMinutes(a.startTime) - timeMinutes(b.startTime));
+
+  // 1) 지금 그 시간인 것, 그리고 곧 시작하는 것.
+  //    45분은 '이제 슬슬 준비할 때' 의 눈금이다. 더 멀면 지금 붙잡을 일이 아니다.
+  let freeMinutes = null;
+  if (isToday) {
+    for (const t of timed) {
+      const s = timeMinutes(t.startTime);
+      const e = t.endTime ? timeMinutes(t.endTime) : s + 60;
+      if (mins >= s && mins < e) add(t, 'now', t.startTime);
+      else if (s > mins && s - mins <= 45) add(t, 'soon', t.startTime);
+      if (s > mins && freeMinutes === null) freeMinutes = s - mins;
+    }
+  }
+
+  // 2) 밀린 일 — 급한 것부터, 그중 오래 밀린 것부터
+  for (const t of overdueTasks()
+    .slice()
+    .sort((a, b) => (b.priority - a.priority) || (a.start < b.start ? -1 : 1))) {
+    add(t, 'overdue', t.start);
+  }
+
+  // 3) 오늘 몫 — 시각이 지난 것부터, 그다음 급한 것부터
+  for (const t of today
+    .slice()
+    .sort((a, b) => {
+      const at = a.startTime ? timeMinutes(a.startTime) : 1e9;
+      const bt = b.startTime ? timeMinutes(b.startTime) : 1e9;
+      return (b.priority - a.priority) || (at - bt);
+    })) {
+    add(t, 'today', t.startTime);
+  }
+
+  // 4) 오늘 체크할 것 — 루틴은 짧게 끝나서 '지금 5분' 에 딱 맞는다
+  for (const t of routinesOn(key).filter((t) => !t.done)) add(t, 'check', null);
+
+  return { list, freeMinutes };
+}
+
+/**
+ * 이 일정에서 마감 역산 계획을 세울 수 있는가.
+ * 마감이 모레 이후라야 '오늘부터 마감 전날까지' 에 하루라도 칸이 생긴다.
+ * (이미 매일 체크로 만든 계획은 역산할 것이 없다)
+ */
+export function canPlanDeadline(t) {
+  if (!t || !t.start || t.repeat || t.dailyCheck) return false;
+  return (t.end || t.start) >= addDays(todayKey(), 2);
 }
 
 /** 날짜 없는 '언젠가' 목록 */
@@ -906,7 +1093,11 @@ export function moveTasksTo(ids, newStart, label) {
   if (!targets.length) return 0;
 
   pushUndo(label || (targets.length > 1 ? `${targets.length}건 날짜 이동` : '날짜 이동'));
+  const today = todayKey();
   for (const t of targets) {
+    // '미뤘다' 로 세는 건 **오늘 할 일이었는데 뒤로 민 것** 뿐이다.
+    // 다음 달 약속을 다른 날로 옮기는 건 미룬 게 아니라 그냥 일정 변경이다.
+    if (t.start && t.start <= today && newStart > t.start) t.deferCount += 1;
     if (!t.start) {
       t.start = newStart;
       t.end = newStart;

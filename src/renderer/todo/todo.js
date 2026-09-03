@@ -266,6 +266,59 @@ export function createTodoPanel({ root, store }) {
   sections.inbox.collapsed = false;
   sections.overdue.el.classList.add('todo-section--overdue');
   sections.routine.el.classList.add('todo-section--routine');
+
+  // ---- 루틴 후보 제안 ----
+  //
+  // 같은 일을 매번 손으로 새로 적고 있으면 앱이 먼저 알아본다.
+  // 비서라면 "또 적으시네요" 를 알아채야 한다. 물어보고, 아니라고 하면 다시 묻지 않는다.
+  let hintNow = null;
+  const hint = h('div', 'todo-hint');
+  const hintText = h('div', 'todo-hint__text');
+  const hintActs = h('div', 'todo-hint__acts');
+  const hintYes = h('button', 'todo-hint__yes', '루틴으로');
+  const hintNo = h('button', 'todo-hint__no', '아니요');
+  hintYes.type = 'button';
+  hintNo.type = 'button';
+  hintActs.append(hintNo, hintYes);
+  hint.append(hintText, hintActs);
+  hint.hidden = true;
+  sections.routine.el.append(hint);
+
+  hintYes.addEventListener('click', () => {
+    if (!hintNow) return;
+    const title = hintNow.title;
+    store.makeRoutineFromHint(hintNow);
+    notify(`'${title}' 을(를) 루틴으로 만들었습니다`);
+  });
+  hintNo.addEventListener('click', () => {
+    if (hintNow) store.hideRoutineHint(hintNow.key);
+  });
+
+  // ---- 마감 역산 ----
+  //
+  // 시험이 12일 뒤라는 걸 알아도, 오늘 뭘 해야 하는지는 여전히 사람이 계산해야 했다.
+  // 마감에서 거꾸로 짚어 '오늘부터 마감 전날까지' 하루하루 체크할 칸을 만들어 준다.
+  //
+  // 새 폼을 따로 만들지 않고 추가 폼을 미리 채워 연다. 그러면 무엇이 만들어지는지
+  // 늘 되읽어 주던 그 줄이 역산 결과를 그대로 말한다 —
+  // '9월 3일 → 9월 13일 · 11일간 · 매일 체크 (11칸)'.
+
+  const canPlan = (t) => store.canPlanDeadline(t);
+
+  function planFor(t) {
+    if (!canPlan(t)) return;
+    const today = todayKey();
+    // 마감 당일은 그 일을 하는 날이다. 준비는 전날까지.
+    const end = addDays(t.end || t.start, -1);
+    compose.open({
+      start: today,
+      end,
+      title: `${t.title} 준비`,
+      dailyCheck: true,
+      color: t.color,
+      tags: t.tags,
+    });
+  }
   sections.focus.el.classList.add('todo-section--focus');
 
   // '오늘로 당기기' — 밀린 일을 한 번에 오늘로. 되돌리기 한 번으로 취소된다.
@@ -280,6 +333,96 @@ export function createTodoPanel({ root, store }) {
     if (n) notify(`${n}건을 오늘로 옮겼습니다`);
   });
   sections.overdue.actions.append(rollBtn);
+
+  // ---- 「지금 뭐 하죠」 ----
+  //
+  // 할 일 목록은 결국 '골라야 하는 짐' 이다. 열 줄을 훑고 나서야 하나를 고른다.
+  // 비서라면 골라 줘야 한다 — 한 번 누르면 하나만 내놓고, 왜 그것인지도 말한다.
+  //
+  // 고른 것이 마음에 안 들 수 있으니 '다른 거' 로 넘길 수 있게 둔다.
+  // 고르는 규칙을 문장으로 설명하는 대신, 넘겨 보면 순서가 눈에 보이게 하는 쪽이 낫다.
+  let pickList = [];
+  let pickIdx = 0;
+  let pickOpen = false;
+
+  const pickBtn = h('button', 'todo-rollup', '지금 할 일');
+  pickBtn.type = 'button';
+  pickBtn.setAttribute('aria-pressed', 'false');
+  sections.day.actions.append(pickBtn);
+
+  const pick = h('div', 'todo-pick');
+  const pickLead = h('div', 'todo-pick__lead');
+  const pickTitle = h('div', 'todo-pick__title');
+  const pickWhy = h('div', 'todo-pick__why');
+  const pickActs = h('div', 'todo-pick__acts');
+  const pickNext = h('button', 'todo-pick__next', '다른 거');
+  const pickGo = h('button', 'todo-pick__go', '이걸 할게요');
+  pickNext.type = 'button';
+  pickGo.type = 'button';
+  pickActs.append(pickNext, pickGo);
+  pick.append(pickLead, pickTitle, pickWhy, pickActs);
+  pick.hidden = true;
+  sections.day.el.insertBefore(pick, sections.day.wrap);
+
+  // D-Day 카드에서도 같은 계획을 세울 수 있다.
+  // 마감이 사는 자리가 거기라서 — 미래의 마감은 오늘 목록에 뜨지 않는다.
+  // 대시보드에 compose 를 넘기는 대신, 이미 쓰고 있는 커스텀 이벤트로 부탁만 받는다.
+  document.addEventListener('app:plan-deadline', (e) => {
+    planFor(store.getState().tasks.find((t) => t.id === e.detail));
+  });
+
+  pickBtn.addEventListener('click', () => {
+    pickOpen = !pickOpen;
+    pickIdx = 0;
+    render(store.getState());
+  });
+  pickNext.addEventListener('click', () => {
+    if (pickList.length) pickIdx = (pickIdx + 1) % pickList.length;
+    renderPick();
+  });
+  pickGo.addEventListener('click', () => {
+    const cur = pickList[pickIdx];
+    if (!cur) return;
+    pickOpen = false;
+    store.setEditing(cur.task.id);
+  });
+
+  /** 분을 사람 말로 — '1시간 20분' */
+  function spanText(m) {
+    if (m >= 60) {
+      const rest = m % 60;
+      return rest ? `${Math.floor(m / 60)}시간 ${rest}분` : `${Math.floor(m / 60)}시간`;
+    }
+    return `${m}분`;
+  }
+
+  /** '왜 이것인가' 를 한 줄로. store 는 종류만 주고 문장은 여기서 만든다. */
+  function pickWhyText({ kind, at, task }) {
+    if (kind === 'now') return `지금 ${at} 시간입니다`;
+    if (kind === 'soon') return `${at} 시작 — 곧입니다`;
+    if (kind === 'overdue') {
+      const days = Math.max(1, diffDays(task.start, todayKey()));
+      return `${formatShort(task.start)}부터 ${days}일째 밀려 있습니다`;
+    }
+    if (kind === 'check') return '오늘 아직 체크하지 않으셨습니다';
+    if (task.priority >= 2) return '오늘 몫 중 가장 급합니다';
+    if (task.deferCount >= 3) return `${task.deferCount}번 미루신 일입니다`;
+    return '오늘 몫입니다';
+  }
+
+  function renderPick() {
+    const cur = pickList[pickIdx];
+    if (!cur) {
+      pickTitle.textContent = '지금 붙잡을 일이 없습니다';
+      pickWhy.textContent = '오늘 몫은 다 하셨습니다.';
+      pickActs.hidden = true;
+      return;
+    }
+    pickActs.hidden = false;
+    pickNext.hidden = pickList.length < 2;
+    pickTitle.textContent = cur.task.title || '(제목 없음)';
+    pickWhy.textContent = pickWhyText(cur);
+  }
 
   // 집중 모드에서 목록으로 돌아가는 길. 상세를 닫으면 원래 목록이 그대로 돌아온다.
   const backBtn = h('button', 'todo-back');
@@ -535,6 +678,17 @@ export function createTodoPanel({ root, store }) {
           label: '내일로 미루기',
           disabled: !t.start || !!t.repeat,
           onSelect: () => store.moveTask(t.id, addDays(t.start, 1)),
+        },
+        {
+          label: '마감까지 계획 세우기',
+          disabled: !canPlan(t),
+          onSelect: () => planFor(t),
+        },
+        {
+          // 미룬 일을 계속 내일로 미는 대신 꺼내 놓을 자리를 준다
+          label: '「언젠가」로 보내기',
+          disabled: !t.start || !!t.repeat,
+          onSelect: () => store.updateTask(t.id, { start: null, end: null }),
         },
         {
           label: t.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정',
@@ -888,8 +1042,16 @@ export function createTodoPanel({ root, store }) {
     const rowExtra = h('div', 'todo-detail__row');
     rowExtra.append(field('알림', remindIn), field('반복', repeatIn), untilField);
 
+    // 마감에서 거꾸로 짚어 준비 계획을 세운다
+    const planBtn = h('button', 'todo-detail__series', '마감까지 계획 세우기');
+    planBtn.type = 'button';
+    planBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      planFor(rec.task);
+    });
+
     const rowSeries = h('div', 'todo-detail__row');
-    rowSeries.append(pinBtn, dropSeries);
+    rowSeries.append(pinBtn, planBtn, dropSeries);
 
     d.append(notes, rowDates, rowMeta, field('태그', tagsIn), field('링크', linkRow),
              rowExtra, rowSeries);
@@ -897,7 +1059,8 @@ export function createTodoPanel({ root, store }) {
     rec.detail = { el: d, notes, startIn, endIn, startTimeIn, endTimeIn, whenSummaryEl,
                    checkIn, checkRow,
                    prio, swatchBtns, tagsIn, linkIn, linkOpen,
-                   remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, dropSeries };
+                   remindIn, repeatIn, untilIn, untilField, rowSeries, pinBtn, planBtn,
+                   dropSeries };
     return rec.detail;
   }
 
@@ -950,7 +1113,9 @@ export function createTodoPanel({ root, store }) {
     d.pinBtn.textContent = task.pinned ? 'D-Day 고정 해제' : 'D-Day에 고정';
     d.pinBtn.classList.toggle('is-on', !!task.pinned);
     d.pinBtn.setAttribute('aria-pressed', String(!!task.pinned));
-    d.rowSeries.hidden = d.pinBtn.hidden && d.dropSeries.hidden;
+    d.planBtn.hidden = !canPlan(task);
+    d.planBtn.title = '오늘부터 마감 전날까지, 하루하루 체크할 계획을 만듭니다';
+    d.rowSeries.hidden = d.pinBtn.hidden && d.dropSeries.hidden && d.planBtn.hidden;
     // 반복 일정은 당일만 — 종료일 입력을 잠근다
     d.endIn.disabled = !task.start || !!task.repeat;
     for (const key of Object.keys(d.swatchBtns)) {
@@ -1127,6 +1292,24 @@ export function createTodoPanel({ root, store }) {
       rp.title = `반복: ${every}${store.repeatLabel(task.repeat)}` +
                  (task.repeat.until ? ` (${task.repeat.until} 까지)` : '');
       meta.append(rp);
+
+      // 며칠째 이어 오는지. 루틴은 '오늘 했나' 보다 '얼마나 이어 왔나' 가 힘이 된다.
+      // 하루짜리(1일째)는 셀 것도 없으므로 이틀부터 보여 준다.
+      if (task.repeat.routine) {
+        const days = store.routineStreak(task);
+        if (days >= 2) {
+          const sk = h('span', 'todo-streak', `${days}일째`);
+          sk.title = `${days}일 연속 이어 오고 있습니다`;
+          meta.append(sk);
+        }
+      }
+    }
+
+    // 세 번 넘게 민 일 — '안 할 일' 이거나 '너무 큰 일' 이다. 조용히 알려만 준다.
+    if (!task.repeat && task.deferCount >= 3) {
+      const dc = h('span', 'todo-defers', `${task.deferCount}번 미룸`);
+      dc.title = '오늘 할 일에서 뒤로 민 횟수입니다. 쪼개거나 「언젠가」로 옮겨 보세요.';
+      meta.append(dc);
     }
 
     // 알림이 걸린 일정은 종 모양으로 표시 (이미 알린 건 흐리게)
@@ -1526,11 +1709,52 @@ export function createTodoPanel({ root, store }) {
     // 없애 버리지는 않는다 — 날짜 없는 일정을 만들면 갈 곳이 있어야 한다.
     sections.inbox.el.hidden = focusMode || searching || inboxTasks.length === 0;
     sections.span.el.hidden = focusMode || searching || spanTasks.length === 0;
-    sections.routine.el.hidden = focusMode || searching || routines.length === 0;
+    // 「지금 할 일」 — 눌러 뒀을 때만 계산한다. 매 렌더마다 셀 이유가 없다.
+    // 오늘이 아닌 날에는 '지금' 이 뜻을 잃으므로 버튼째 감춘다.
+    const canPick = key === todayKey() && !searching && !focusMode;
+    if (!canPick) pickOpen = false;
+    pickBtn.hidden = !canPick;
+    pickBtn.classList.toggle('is-on', pickOpen);
+    pickBtn.setAttribute('aria-pressed', String(pickOpen));
+    pick.hidden = !pickOpen;
+    if (pickOpen) {
+      const res = store.pickNow(key);
+      pickList = res.list;
+      if (pickIdx >= pickList.length) pickIdx = 0;
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const free = res.freeMinutes;
+      pickLead.textContent = free == null
+        ? `지금 ${hhmm} · 남은 시각 일정 없음`
+        : `지금 ${hhmm} · 다음 일정까지 ${spanText(free)}`;
+      renderPick();
+    } else {
+      pickList = [];
+    }
+
+    // 되풀이해 적어 온 일이 있으면 루틴으로 만들자고 한 줄 권한다.
+    // 고치는 중이거나 검색 중에는 말을 걸지 않는다 — 지금 하려던 일을 방해한다.
+    hintNow = (focusMode || searching) ? null : (store.routineSuggestions(1)[0] || null);
+    // 섹션을 접어 뒀으면 제안도 함께 접힌다 — 접었는데 한 줄만 남아 있으면 이상하다
+    hint.hidden = !hintNow || sections.routine.collapsed;
+    if (hintNow) {
+      hintText.replaceChildren(
+        h('span', 'todo-hint__lead', '이것도 루틴으로 만들까요?'),
+        h('span', 'todo-hint__body',
+          `「${hintNow.title}」 · 최근 ${hintNow.count}번 적으셨습니다 · ${store.repeatLabel(hintNow.repeat)}`),
+      );
+    }
+
+    // 루틴이 하나도 없어도 권할 것이 있으면 섹션을 연다 —
+    // 그러지 않으면 첫 사용자는 이 제안을 영영 볼 수 없다.
+    sections.routine.el.hidden =
+      focusMode || searching || (routines.length === 0 && !hintNow);
     if (routines.length) {
       const done = routines.filter((t) => t.done).length;
       sections.routine.titleEl.textContent =
         done === routines.length ? '루틴 · 오늘 다 했어요' : '루틴';
+    } else {
+      sections.routine.titleEl.textContent = '루틴';
     }
 
     sections.day.titleEl.textContent = key === todayKey() ? '오늘 할 일' : `${formatDateLabel(key)} 할 일`;
