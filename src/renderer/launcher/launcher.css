@@ -1,43 +1,32 @@
-/* Zone D — 퀵 런처 도크 전용 스타일.
-   - 모든 셀렉터는 .lnch- 접두사로 시작한다 (전역 태그 셀렉터 금지).
-   - 색/반경/그림자는 base.css 의 CSS 변수만 사용한다.
-   - 새 백드롭 블러 레이어를 만들지 않는다 (블러는 셸의 .widget 하나뿐).
-   - 호버/실행 표시는 transform 과 opacity 만 건드려 레이아웃이 흔들리지 않게 한다. */
+/* Zone D — 퀵 런처. 아래 리본의 오른쪽 칸.
+   시안(핸드오프): flex · gap 7px · padding-left 24px · border-left 1px --rule.
+   칸 = 32×32 · 1px --rule · radius 2 · --serif 12px .02em · --ink-soft · 바탕 --paper.
+   추가 칸 = 32×32 점선. hover 는 금박 윤곽 + 금박 글자.
+   실행 표시(링 · 진행 막대)는 실행 중일 때만 움직인다 — 상시 애니메이션은 코어 16% 다. */
 
 .lnch-root {
   position: relative;          /* 팝오버 · 툴팁의 배치 기준 */
-  flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
 }
-
 .lnch-root [hidden] { display: none !important; }
-
-/* ------------------------------------------------------------ 도크(알약) */
 
 .lnch-dock {
   display: flex;
   align-items: center;
-  gap: 4px;
-  max-width: 100%;
+  gap: 7px;
   min-width: 0;
-  height: 42px;
-  padding: 0 5px;
-  border: 1px solid var(--edge);
-  border-radius: 21px;         /* 높이의 절반 — 알약 */
-  background: var(--pane);
-  box-shadow: var(--shadow-sm);
+  padding-left: 24px;
+  border-left: 1px solid var(--rule);
 }
 
-/* 항목 트랙: 도크 폭을 넘으면 가로 스크롤(스크롤바는 감춘다).
-   상하 여백 3px 은 호버 확대(1.12배)가 잘리지 않게 두는 공간이다. */
+/* 칸이 많으면 가로로 흐른다(스크롤바는 감춘다) */
 .lnch-scroll {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 7px;
   min-width: 0;
-  padding: 3px 4px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -45,112 +34,95 @@
 }
 .lnch-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-/* ------------------------------------------------------------ 항목 */
+/* ------------------------------------------------------------ 칸 */
 
 .lnch-item {
   position: relative;
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  transition: transform .14s ease, background .12s ease;
-  will-change: transform;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper);
+  font-family: var(--serif);
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.lnch-item:hover,
-.lnch-item:focus-visible {
-  transform: scale(1.12);
-  background: var(--pane-hover);
-}
-.lnch-item:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.lnch-item:active { transform: scale(1.02); }
+.lnch-item:hover { border-color: var(--gold); color: var(--gold-deep); }
 .lnch-item.is-dragging { opacity: .35; }
 
+.lnch-item__plate { display: contents; }
 .lnch-item__icon {
-  font-size: 17px;
   line-height: 1;
   pointer-events: none;
 }
+.lnch-item__icon.is-emoji { font-size: 14px; }
+.lnch-item__icon.is-glyph { display: grid; place-items: center; }
+.lnch-item__icon.is-glyph .icon { width: 12px; height: 12px; }
 
-/* 실행 중 은은한 진행 표시 — 아이콘 둘레를 도는 링 */
+/* 실행 중 — 칸이 금박 윤곽으로 선다. 진행은 팝오버의 막대가 맡으므로 칸은 움직이지 않는다
+   (투명 창에서는 상시 애니메이션 하나가 코어 16% 다). */
 .lnch-item__ring {
   position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1.5px solid transparent;
-  border-top-color: var(--accent);
-  border-right-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  inset: -1px;
+  border-radius: 2px;
+  border: 1px solid var(--gold);
   opacity: 0;
   pointer-events: none;
 }
-/*
- * 애니메이션은 반드시 '실행 중'일 때만 건다.
- * opacity:0 이어도 무한 애니메이션이 걸려 있으면 브라우저는 매 프레임 합성을 계속한다.
- * 바로가기 하나당 링 하나이므로, 안 보이는 스피너 몇 개가 상시 60fps 를 돌려
- * 유휴 상태에서 CPU 를 통째로 잡아먹고 있었다. (실측 약 33% → 아래 참조)
- */
-.lnch-item.is-running .lnch-item__ring {
-  opacity: 1;
-  animation: lnch-spin .9s linear infinite;
-}
+.lnch-item.is-running { color: var(--gold-deep); }
+.lnch-item.is-running .lnch-item__ring { opacity: 1; }
 
-/* 짧은 성공 피드백(웹주소·앱·폴더처럼 결과를 지켜볼 수 없는 실행) */
+/* 짧은 성공 표시 — 결과를 지켜볼 수 없는 실행(주소 · 앱 · 폴더) */
 .lnch-item__badge {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 13px;
-  height: 13px;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  font-size: 8px;
-  line-height: 1;
-  color: var(--on-color);
-  background: var(--success);
+  border: 1px solid var(--moss);
+  border-radius: 1px;
+  background: var(--paper);
+  color: var(--moss);
   opacity: 0;
-  transform: scale(.6);
-  transition: opacity .18s ease, transform .18s ease;
+  transition: opacity .18s ease;
   pointer-events: none;
 }
-.lnch-item.is-ok .lnch-item__badge { opacity: 1; transform: scale(1); }
+.lnch-item__badge .icon { width: 9px; height: 9px; }
+.lnch-item.is-ok .lnch-item__badge { opacity: 1; }
 
-/* ------------------------------------------------------------ 추가 버튼 */
-
+/* 추가 칸 */
 .lnch-add {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  border: 1px dashed var(--border-strong);
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1;
-  transition: color .12s, border-color .12s, background .12s, transform .14s ease;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px dashed var(--rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
 }
-.lnch-add:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  transform: scale(1.08);
-}
-.lnch-add:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-
-/* ------------------------------------------------------------ 빈 상태 */
+.lnch-add:hover { border-color: var(--gold); color: var(--gold-deep); }
 
 .lnch-empty {
   flex: 0 0 auto;
-  padding: 0 8px;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--text-faint);
+  font-weight: 300;
+  font-size: 10.5px;
+  color: var(--ink-faint);
   white-space: nowrap;
 }
 
-/* ------------------------------------------------------------ 툴팁 */
+/* ------------------------------------------------------------ 툴팁 — 책갈피 탭의 그림자를 빌렸다 */
 
 .lnch-tip {
   position: absolute;
@@ -158,31 +130,30 @@
   bottom: 100%;
   z-index: 41;
   max-width: 260px;
-  padding: 5px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-solid);
-  box-shadow: var(--shadow-sm);
+  padding: 6px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .28);
   pointer-events: none;
   opacity: 0;
-  transform: translateY(3px);
-  transition: opacity .13s ease, transform .13s ease;
+  transition: opacity .13s ease;
 }
-.lnch-tip.is-on { opacity: 1; transform: translateY(0); }
-
+.lnch-tip.is-on { opacity: 1; }
 .lnch-tip__label {
+  font-family: var(--serif);
+  font-weight: 400;
   font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .lnch-tip__sub {
   margin-top: 2px;
+  font-weight: 300;
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--ink-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -190,7 +161,7 @@
   text-align: left;
 }
 
-/* ------------------------------------------------------------ 팝오버 공통 */
+/* ------------------------------------------------------------ 팝오버 — 자세한 창(peek) 을 빌렸다 */
 
 .lnch-pop {
   position: absolute;
@@ -199,24 +170,21 @@
   z-index: 42;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
   width: max-content;
-  min-width: 210px;
+  min-width: 230px;
   max-width: calc(100% - 8px);
-  padding: 9px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--bg-solid);
-  box-shadow: var(--shadow);
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity .24s ease, transform .24s ease;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .32);
+  transition: opacity .24s ease;
 }
-.lnch-pop.is-leaving { opacity: 0; transform: translateY(4px); }
+.lnch-pop.is-leaving { opacity: 0; }
+.lnch-pop--edit { width: 310px; }
 
-.lnch-pop--edit { width: 300px; }
-
-/* 도크를 가리키는 작은 삼각형. --lnch-arrow 는 JS 가 기준 항목에 맞춰 넣는다. */
+/* 칸을 가리키는 작은 삼각형. --lnch-arrow 는 JS 가 기준 칸에 맞춰 넣는다. */
 .lnch-pop__arrow {
   position: absolute;
   top: 100%;
@@ -224,9 +192,9 @@
   width: 8px;
   height: 8px;
   margin: -5px 0 0 -4px;
-  background: var(--bg-solid);
-  border-right: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
+  background: var(--paper);
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
   transform: rotate(45deg);
   pointer-events: none;
 }
@@ -234,458 +202,221 @@
 .lnch-pop__head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--ink);
 }
-
 .lnch-pop__badge {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-family: var(--serif);
   font-size: 11px;
   line-height: 1;
-  background: var(--pane-hover);
+  color: var(--ink-soft);
 }
-.lnch-pop.is-done  .lnch-pop__badge { background: var(--success); color: var(--on-color); }
-.lnch-pop.is-error .lnch-pop__badge { background: var(--danger);  color: var(--on-color); }
-
+.lnch-pop__badge .icon { width: 11px; height: 11px; }
+.lnch-pop.is-done  .lnch-pop__badge { border-color: var(--moss); color: var(--moss); }
+.lnch-pop.is-error .lnch-pop__badge { border-color: var(--seal); color: var(--seal); }
 .lnch-pop__title {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .lnch-pop__x {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
   display: grid;
   place-items: center;
-  border-radius: 5px;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--text-faint);
-  transition: color .12s, background .12s;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.lnch-pop__x:hover { color: var(--text); background: var(--pane-hover); }
+.lnch-pop__x:hover { border-color: var(--rule); color: var(--seal); }
+.lnch-pop__x .icon { width: 11px; height: 11px; }
 
-/* --- 불확정(indeterminate) 진행 바 --- */
-
-.lnch-pop__bar {
-  height: 3px;
-  border-radius: 999px;
-  background: var(--pane-hover);
-  overflow: hidden;
-}
-
-.lnch-pop__fill {
-  width: 38%;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--accent);
-}
-/* 같은 이유 — 실행 중인 팝오버에서만 움직인다 */
-.lnch-pop.is-running .lnch-pop__fill {
-  animation: lnch-indet 1.15s ease-in-out infinite;
-}
-
-/* --- 출력 --- */
+/* 진행 — 알 수 없으므로 오가는 막대. 실행 중인 팝오버에서만 움직인다. */
+.lnch-pop__bar { height: 2px; background: var(--rule-soft); overflow: hidden; }
+.lnch-pop__fill { width: 38%; height: 100%; background: var(--gold); }
+.lnch-pop.is-running .lnch-pop__fill { animation: lnch-indet 1.15s ease-in-out infinite; }
 
 .lnch-pop__out {
   max-height: 108px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 6px 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--pane);
+  padding: 8px 10px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 1px;
+  background: var(--paper-2);
   font-family: ui-monospace, "Consolas", monospace;
   font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--text-dim);
+  line-height: 1.6;
+  color: var(--ink-soft);
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
 }
 
-/* --- 하단 --- */
-
-.lnch-pop__foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
+.lnch-pop__foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lnch-pop__state {
   flex: 1 1 auto;
   min-width: 0;
+  font-weight: 300;
   font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-dim);
+  line-height: 1.5;
+  color: var(--ink-soft);
   word-break: break-word;
 }
-.lnch-pop.is-done  .lnch-pop__state { color: var(--success); }
-.lnch-pop.is-error .lnch-pop__state { color: var(--danger); }
-
+.lnch-pop.is-done  .lnch-pop__state { color: var(--moss); }
+.lnch-pop.is-error .lnch-pop__state { color: var(--seal); }
 .lnch-pop__cancel {
   flex: 0 0 auto;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--text-dim);
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  background: transparent;
+  font-size: 10.5px;
+  color: var(--ink-soft);
   white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s;
+  cursor: pointer;
 }
-.lnch-pop__cancel:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
-}
+.lnch-pop__cancel:hover { border-color: var(--seal); color: var(--seal); }
 
-/* ------------------------------------------------------------ 편집 폼 */
+/* ------------------------------------------------------------ 편집 폼 — 추가 화면의 부품을 빌렸다 */
 
-.lnch-form {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.lnch-form__row {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-}
+.lnch-form { display: flex; flex-direction: column; gap: 11px; }
+.lnch-form__row { display: flex; gap: 10px; min-width: 0; }
 .lnch-form__row .lnch-field { flex: 1 1 auto; }
 .lnch-form__row .lnch-field--icon { flex: 0 0 56px; }
 
-.lnch-field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-/* hidden 이 display:flex 를 이기지 못한다 — 짝이 되는 규칙이 있어야 실제로 감춰진다 */
+.lnch-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .lnch-field[hidden] { display: none; }
-
 .lnch-field__label {
-  font-size: 10px;
-  color: var(--text-faint);
+  font-weight: 300;
+  font-size: 9.5px;
+  letter-spacing: .18em;
+  color: var(--ink-faint);
 }
 
-.lnch-inputrow {
-  display: flex;
-  gap: 5px;
-  min-width: 0;
-}
+.lnch-inputrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lnch-inputrow .lnch-input { flex: 1 1 auto; }
-
 .lnch-input {
   width: 100%;
   min-width: 0;
-  height: 25px;
-  padding: 0 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--pane);
-  font-size: 11.5px;
+  padding: 5px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--ink);
   outline: none;
-  transition: border-color .12s, background .12s;
 }
-.lnch-input::placeholder { color: var(--text-faint); }
-.lnch-input:focus { border-color: var(--accent); background: var(--pane-hover); }
+.lnch-input::placeholder { color: var(--ink-faint); }
+.lnch-input:focus { border-bottom-color: var(--ink); }
 
 .lnch-browse {
   flex: 0 0 auto;
-  height: 25px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  color: var(--text-dim);
+  padding: 4px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  background: transparent;
+  font-size: 10.5px;
+  color: var(--ink-soft);
   white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s;
+  cursor: pointer;
 }
-.lnch-browse:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.lnch-browse:hover { border-color: var(--gold); color: var(--gold-deep); }
 
-.lnch-seg {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--pane);
-}
-
+.lnch-seg { display: flex; flex-wrap: wrap; gap: 5px; }
 .lnch-seg__btn {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 4px 4px;
-  border-radius: 5px;
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  background: transparent;
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--ink-soft);
   white-space: nowrap;
-  transition: background .12s, color .12s;
+  cursor: pointer;
 }
-.lnch-seg__btn:hover { color: var(--text); background: var(--pane-hover); }
-.lnch-seg__btn.is-on { color: var(--text); background: var(--accent); }
+.lnch-seg__btn:hover { border-color: var(--ink-soft); }
+.lnch-seg__btn.is-on { border-color: var(--gold); color: var(--gold-deep); background: var(--gold-ghost); }
 
 .lnch-hint {
+  font-weight: 300;
   font-size: 10px;
-  line-height: 1.55;
-  color: var(--text-faint);
+  line-height: 1.6;
+  color: var(--ink-faint);
   word-break: break-word;
 }
-.lnch-hint.is-warn { color: var(--danger); }
+.lnch-hint.is-warn { color: var(--seal); }
 
-.lnch-pop__foot--edit { padding-top: 1px; }
-
+.lnch-pop__foot--edit { padding-top: 2px; }
 .lnch-spacer { flex: 1 1 auto; }
 
 .lnch-btn {
   flex: 0 0 auto;
-  height: 24px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 6px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: transparent;
   font-size: 11.5px;
-  color: var(--text-dim);
+  letter-spacing: .06em;
+  color: var(--ink-soft);
   white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s;
+  cursor: pointer;
 }
-.lnch-btn:hover { color: var(--text); background: var(--pane-hover); }
-
+.lnch-btn:hover { border-color: var(--ink-soft); }
 .lnch-btn--primary {
-  color: var(--on-color);
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: .1em;
+  color: var(--gold-deep);
 }
-.lnch-btn--primary:hover { color: var(--on-color); background: var(--accent); opacity: .88; }
+.lnch-btn--primary:hover { border-color: var(--gold); background: var(--gold-ghost); }
 
 .lnch-del {
   flex: 0 0 auto;
-  height: 24px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: transparent;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--ink-faint);
   white-space: nowrap;
-  transition: color .12s, border-color .12s, background .12s;
+  cursor: pointer;
 }
-.lnch-del:hover { color: var(--danger); border-color: var(--danger); }
+.lnch-del:hover { border-color: var(--seal); color: var(--seal); }
 .lnch-del.is-armed {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  border-color: var(--seal);
+  color: var(--seal);
+  background: color-mix(in srgb, #8d3a2c 8%, transparent);
 }
 
-/* ------------------------------------------------------------ 애니메이션 */
+/* ------------------------------------------------------------ 움직임 */
 
-@keyframes lnch-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* 진행률을 알 수 없으므로 좌우로 오가는 불확정 바로 표현한다 */
 @keyframes lnch-indet {
   0%   { transform: translateX(-110%); }
   100% { transform: translateX(300%); }
 }
 
-/* 움직임을 줄이도록 설정한 사용자에게는 애니메이션·확대를 끈다 */
 @media (prefers-reduced-motion: reduce) {
-  .lnch-item,
-  .lnch-add,
-  .lnch-tip,
-  .lnch-pop,
-  .lnch-item__badge {
-    transition: none;
-  }
-  .lnch-item:hover,
-  .lnch-item:focus-visible,
-  .lnch-item:active,
-  .lnch-add:hover {
-    transform: none;
-  }
-  .lnch-item__ring { animation: none; border-color: var(--accent); opacity: 0; }
-  .lnch-item.is-running .lnch-item__ring { opacity: .55; }
-  .lnch-pop__fill { animation: none; width: 100%; opacity: .6; }
+  .lnch-pop__fill { animation: none !important; }
+  .lnch-pop__fill { width: 100%; opacity: .6; }
 }
-
-/* 좁은 창에서는 항목을 조금 줄여 더 많이 보이게 한다 */
-@media (max-width: 620px) {
-  .lnch-dock { height: 40px; border-radius: 20px; }
-  .lnch-item { width: 29px; height: 29px; }
-  .lnch-item__icon { font-size: 15px; }
-  .lnch-add { width: 27px; height: 27px; }
-}
-
-/* ============================================================ 책갈피 띠
-   도크를 알약 버튼 뭉치가 아니라, 지면 아래에 끼운 얇은 책갈피처럼 다룬다. */
-
-.lnch-dock {
-  gap: 2px;
-  padding: 3px 6px;
-  border: none;
-  border-top: 1px solid var(--rule);
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-
-.lnch-item {
-  width: 32px;
-  height: 27px;
-  border-radius: 2px;
-  color: var(--text-faint);
-  transition: color .16s, background .16s;
-}
-/* 판이 이미 배경을 가지므로 항목 자체는 칠하지 않는다 — 두 겹으로 칠하면 탁해진다 */
-.lnch-item:hover { color: var(--accent); background: none; }
-
-/* 책갈피 띠에 맞춰 판을 조금 줄이고 모서리를 눕힌다.
-   도크가 알약이 아니라 지면에 끼운 띠이므로 판도 각진 인장에 가깝게. */
-/* 두 글자가 앉도록 가로로 늘린 인장.
-   한 글자만 새기면 '주간 백업'도 '주소록'도 똑같이 '주' 라 구분이 안 된다. */
-.lnch-item__plate {
-  width: 26px;
-  height: 21px;
-  border-radius: 4px;
-}
-.lnch-item__icon { font-size: 12px; }
-.lnch-item__icon.is-monogram { font-size: 11px; letter-spacing: -.04em; }
-.lnch-item__icon.is-glyph .icon { width: 11px; height: 11px; }
-.lnch-item__icon.is-emoji { font-size: 12.5px; }
-
-.lnch-add {
-  width: 26px;
-  height: 26px;
-  border-radius: 2px;
-  color: var(--text-faint);
-  transition: color .16s, background .16s;
-}
-.lnch-add:hover { color: var(--accent); background: var(--pane-hover); }
-.lnch-add .icon { width: .78em; height: .78em; }
-
-.lnch-tip {
-  border-radius: 2px;
-  border: 1px solid var(--rule);
-  background: var(--bg-solid);
-  box-shadow: var(--shadow-sm);
-}
-.lnch-tip__label {
-  font-family: var(--font-serif);
-  font-size: 11px;
-  letter-spacing: .03em;
-  color: var(--text);
-}
-.lnch-tip__sub { font-size: 10px; color: var(--text-faint); }
-
-.lnch-pop {
-  border-radius: 2px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-solid);
-  box-shadow: var(--shadow);
-}
-.lnch-pop__title {
-  font-family: var(--font-serif);
-  font-size: 12px;
-  letter-spacing: .02em;
-}
-.lnch-pop__x .icon { width: .75em; height: .75em; }
-.lnch-pop__bar { border-radius: 0; height: 2px; background: var(--rule); }
-.lnch-pop__fill { border-radius: 0; }
-.lnch-pop__out {
-  font-size: 10.5px;
-  line-height: 1.6;
-  color: var(--text-dim);
-}
-
-.lnch-input,
-.lnch-btn,
-.lnch-browse,
-.lnch-seg,
-.lnch-seg__btn { border-radius: 2px; }
-
-.lnch-input {
-  border: 1px solid var(--rule);
-  background: var(--bg-solid);
-  font-size: 11.5px;
-}
-.lnch-input:focus { border-color: var(--accent); outline: none; }
-
-.lnch-btn--primary { background: var(--accent); color: var(--on-color); }
-
-.lnch-field__label {
-  font-size: 9.5px;
-  letter-spacing: .1em;
-  color: var(--text-faint);
-}
-
-.lnch-hint { font-size: 10px; color: var(--text-faint); }
-
-.lnch-empty {
-  font-family: var(--font-serif);
-  font-size: 11px;
-  letter-spacing: .02em;
-  color: var(--text-faint);
-}
-
-/* ------------------------------------------------------------ 아이콘 판 */
-/*
- * 도크에 낱글자('구', '메')가 흩어져 있으면 아이콘이 아니라 오려 붙인 글자처럼 보인다.
- * 인장을 찍듯 안료 판 위에 새긴다 — 일정 색과 같은 붓(store.COLORS)을 쓰고,
- * 색은 이름에서 해시로 뽑아 늘 같은 자리에 같은 색이 오게 한다.
- */
-.lnch-item__plate {
-  --lnch-ink: var(--accent);
-  width: 25px;
-  height: 25px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--lnch-ink) 22%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lnch-ink) 45%, transparent);
-  color: color-mix(in srgb, var(--lnch-ink) 72%, var(--text));
-  transition: background .14s, box-shadow .14s;
-}
-.lnch-item:hover .lnch-item__plate,
-.lnch-item:focus-visible .lnch-item__plate {
-  background: color-mix(in srgb, var(--lnch-ink) 34%, transparent);
-  box-shadow: inset 0 0 0 1px var(--lnch-ink);
-}
-
-/* 어두운 테마에서는 안료가 배경에 묻힌다. 잉크를 종이 쪽으로 끌어올려 획을 살린다. */
-[data-theme="dark"] .lnch-item__plate {
-  background: color-mix(in srgb, var(--lnch-ink) 34%, transparent);
-  color: color-mix(in srgb, var(--lnch-ink) 30%, var(--text));
-}
-[data-theme="dark"] .lnch-item:hover .lnch-item__plate {
-  background: color-mix(in srgb, var(--lnch-ink) 48%, transparent);
-}
-
-/* 이니셜 — 이름 첫 글자를 명조로 */
-.lnch-item__icon.is-monogram {
-  font-family: var(--font-serif);
-  font-size: 12.5px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -.01em;
-}
-/* 라틴 두 글자(GH, SP)는 한 칸에 앉도록 조금 좁힌다 */
-.lnch-item__icon.is-monogram:not(:lang(ko)) { letter-spacing: -.04em; }
-
-/* 종류별 선 아이콘 */
-.lnch-item__icon.is-glyph .icon { width: 13px; height: 13px; }
-
-/* 사용자가 직접 넣은 이모지 */
-.lnch-item__icon.is-emoji { font-size: 14px; line-height: 1; }

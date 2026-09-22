@@ -55,9 +55,17 @@ export function createCalendar({ root, store }) {
       store.ensureHolidays([...years]);
     }
 
-    els.title.textContent = weekView
-      ? weekTitle(keys)
-      : date.monthLabel(anchor);
+    if (weekView) {
+      els.titleNum.textContent = '';
+      els.titleUnit.textContent = weekTitle(keys);
+      els.titleYear.textContent = '';
+    } else {
+      // anchor 는 'YYYY-MM-DD' 키다. Date 가 아니다.
+      const [ay, am] = anchor.split('-');
+      els.titleNum.textContent = String(Number(am));
+      els.titleUnit.textContent = '월';
+      els.titleYear.textContent = ay;
+    }
 
     // --- 날짜 칸 갱신 (뼈대는 재사용, 내용만 교체) ---
     for (let w = 0; w < 6; w++) els.weekRows[w].hidden = w >= weekCount;
@@ -93,16 +101,17 @@ export function createCalendar({ root, store }) {
       // 그날 걸쳐 있는 태스크(기간 포함) — 필터/정렬은 store 셀렉터가 처리
       const onDate = store.tasksOnDate(key);
 
-      // 우상단 개수는 막대가 넘칠 때만 의미가 있으므로 renderBars 가 '+N' 으로 처리한다.
-      // 날짜 옆에 상시로 붙어 있으면 숫자 두 개가 나란히 놓여 지저분하다.
-      cell.refs.count.textContent = '';
-      cell.refs.dots.replaceChildren();
+      // 시안: 칸 오른쪽 위에 그날 남은 건수(--num 12px), 아래에 하루짜리 일정의 색점.
+      // 달력은 '흐름' 을 맡는다 — 이름은 날짜를 누르면 오른쪽 면이 보여 준다.
+      const left = onDate.filter((t) => !t.done).length;
+      cell.refs.count.textContent = left ? String(left) : '';
+      renderDots(cell.refs.dots, onDate, store);
     }
 
-    // --- 일정 막대 ---
-    // 단일 일정도 하루짜리 막대로 그린다. 점만 찍으면 '무슨 일정인지'가 안 보여
-    // 달력이 정보 없이 비어 보인다.
-    renderBars(els, keys, visibleDated(store, st, keys), st, store, weekCount);
+    // --- 기간 막대 ---
+    // 시안대로 **여러 날에 걸친 일정만** 막대로 긋는다. 하루짜리는 색점과 건수가 맡는다 —
+    // 하루짜리까지 막대로 그리면 기간 막대가 레인에서 밀려 '+N' 으로 접혀 버린다.
+    renderBars(els, keys, visibleSpans(store, keys), st, store, weekCount);
 
     // --- 이번 달 완료율 --- (주간 뷰에서는 의미가 약해 숨긴다)
     els.meterFill.parentElement.parentElement.hidden = weekView;
@@ -609,7 +618,15 @@ function buildSkeleton(root) {
   prev.dataset.nav = '-1';
   prev.append(icon('chevronLeft'));
   prev.title = '이전 달';
+  // 시안: 58px 숫자 하나가 이 면에서 가장 큰 활자다. 그 옆에 '월'과 연도를 세로로 쌓는다.
   const title = div('cal-title');
+  const titleNum = div('cal-title__num');
+  const titleStack = div('cal-title__stack');
+  const titleUnit = div('cal-title__unit');
+  const titleYear = div('cal-title__year');
+  titleStack.append(titleUnit, titleYear);
+  title.append(titleNum, titleStack);
+
   const next = make('button', 'cal-navbtn');
   next.dataset.nav = '1';
   next.append(icon('chevronRight'));
@@ -636,7 +653,10 @@ function buildSkeleton(root) {
   todayBtn.textContent = '오늘로';
   todayBtn.setAttribute('aria-label', '오늘 날짜로 이동 (T)');
 
-  header.append(prev, title, next, spacer, meter, viewBtn, todayBtn);
+  // 시안: 표제는 왼쪽, 조작은 전부 오른쪽 (완료율 · 구분선 · 오늘로 · 주간 · ‹ ›)
+  const navPair = div('cal-navpair');
+  navPair.append(prev, next);
+  header.append(title, spacer, meter, todayBtn, viewBtn, navPair);
 
   // --- 요일 머리글 ---
   const weekdays = div('cal-weekdays');
@@ -695,10 +715,21 @@ function buildSkeleton(root) {
   addBtn.hidden = true;
 
   grid.append(rangeTag, addBtn);
-  root.append(header, weekdays, grid);
 
-  return { root, title, grid, cells, barLayers, weekRows, viewBtn,
-           meterFill: fill, meterLabel, rangeTag, addBtn };
+  // 달력 발치의 한 줄 — 시안: 조작 두 가지와 단축키. 말로 설명하지 않고 한 번 보여 준다.
+  const foot = div('cal-foot');
+  const footLeft = make('span', 'cal-foot__hint');
+  const plus = make('span', 'cal-foot__plus');
+  plus.textContent = '＋';
+  footLeft.append('칸에 커서를 올리면 ', plus, ' · 눌러 끌면 기간이 잡힙니다');
+  const footRight = make('span', 'cal-foot__keys num');
+  footRight.textContent = '←→ ±1일 · ↑↓ ±1주 · T 오늘';
+  foot.append(footLeft, footRight);
+
+  root.append(header, weekdays, grid, foot);
+
+  return { root, title, titleNum, titleUnit, titleYear, grid, cells, barLayers, weekRows,
+           viewBtn, meterFill: fill, meterLabel, rangeTag, addBtn };
 }
 
 // ================================================================== 막대
@@ -804,14 +835,25 @@ function laneFree(occupied, lane, seg) {
 function renderBars(els, keys, tasks, st, store, weekCount = 6) {
   const m = readMetrics(els.grid);
 
-  // 6주를 똑같은 높이로 나누면, 아무것도 없는 주가 바쁜 주와 같은 자리를 차지한다.
-  // 결과적으로 위쪽 빈 줄은 허전하고 정작 일정이 몰린 날은 '+N' 으로 접힌다.
-  // 그래서 주마다 필요한 레인 수를 먼저 세고, 그 비율로 행 높이를 나눠 준다.
+  // 시안은 모든 주 행이 106px 다. 예전에는 남는 세로를 주별 레인 수에 비례해
+  // 나눠 줬는데, 그러면 한가한 주는 52px 로 눌리고 바쁜 주는 145px 로 늘어나
+  // 칸 높이가 제각각이 됐다(실측값이었다).
+  //
+  // 기본은 106px 로 고정하고, 기간 일정이 많이 겹치는 주만 레인 수만큼 **늘린다**.
+  // 줄이지는 않는다 — 줄이면 레인이 모자라 '+N' 으로 접혀 버린다.
   const gridH = els.grid.clientHeight || 0;
   const need = weekLaneDemand(keys, tasks, weekCount);   // 주별로 필요한 레인 수
-  const weights = need.map((n) => 1 + Math.min(n, 6) * 0.55);
-  const total = weights.reduce((a, b) => a + b, 0);
-  els.grid.style.gridTemplateRows = weights.map((v) => `${(v / total * 100).toFixed(3)}%`).join(' ');
+  // 행 높이는 **모두 같다**. 바쁜 주만 늘리면 칸이 제각각이 되어 시안이 무너진다.
+  // 레인이 모자라는 주는 시안대로 오른쪽 위 개수와 '+N' 이 대신 말한다.
+  // 시안의 106px 은 **칸** 높이다. 주 행에는 아래 괘선 1px 이 더해진다(시안: 칸 106 + 행 괘선 1).
+  const rows = need.map(() => `${m.cell + 1}px`);
+  // 값이 같은데 다시 쓰면 레이아웃이 무효화되고, 그 여파로 다시 그리게 되면
+  // 스크롤바가 생겼다 사라졌다 하며 무한히 맴돈다. 바뀔 때만 쓴다.
+  const rowsCss = rows.join(' ');
+  if (els.grid.dataset.rows !== rowsCss) {
+    els.grid.dataset.rows = rowsCss;
+    els.grid.style.gridTemplateRows = rowsCss;
+  }
 
   // 레인 수는 주마다 다르므로 각 주의 실제 높이로 계산한다.
   const lanesFor = (w) => {
@@ -906,20 +948,21 @@ function makeBar(seg, m, st, store) {
   // 색은 CSS 변수로만 넘기고, 실제 칠하기(농도·획·완료 처리)는 calendar.css 가 맡는다
   bar.style.setProperty('--bar-ink', store.COLORS[task.color] || store.COLORS.blue);
 
-  const li = seg.contLeft ? 0 : 2;
-  const ri = seg.contRight ? 0 : 2;
+  // 시안: 잘리지 않은 쪽만 4px 물린다(margin-left/right 4 · 주 경계에서 잘린 쪽 0)
+  const li = seg.contLeft ? 0 : 4;
+  const ri = seg.contRight ? 0 : 4;
   bar.style.left = `calc(${pct(seg.col)}% + ${li}px)`;
   bar.style.width = `calc(${pct(seg.len)}% - ${li + ri}px)`;
   bar.style.top = `${m.top + seg.lane * (m.barH + m.gap)}px`;
   bar.style.height = `${m.barH}px`;
 
-  // 제목은 시작 세그먼트에만
-  if (seg.isStart) {
-    const label = document.createElement('span');
-    label.className = 'cal-bar__t';
-    label.textContent = task.title; // XSS 방지: 항상 textContent
-    bar.appendChild(label);
-  }
+  // 시안: 3×10 색 캡 + 이름. 주를 넘어 이어지는 막대에도 이름을 다시 적는다.
+  const cap = document.createElement('span');
+  cap.className = 'cal-bar__cap';
+  const label = document.createElement('span');
+  label.className = 'cal-bar__t';
+  label.textContent = task.title; // XSS 방지: 항상 textContent
+  bar.append(cap, label);
 
   return bar;
 }
@@ -928,7 +971,8 @@ function makeBar(seg, m, st, store) {
 
 function renderDots(container, onDate, store) {
   container.replaceChildren();
-  const singles = onDate.filter((t) => !t.end || t.end === t.start);
+  // 하루짜리만 점으로 — 기간 일정은 막대가 이미 말한다
+  const singles = onDate.filter((t) => !t.end || t.end === t.start || t.repeat);
   if (!singles.length) return;
 
   const shown = Math.min(MAX_DOTS, singles.length);
@@ -958,7 +1002,7 @@ function renderMeter(els, st, anchor) {
   }
   const rate = total ? Math.round((done / total) * 100) : 0;
   els.meterFill.style.width = `${rate}%`;
-  els.meterLabel.textContent = total ? `${done}/${total}` : '–';
+  els.meterLabel.textContent = total ? `${rate}%` : '–';
 }
 
 /** keys 길이로 주 수를 구한다 (월 6주 / 주간 1주) */
@@ -991,25 +1035,20 @@ function weekTitle(keys) {
  * - 반복 일정은 화면에 걸린 회차만 하루짜리로 펼친다.
  * 필터는 store 셀렉터(tasksOnDate)가 이미 적용하므로 여기서 다시 걸지 않는다.
  */
-function visibleDated(store, st, keys) {
+/** 이 달(42칸)에 걸치는 기간 일정 — 막대로 그을 것들 */
+function visibleSpans(store, keys) {
   const seen = new Set();
   const out = [];
 
   for (const key of keys) {
     for (const t of store.tasksOnDate(key)) {
-      // 루틴은 달력에 그리지 않는다 (tasksOnDate 가 이미 빼 주지만 뜻을 남겨 둔다)
-      if (t.repeat?.routine) continue;
-      if (t.repeat) {
-        // 회차마다 별개의 하루짜리 막대. 같은 날 같은 일정은 한 번만.
-        const id = `${t.id}@${key}`;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push({ ...t, start: key, end: key });
-        continue;
-      }
+      // 반복 일정은 당일짜리다. 루틴은 달력에 그리지 않는다.
+      if (t.repeat) continue;
+      if (!t.start || !t.end || t.end <= t.start) continue;
       if (seen.has(t.id)) continue;
       seen.add(t.id);
-      out.push(t);
+      // 매일 체크하는 계획은 그날치 사본(occDate)으로 들어온다 — 막대는 원본으로 긋는다
+      out.push(t.occDate ? (store.getState().tasks.find((x) => x.id === t.id) || t) : t);
     }
   }
   return out;
@@ -1031,6 +1070,7 @@ function readMetrics(gridEl) {
     barH: num('--cal-bar-h', 14),
     gap: num('--cal-bar-gap', 2),
     dots: num('--cal-dots-h', 11),
+    cell: num('--cal-cell-h', 106),
   };
 }
 

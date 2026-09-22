@@ -1,0 +1,62 @@
+/* 일정관리 비서 위젯 — 디자인 토큰 (schedule-assistant.dc.html의 :root 원본)
+   그대로 프로젝트에 복사해 쓰십시오. 값은 근사치가 아니라 확정값입니다. */
+:root{
+  /* 종이 3단 */
+  --paper:#f5f2ec;
+  --paper-2:#efebe3;
+  --paper-3:#e6e1d6;
+
+  /* 잉크 3단 */
+  --ink:#22201d;
+  --ink-soft:#5d5951;
+  --ink-faint:#98928a;
+
+  /* 괘선 */
+  --rule:color-mix(in srgb,#22201d 15%,transparent);
+  --rule-soft:color-mix(in srgb,#22201d 8%,transparent);
+
+  /* 금박 · 인주 */
+  --gold:#b68235;
+  --gold-deep:#7d5411;
+  --gold-ghost:color-mix(in srgb,#b68235 14%,transparent);
+  --seal:#8d3a2c;
+
+  /* 항목 색 6종 (일정·루틴 공용) */
+  --blue:#4a5f7a;
+  --moss:#5c6b4a;
+  --citron:#9a7a2e;
+  --vermilion:#9c4a33;
+  --plum:#6d4a5e;
+  --charcoal:#4f4b45;
+
+  /* 크롬 */
+  --desk:#4a443c;        /* 바깥 바탕 — 실제 위젯에서는 투명/알파 */
+  --cover:#3a332b;       /* 표지 */
+  --cover-ink:#d6c4a0;   /* 표지 글자 */
+  --cover-ink-hi:#e8dcc2;/* 표지 글자 hover */
+  --ribbon-lo:#752f24;   /* 책갈피 리본 아래 */
+  --ribbon-hi:#8d3a2c;   /* 책갈피 리본 위 */
+  --dock:#f0ece4;        /* 아래 리본 */
+
+  /* 서체 */
+  --serif:"Noto Serif KR","Cormorant Garamond",serif;
+  --sans:"Noto Sans KR",system-ui,sans-serif;
+  --num:"Cormorant Garamond","Noto Serif KR",serif;
+}
+
+/* 숫자는 예외 없이 tabular */
+.num{font-family:var(--num);font-feature-settings:'tnum';}
+
+/* 전역 규칙 — 프로토타입과 동일하게 유지 */
+::selection{background:var(--gold-ghost);}
+*:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+@keyframes leafIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes pageIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+@keyframes scrimIn{from{opacity:0}to{opacity:1}}
+
+/* 그림자 — 이 4종만 씁니다 */
+.shadow-cover{box-shadow:0 30px 70px rgba(0,0,0,.5), inset 0 0 0 1px rgba(214,196,160,.18);}
+.shadow-modal{box-shadow:0 20px 48px rgba(0,0,0,.34);}
+.shadow-peek{box-shadow:0 18px 42px rgba(0,0,0,.32);}
+.shadow-tab{box-shadow:0 2px 5px rgba(0,0,0,.28);}

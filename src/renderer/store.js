@@ -46,12 +46,21 @@ export const COLORS = {
 
 export const PRIORITY_LABELS = ['보통', '중요', '긴급'];
 
+/** 색 키 → 시안의 안료 이름 (청람 · 쑥 · 치자 · 다홍 · 자주 · 회묵) */
+export const COLOR_LABELS = {
+  blue: '청람', green: '쑥', amber: '치자', rose: '다홍', violet: '자주', slate: '회묵',
+};
+
+/** 중요도를 고르는 칩의 글자 — 시안: 보통 / 중요 ! / 긴급 !! */
+export const PRIORITY_MARKS = ['보통', '중요 !', '긴급 !!'];
+
 const DEFAULT_SETTINGS = {
   theme: 'light',         // 'light' | 'dark'
   // 배경 투명도(0.4~1). 창 전체가 아니라 배경 알파만 조절하므로 글자는 또렷하게 남는다.
   // Windows 의 transparent 창에 setOpacity 를 걸면 합성이 불안정해 CSS 로 처리한다.
-  opacity: 0.9,
-  splitRatio: 0.56,       // 캘린더가 차지하는 가로 비율
+  opacity: 0.85,           // 시안의 기본값 (설정 › 배경 투명도 70 · 85 · 100%)
+  // 제본선을 뺀 나머지 중 왼쪽 면(달력) 몫. 기준 폭에서 오른쪽 면이 452px 이 되는 값.
+  splitRatio: 0.64,
   alwaysOnTop: false,
   clickThroughLocked: false,
   showCompleted: true,
@@ -76,6 +85,12 @@ const DEFAULT_SETTINGS = {
   // 오늘 시간표 시안. 'strip'(기본) | 'compressed'
   // 시간표 머리의 칩과 설정의 '오늘 시간표' 행이 이 값 하나를 함께 본다.
   todayView: 'strip',
+
+  // 트레이 요약 — 창을 열지 않아도 트레이 툴팁과 메뉴가 오늘 몫을 보고한다.
+  traySummary: true,
+
+  // 알림 기록을 마지막으로 연 때(ms). 이보다 새 알림이 있으면 표지의 종에 점이 찍힌다.
+  bellSeenAt: 0,
 
   // --- 브리핑 ---
   // 하루에 한 번, 앱을 처음 켠 날 아침에 오늘 몫을 한 장으로 요약해 준다.
@@ -382,6 +397,7 @@ const REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
 
 export const REPEAT_LABELS = {
   daily: '매일',
+  alternate: '격일',
   weekly: '매주',
   monthly: '매월',
   yearly: '매년',
@@ -398,6 +414,8 @@ const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 /** 저장된 규칙 → 화면에서 고를 값. 평일/주말과 정확히 맞을 때만 그 이름을 쓴다. */
 export function repeatChoice(r) {
   if (!r || !r.freq) return '';
+  // '격일' 은 새 주기가 아니라 이틀마다 도는 '매일' 이다
+  if (r.freq === 'daily' && r.interval === 2) return 'alternate';
   if (r.freq === 'weekly' && Array.isArray(r.days) && r.days.length) {
     const key = [...r.days].sort((a, b) => a - b).join(',');
     for (const [name, days] of Object.entries(DAY_PRESETS)) {
@@ -415,10 +433,12 @@ export function repeatChoice(r) {
 export function repeatFreqDays(choice, days) {
   if (!choice) return null;
   const preset = DAY_PRESETS[choice];
-  if (preset) return { freq: 'weekly', days: [...preset] };
+  if (preset) return { freq: 'weekly', days: [...preset], interval: 1 };
+  if (choice === 'alternate') return { freq: 'daily', days: null, interval: 2 };
   return {
     freq: choice,
     days: choice === 'weekly' && days && days.length ? [...days] : null,
+    interval: 1,
   };
 }
 

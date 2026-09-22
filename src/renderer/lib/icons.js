@@ -17,10 +17,22 @@ const PATHS = {
   close: ['M6 6l12 12', 'M18 6L6 18'],
   chevronLeft: ['M14.5 5.5 8 12l6.5 6.5'],
   chevronRight: ['M9.5 5.5 16 12l-6.5 6.5'],
-  plus: ['M12 5.5v13', 'M5.5 12h13'],
+  // 핸드오프 시안의 패스 그대로 (Lucide 계열, 24 뷰박스)
+  plus: ['M12 5v14', 'M5 12h14'],
+  chevronDown: ['M6 10l6 6 6-6'],
+  sunrise: ['M12 3v5', 'M5.6 10.6 4 9', 'M18.4 10.6 20 9', 'M3 17h18',
+            'M6.5 17a5.5 5.5 0 0 1 11 0', 'M6 21h12'],
+  lock: ['M5.5 10.5h13a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19v-7a1.5 1.5 0 0 1 1.5-1.5Z',
+         'M8 10.5V7a4 4 0 0 1 8 0v3.5'],
+  gear: ['M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
+         'M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7'],
+  bellD: ['M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9', 'M10.3 21a1.94 1.94 0 0 0 3.4 0'],
+  searchD: ['M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z', 'M20 20l-3.6-3.6'],
+  calendarD: ['M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V7A1.5 1.5 0 0 1 5 5.5Z',
+              'M3.5 10h17', 'M8 3.5v4', 'M16 3.5v4'],
   check: ['M5 12.5 9.5 17 19 7.5'],
-  link: ['M10 13.5a4 4 0 0 0 5.66 0l3-3a4 4 0 1 0-5.66-5.66l-1.5 1.5',
-         'M14 10.5a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5'],
+  link: ['M10 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.5 6.4',
+         'M14 10.5a4 4 0 0 0-5.7 0L5.5 13.3a4 4 0 0 0 5.7 5.7l1.3-1.3'],
   help: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z',
          'M9.6 9.2a2.5 2.5 0 1 1 3.3 2.35c-.6.22-.9.7-.9 1.3v.65', 'M12 16.8v.4'],
   // 되돌리기 — 왼쪽으로 도는 화살표
@@ -44,13 +56,14 @@ const PATHS = {
  * @param {keyof PATHS} name
  * @param {number} [size] px. 생략하면 CSS 로 제어(1em)
  */
-export function icon(name, size) {
+export function icon(name, size, stroke) {
   const paths = PATHS[name];
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', 'var(--icon-stroke, 1.4)');
+  // 시안: 아이콘 11–14px, stroke 1.4–1.6. 속성에는 var() 가 먹지 않아 숫자로 넣는다.
+  svg.setAttribute('stroke-width', String(stroke || 1.4));
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
@@ -70,8 +83,8 @@ export function icon(name, size) {
 }
 
 /** 버튼 안의 텍스트를 아이콘으로 교체한다 (기존 마크업을 최소로 건드리기 위한 헬퍼) */
-export function setIcon(el, name, size) {
+export function setIcon(el, name, size, stroke) {
   if (!el) return;
   el.textContent = '';
-  el.append(icon(name, size));
+  el.append(icon(name, size, stroke));
 }

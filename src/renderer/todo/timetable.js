@@ -13,7 +13,7 @@
 // 시각 없는 항목은 두 시안 모두 위쪽 '종일' 띠에 놓는다. 그래야 시각이 있든 없든
 // 같은 틀 안에서, 같은 자리에서 체크로 지운다.
 
-import { timeMinutes } from '../lib/date.js';
+import { timeMinutes, fromKey } from '../lib/date.js';
 import { icon } from '../lib/icons.js';
 
 function h(tag, cls, text) {
@@ -23,9 +23,9 @@ function h(tag, cls, text) {
   return el;
 }
 
-/** 분 → 'H:MM' */
+/** 분 → 'HH:MM' (시안의 fmt 그대로 — 시도 두 자리) */
 function fmt(m) {
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 /** 분 → '1시간 30분' */
@@ -42,6 +42,18 @@ function nowMinutes() {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** 'YYYY-MM-DD' — 오늘 */
+function todayKeyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** '9/4' */
+function md(key) {
+  const d = fromKey(key);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 const VIEWS = [
   ['strip', '스트립', '하루의 모양을 네모로',
    '네모의 위치와 길이가 하루의 모양입니다 — 누르면 자세한 창이 뜹니다'],
@@ -50,11 +62,42 @@ const VIEWS = [
 ];
 
 /**
- * @param {{store: object, onDetail: (id:string, occDate?:string)=>void,
- *          onAdd: ()=>void}} deps
+ * 종일 칩의 오른쪽 작은 글자 — 무엇이 이 날에 걸려 있는지.
+ *   루틴     '루틴 · 매일 · 5일째'
+ *   장기 계획 '9/1 → 9/9 · 진행 중 · 3/11'
+ *   미룬 일   '3번 미룸'
  */
-export function createTimetable({ store, onDetail, onAdd }) {
+function metaOfFactory(store) {
+  return function metaOf(t, key, routine) {
+    if (routine) {
+      const streak = store.routineStreak(t, key);
+      return `루틴 · ${store.repeatLabel(t.repeat)}${streak >= 2 ? ` · ${streak}일째` : ''}`;
+    }
+    if (t.repeat) return store.repeatLabel(t.repeat);
+    const parts = [];
+    if (t.start && t.end && t.end > t.start) {
+      const state = key === t.end ? '오늘 마감' : (key === t.start ? '시작' : '진행 중');
+      parts.push(`${md(t.start)} → ${md(t.end)} · ${state}`);
+      const prog = store.spanProgress(t);
+      if (prog) parts.push(`${prog.done}/${prog.total}`);
+    }
+    if (t.deferCount >= 3) parts.push(`${t.deferCount}번 미룸`);
+    return parts.join(' · ');
+  };
+}
+
+/** 칩에 커서를 올렸을 때 */
+function tipOf(t) {
+  return t.title || '(제목 없음)';
+}
+
+/**
+ * @param {{store: object, onDetail: (id:string, occDate?:string)=>void,
+ *          onAdd: ()=>void, onAddAllDay: ()=>void}} deps
+ */
+export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
   const el = h('section', 'tt');
+  const metaOf = metaOfFactory(store);
 
   // ---------------------------------------------------------------- 머리
   const head = h('div', 'tt__head');
@@ -62,9 +105,9 @@ export function createTimetable({ store, onDetail, onAdd }) {
   const headRule = h('span', 'tt__rule');
   const addBtn = h('button', 'tt__add');
   addBtn.type = 'button';
-  addBtn.title = '이 날에 일정 추가';
-  addBtn.setAttribute('aria-label', '이 날에 일정 추가');
-  addBtn.append(icon('plus'));
+  addBtn.title = '시각 있는 일정 추가';
+  addBtn.setAttribute('aria-label', '시각 있는 일정 추가');
+  addBtn.textContent = '＋';
   addBtn.addEventListener('click', () => onAdd?.());
 
   const chips = h('div', 'tt__views');
@@ -89,6 +132,16 @@ export function createTimetable({ store, onDetail, onAdd }) {
   const allDayBox = h('div', 'tt__chips');
   allDay.append(allDayKey, allDayBox);
 
+  // 종일 띠의 ＋ — 시각 없는 일정을 이 날에 바로 적는다
+  const allDayAdd = h('button', 'tt-allday__add', '＋');
+  allDayAdd.type = 'button';
+  allDayAdd.title = '종일 일정 추가';
+  allDayAdd.setAttribute('aria-label', '종일 일정 추가');
+  allDayAdd.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onAddAllDay?.();
+  });
+
   // ---------------------------------------------------------------- 본문
   const body = h('div', 'tt__body');
 
@@ -100,9 +153,16 @@ export function createTimetable({ store, onDetail, onAdd }) {
   scrim.addEventListener('click', () => closePeek());
   peekCard.addEventListener('click', (e) => e.stopPropagation());
 
-  el.append(head, note, allDay, body, scrim);
+  el.append(head, note, allDay, body);
+  // 자세한 창의 스크림은 펼침면 위에 깐다(시안) — 오른쪽 면 안에 두면 면만 어두워진다
+  (document.querySelector('.panes') || el).append(scrim);
 
   let peekItem = null;
+  // 압축 시안에서 펼쳐 둔 빈 시간(시작 분). 날짜가 바뀌면 다시 접는다.
+  const unfolded = new Set();
+  let lastKey = null;
+  let lastArgs = null;
+  const rerender = () => { if (lastArgs) update(...lastArgs); };
 
   function closePeek() {
     peekItem = null;
@@ -164,7 +224,7 @@ export function createTimetable({ store, onDetail, onAdd }) {
       acts.append(later);
     }
 
-    const more = h('button', 'tt-peek__act', '자세히 · 고치기');
+    const more = h('button', 'tt-peek__act tt-peek__act--more', '자세히 · 고치기');
     more.type = 'button';
     more.addEventListener('click', () => {
       closePeek();
@@ -189,6 +249,21 @@ export function createTimetable({ store, onDetail, onAdd }) {
 
   // ---------------------------------------------------------------- 그리기
 
+  /**
+   * 달력으로 끌어 날짜를 옮길 수 있게 한다(목록 줄과 같은 끌기 형식).
+   * 반복 일정은 규칙 하나를 공유하므로 한 회차만 옮길 수 없다 — 끌리지 않게 둔다.
+   */
+  function dragSource(node, item) {
+    if (item.repeat) return;
+    node.draggable = true;
+    node.addEventListener('dragstart', (e) => {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.setData('application/x-task-id', item.id);
+      e.dataTransfer.setData('text/plain', item.title || '');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  }
+
   /** 체크박스 하나. 시간표 어디에서 체크하든 같은 동작이다. */
   function checkbox(item) {
     const b = h('button', 'tt-check');
@@ -207,16 +282,18 @@ export function createTimetable({ store, onDetail, onAdd }) {
   /** 종일 칩. 시각 없는 일정이 시간 표현 위 같은 틀에 들어온다. */
   function renderAllDay(items) {
     allDayBox.replaceChildren();
-    allDay.hidden = items.length === 0;
     for (const item of items) {
       const chip = h('span', 'tt-allday__chip');
       chip.style.setProperty('--item', item.color);
       chip.classList.toggle('is-done', !!item.done);
       chip.append(checkbox(item), h('span', 'tt-allday__title', item.title || '(제목 없음)'));
       if (item.meta) chip.append(h('span', 'tt-allday__meta num', item.meta));
+      chip.title = item.tip || item.title;
       chip.addEventListener('click', () => onDetail?.(item.id, item.occDate));
+      dragSource(chip, item);
       allDayBox.append(chip);
     }
+    allDayBox.append(allDayAdd);
   }
 
   /**
@@ -295,9 +372,11 @@ export function createTimetable({ store, onDetail, onAdd }) {
         line.append(r);
       }
       line.addEventListener('click', () => openPeek(item));
+      dragSource(line, item);
       list.append(line);
     }
-    if (items.length) wrap.append(list);
+    if (!items.length) list.append(h('span', 'tt-strip__empty', '시각을 정해 둔 일정이 없습니다'));
+    wrap.append(list);
     return wrap;
   }
 
@@ -318,9 +397,20 @@ export function createTimetable({ store, onDetail, onAdd }) {
     for (const item of items) {
       const gap = prev == null ? 0 : item.start - prev;
 
-      if (gap >= 60) {
+      if (gap >= 60 && unfolded.has(prev)) {
+        // 펼친 빈 시간 — 짧은 틈과 같은 비율로 비워 두고, 누르면 다시 접는다
+        const from = prev;
+        const row = h('div', 'tt-comp__unfold');
+        row.style.height = `${Math.round(gap * 0.45)}px`;
+        row.title = '접기';
+        row.append(h('span', 'tt-comp__at num'), h('span', 'tt-comp__gapline'));
+        row.addEventListener('click', () => { unfolded.delete(from); rerender(); });
+        wrap.append(row);
+      } else if (gap >= 60) {
         const nowIn = prev <= now && now < item.start;
+        const from = prev;
         const row = h('div', 'tt-comp__gap');
+        row.addEventListener('click', () => { unfolded.add(from); rerender(); });
         row.append(h('span', 'tt-comp__at num', fmt(prev)));
         const line = h('span', 'tt-comp__gapline');
         const label = h('span', 'tt-comp__gaplabel',
@@ -358,6 +448,7 @@ export function createTimetable({ store, onDetail, onAdd }) {
       if (item.notes) card.append(h('span', 'tt-comp__note', item.notes));
 
       card.addEventListener('click', () => openPeek(item));
+      dragSource(card, item);
       row.append(card);
       wrap.append(row);
       prev = item.end;
@@ -372,6 +463,8 @@ export function createTimetable({ store, onDetail, onAdd }) {
    * @param {string} tomorrow 내일 키 (미루기용)
    */
   function update(key, tomorrow) {
+    lastArgs = [key, tomorrow];
+    if (key !== lastKey) { unfolded.clear(); lastKey = key; }
     const st = store.getState();
     const view = st.settings.todayView === 'compressed' ? 'compressed' : 'strip';
 
@@ -381,16 +474,17 @@ export function createTimetable({ store, onDetail, onAdd }) {
     }
     note.textContent = (VIEWS.find((v) => v[0] === view) || VIEWS[0])[3];
 
-    // 시각 있는 루틴은 하루의 모양에 속하므로 시간띠에 그린다(↻ 로 표시).
-    // 시각 없는 루틴은 넣지 않는다 — 바로 아래 '루틴' 섹션이 전담하고,
-    // 거기에 연속 기록과 후보 제안이 붙어 있다. 같은 것을 두 자리에 두지 않는다.
+    // 루틴도 같은 틀에 앉는다(시안). 시각 있는 루틴은 시간띠 네모 + ↻,
+    // 시각 없는 루틴은 종일 띠의 점선 칩이다. 어느 쪽이든 같은 자리에서 체크로 지운다.
     const raw = [
       ...store.tasksOnDate(key),
-      ...store.routinesOn(key).filter((t) => t.startTime),
+      ...store.routinesOn(key),
     ];
     const items = raw.map((t) => {
       const start = t.startTime ? timeMinutes(t.startTime) : null;
       const end = t.endTime ? timeMinutes(t.endTime) : (start == null ? null : start + 60);
+      const routine = !!t.repeat?.routine;
+      const kind = routine ? `루틴 · ${store.repeatLabel(t.repeat)}` : (t.repeat ? `반복 · ${store.repeatLabel(t.repeat)}` : '일정');
       return {
         id: t.id,
         occDate: t.occDate,
@@ -401,9 +495,10 @@ export function createTimetable({ store, onDetail, onAdd }) {
         priority: t.priority || 0,
         link: t.link,
         repeat: t.repeat,
-        routine: !!t.repeat?.routine,
-        kind: t.repeat?.routine ? `루틴 · ${store.repeatLabel(t.repeat)}` : '일정',
-        meta: t.repeat ? store.repeatLabel(t.repeat) : '',
+        routine,
+        kind,
+        meta: metaOf(t, key, routine),
+        tip: tipOf(t),
         tomorrow,
         start,
         end: end != null && end > start ? end : (start == null ? null : start + 60),
@@ -413,11 +508,13 @@ export function createTimetable({ store, onDetail, onAdd }) {
     const timed = items.filter((t) => t.start != null).sort((a, b) => a.start - b.start);
     renderAllDay(items.filter((t) => t.start == null));
 
-    const now = nowMinutes();
+    // '지금' 은 오늘에만 뜻이 있다. 지난날은 전부 지난 것으로, 앞날은 전부 남은 것으로 그린다.
+    const today = todayKeyLocal();
+    const now = key === today ? nowMinutes() : (key < today ? 1440 : -1);
     body.replaceChildren(
-      timed.length
-        ? (view === 'strip' ? renderStrip(timed, now) : renderCompressed(timed, now))
-        : h('div', 'tt__empty', '시각을 정해 둔 일정이 없습니다'),
+      view === 'strip'
+        ? renderStrip(timed, now)
+        : (timed.length ? renderCompressed(timed, now) : h('div', 'tt__empty', '시각을 정해 둔 일정이 없습니다')),
     );
 
     // 열려 있던 자세한 창은 자료가 바뀌면 닫는다 — 옛 값이 남아 있는 편이 더 나쁘다

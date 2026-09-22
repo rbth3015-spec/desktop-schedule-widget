@@ -1,7 +1,7 @@
 // 렌더러에 노출되는 유일한 다리. CONTRACT.md 의 window.api 인터페이스를 그대로 구현한다.
 // ipcRenderer 자체는 절대 노출하지 않는다.
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const api = {
   // ------------------------------------------------------------ 데이터
@@ -17,6 +17,8 @@ const api = {
     getBounds: () => ipcRenderer.invoke('window:getBounds'),
     setSize: (w, h) => ipcRenderer.send('window:setSize', Number(w), Number(h)),
     snapPreset: (preset) => ipcRenderer.send('window:snapPreset', String(preset)),
+    // 글자 크기 — 화면 전체를 같은 비율로 키운다(시안의 값이 전부 px 라서)
+    setZoom: (f) => webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, Number(f) || 1))),
   },
 
   // ------------------------------------------------------------ 앱 설정

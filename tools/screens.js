@@ -1,4 +1,4 @@
-// README 스크린샷 다섯 장을 한 번에 다시 뽑는다.
+// README 스크린샷을 한 번에 다시 뽑는다.
 //
 //   npm run screens
 //
@@ -13,15 +13,17 @@ const OUT = path.join(ROOT, 'docs', 'screenshots');
 const ELECTRON = require('electron');
 
 // [파일명, 설명, 추가 인자]
+// 창 크기는 시안의 표지 폭(1312px + 창 여백)에 맞춘다 — 오른쪽 면이 452px 고정이라
+// 좁게 찍으면 달력만 눌려 시안과 다른 비율이 된다.
+const SIZE = ['--w', '1332', '--h', '900'];   // 캡처 창은 안쪽 폭이 4px 넓게 잡힌다 → 표지 1312px
 const SHOTS = [
-  // 기본 화면만 조금 높게 잡는다 — '루틴' 섹션이 접히면
-  // 루틴이 달력에 안 올라간다는 사실이 스크린샷에서 보이지 않는다.
-  ['01-main', '기본 화면', ['--w', '1040', '--h', '820']],
-  ['02-compose', '일정 추가 폼', ['--w', '1040', '--h', '720', '--exec', 'tools/shots/compose.js']],
-  ['03-detail', '항목 상세', ['--w', '1040', '--h', '720', '--exec', 'tools/shots/detail.js']],
-  // 브리핑은 내용이 짧아 큰 창에서는 아래가 휑하다. 흔히 쓰는 크기로 줄여 찍는다.
-  ['04-brief', '아침 브리핑', ['--w', '1040', '--h', '560', '--set', '{"lastBriefDate":""}']],
-  ['05-dark', '다크 테마', ['--w', '1040', '--h', '820', '--theme', 'dark']],
+  ['01-main', '오늘', [...SIZE]],
+  ['02-compose', '일정 추가', [...SIZE, '--exec', 'tools/shots/compose.js']],
+  ['03-detail', '항목 상세', [...SIZE, '--exec', 'tools/shots/detail.js']],
+  ['04-brief', '아침 브리핑', [...SIZE, '--set', '{"lastBriefDate":""}']],
+  ['05-dark', '다크 테마', [...SIZE, '--theme', 'dark']],
+  ['06-routine', '루틴', [...SIZE, '--exec', 'tools/shots/routine.js']],
+  ['07-settings', '설정', [...SIZE, '--exec', 'tools/shots/settings.js']],
 ];
 
 let failed = 0;
@@ -49,4 +51,4 @@ if (failed) {
   console.error(`\n${failed}장 실패`);
   process.exit(1);
 }
-console.log('\n스크린샷 5장을 docs/screenshots/ 에 새로 구웠습니다.');
+console.log(`\n스크린샷 ${SHOTS.length}장을 docs/screenshots/ 에 새로 구웠습니다.`);

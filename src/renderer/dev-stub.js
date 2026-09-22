@@ -97,6 +97,7 @@
       hide: () => console.log('[dev] hide'),
       setAlwaysOnTop: (on) => console.log('[dev] alwaysOnTop', on),
       setIgnoreMouseEvents: (on) => console.log('[dev] ignoreMouse', on),
+      setZoom: (f) => { document.documentElement.style.zoom = String(f || 1); },
       getBounds: async () => ({ ...win }),
       setSize: (w, h) => { win.width = w; win.height = h; console.log('[dev] setSize', w, h); },
       snapPreset: (p) => console.log('[dev] preset', p),

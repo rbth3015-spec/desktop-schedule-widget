@@ -1,1452 +1,1049 @@
-/* 할 일 패널 — 다이어리의 오른쪽 지면.
-   모든 셀렉터는 .todo- 접두사. 색/반경은 base.css 변수만 사용한다.
-   예외: 일정 색(store.COLORS)은 JS 인라인 style 로 들어온다.
+/* 오른쪽 면 — 오늘 · 일정 추가 · 루틴 · 항목 상세.
+   값은 design_handoff_schedule_assistant/schedule-assistant.dc.html 의 인라인 style 을 그대로 옮겼다.
+   (PORTING.md: 값을 반올림하거나 새로 정하지 않는다. 굵기는 최대 500, 면을 색으로 채우지 않는다.)
 
-   원칙
-   - 항목은 카드가 아니라 '줄'이다. 면으로 감싸지 않고 괘선으로만 나눈다.
-   - 배지·칩을 남발하지 않는다. 우선순위는 색과 굵기로, 태그는 조용한 글자로.
-   - 오른쪽 끝이 들쭉날쭉해지지 않도록 메타 정보 폭을 정돈한다. */
+   시안 밖에서 들여온 것(기능을 지키느라 생긴 자리)은 시안의 같은 부품을 빌려 쓴다 —
+   새 모양을 만들지 않는다. 각 자리에 어느 부품을 빌렸는지 적어 둔다. */
 
+/* ============================================================ 면 */
+
+/* 시안: 오른쪽 면 padding 24px 30px 20px 22px.
+   내용이 길면 이 면이 스크롤된다. 스크롤바(9px) 자리를 늘 비워 두고 오른쪽 여백에서 빼서
+   내용 폭이 시안과 같은 400px 로 고정된다(452 − 22 − 21 − 9). */
 .todo-panel {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 24px 21px 20px 22px;
+}
+
+.scr { display: flex; flex-direction: column; animation: pageIn .28s ease both; }
+.scr[hidden] { display: none; }
+
+/* ============================================================ 화면 머리 (추가 · 상세 · 루틴 · 설정) */
+
+.scr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--ink);
+}
+.scr-head__title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 17px;
+  letter-spacing: .06em;
+  color: var(--ink);
+}
+.scr-head__back {
+  background: transparent;
+  border: 0;
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.scr-head__back:hover { color: var(--gold-deep); }
+
+.scr-body {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
+  gap: 17px;
+  padding-top: 17px;
 }
+.scr-body > [hidden] { display: none; }
 
-/* ============================================================ 헤더 */
-
-.todo-header {
-  flex: 0 0 auto;
-  padding: 12px 14px 10px;
-  border-bottom: 1.5px solid var(--border-strong);
-}
-
-.todo-daterow {
-  display: flex;
-  /* 버튼이 섞여 있어 baseline 으로 맞추면 아이콘이 들쭉날쭉해진다 */
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-/* 지면의 표제 — 오늘 날짜 */
-.todo-date {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: .01em;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* '오늘' 표시 — 배지가 아니라 잉크로 그은 밑줄 */
-.todo-badge--today {
-  flex: 0 0 auto;
-  padding: 0 1px 1px;
-  font-size: 10px;
-  letter-spacing: .12em;
-  color: var(--accent);
-  border-bottom: 1.5px solid var(--accent);
-}
-
-/* 검색 — 돋보기만 덩그러니 두면 아이콘이 작아 눈에 안 띈다.
-   이름을 함께 적어 '무엇을 하는 버튼인지' 를 읽을 수 있게 한다. */
-.todo-searchbtn {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px 4px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: none;
-  font-size: 11px;
-  letter-spacing: .04em;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: color .16s, border-color .16s, background .16s;
-}
-.todo-searchbtn:hover { color: var(--accent); border-color: var(--accent); }
-.todo-searchbtn.is-on {
-  color: var(--on-color);
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.todo-searchbtn .icon { width: 13px; height: 13px; }
-.todo-searchbtn__text { white-space: nowrap; }
-
-.todo-searchclose {
-  flex: 0 0 auto;
-  width: 20px; height: 20px;
-  display: grid; place-items: center;
-  color: var(--text-faint);
-  cursor: pointer;
-  transition: color .16s;
-}
-.todo-searchclose:hover { color: var(--accent); }
-.todo-searchclose .icon { width: 11px; height: 11px; }
-
-.todo-progress__text {
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-family: var(--font-serif);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
-}
-
-/* ------------------------------------------------------------ 일정 추가 */
-/*
- * 이 앱에서 일정을 만드는 유일한 입구다.
- * 머리글 구석의 22px 아이콘이던 시절에는 '어디서 추가하지'가 매번 물음이었다.
- * 이름을 달고, 목록 바로 위 한 줄을 통째로 준다.
- */
-
-.todo-addbar {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 7px;
-  padding: 9px 14px 10px;
-  border-bottom: 1px solid var(--rule);
-}
-.todo-addbar[hidden] { display: none; }
-
-.todo-add {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 12px;
-  /* 핸드오프 원칙: 면을 색으로 채우지 않는다. 강조는 테두리와 글자색으로.
-     굵게도 쓰지 않는다(최대 500). */
-  border: 1px solid var(--gold);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--gold-deep);
-  font-family: var(--font-serif);
-  font-size: 12.5px;
-  font-weight: 400;
-  letter-spacing: .06em;
-  letter-spacing: .06em;
-  cursor: pointer;
-  transition: filter .16s, box-shadow .16s;
-}
-.todo-add:hover { background: var(--gold-ghost); }
-.todo-add:active { background: var(--gold-ghost); filter: brightness(.97); }
-/* '루틴' 은 곁들이 입구라 테두리를 괘선으로 낮춘다 */
-.todo-add--routine { border-color: var(--rule); color: var(--ink-soft); }
-.todo-add--routine:hover { border-color: var(--gold); color: var(--gold-deep); }
-.todo-add:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--bg-solid), 0 0 0 3.5px var(--accent);
-}
-
-/* 루틴 — 약속과는 다른 물건이라 입구를 따로 낸다.
-   다만 주된 동작은 '일정 추가' 이므로 무게를 낮춰 곁들인다. */
-.todo-add--routine {
-  flex: 0 0 auto;
-  border-color: var(--rule);
-  background: none;
-  color: var(--text-dim);
-  font-weight: 400;
-}
-.todo-add--routine:hover {
-  filter: none;
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.todo-add--routine .icon { width: 11px; height: 11px; }
-
-.todo-add .icon { width: 12px; height: 12px; }
-.todo-add__text { white-space: nowrap; }
-
-/* 진행률 — 잉크가 차오르는 가는 선 */
-.todo-progress {
-  margin-top: 8px;
-  height: 2px;
-  background: var(--rule);
-  overflow: hidden;
-}
-.todo-progress__fill {
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width .24s ease, background .24s;
-}
-.todo-progress.is-full .todo-progress__fill { background: var(--success); }
-
-.todo-filters {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 10px;
-}
-.todo-filters[hidden] { display: none; }
-
-.todo-search {
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: none;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: transparent;
-  font-size: 12px;
-  outline: none;
-  transition: border-color .16s;
-}
-.todo-search::placeholder { color: var(--text-faint); }
-.todo-search:focus { border-bottom-color: var(--accent); }
-
-.todo-toggle {
-  flex: 0 0 auto;
-  padding: 3px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 10.5px;
-  letter-spacing: .03em;
-  color: var(--text-faint);
-  transition: border-color .16s, color .16s;
-}
-.todo-toggle:hover { color: var(--text-dim); }
-.todo-toggle.is-on { border-color: var(--accent); color: var(--accent); }
-
-/* 태그 — 칩이 아니라 조용한 글자. 고른 것만 잉크로 표시된다. */
-.todo-tagbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px 10px;
-  margin-top: 9px;
-}
-.todo-tagbar:empty { display: none; }
-
-.todo-tagchip {
-  padding: 0;
-  font-size: 11px;
-  color: var(--text-faint);
-  transition: color .16s;
-}
-.todo-tagchip:hover { color: var(--text-dim); }
-.todo-tagchip.is-on {
-  color: var(--accent);
-  border-bottom: 1px solid var(--accent);
-}
-
-/* ============================================================ 목록 */
-
-.todo-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 10px;
-}
-
-.todo-section { padding-top: 4px; }
-.todo-section:empty { display: none; }
-
-/* 머리글은 줄만 잡는 껍데기. 접기 버튼과 동작 버튼이 그 안에서 형제로 앉는다. */
-.todo-section__head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px 5px;
-  user-select: none;
-}
-
-/* 접기 버튼 — 캐럿·제목·개수를 품는다 */
-.todo-section__toggle {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-}
-
-/* 섹션 머리글의 동작 버튼 자리 — 오른쪽 끝에 붙는다 */
-.todo-section__actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.todo-section__actions:empty { display: none; }
-
-.todo-section__caret {
-  font-size: 9px;
-  color: var(--text-faint);
-  transition: transform .16s;
-}
-.todo-section.is-collapsed .todo-section__caret { transform: rotate(-90deg); }
-
-/* 소제목 — 자간을 벌린 작은 표제 */
-.todo-section__title {
-  font-family: var(--font-serif);
-  font-size: 11px;
-  font-weight: 700;
+/* 칸 이름 — 9.5px 흐린 글자 */
+.scr-label {
+  margin-bottom: 7px;
+  font-weight: 300;
+  font-size: 9.5px;
   letter-spacing: .18em;
-  color: var(--text-dim);
+  color: var(--ink-faint);
 }
 
-.todo-section__count {
-  font-family: var(--font-serif);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+.scr-hint {
+  margin-top: 8px;
+  font-weight: 300;
+  font-size: 10px;
+  color: var(--ink-faint);
 }
+.scr-hint[hidden] { display: none; }
+.dt .scr-hint { letter-spacing: .03em; }
+.scr-hint--long { line-height: 1.75; text-wrap: pretty; }
+.scr-hint__em { color: var(--ink-soft); }
 
-.todo-list-wrap { position: relative; }
-.todo-list { list-style: none; }
-
-/* ------------------------------------------------------------ 항목 */
-
-.todo-item {
-  position: relative;
-  border-top: 1px solid var(--rule);
+/* 제목 입력칸 — 보이는 제목이 그대로 입력칸이다 */
+.scr-titlein {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--ink);
 }
-.todo-item:first-child { border-top: none; }
-.todo-item.is-dragging { opacity: .4; }
+.scr-titlein::placeholder { color: var(--ink-faint); }
 
-/* 키보드로 고른 항목. 마우스 클릭으로는 테두리가 뜨지 않게 :focus-visible 을 쓴다. */
-.todo-item:focus { outline: none; }
-.todo-item:focus-visible {
-  outline: none;
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+/* 시작 / 종료 — 날짜 | 시각 */
+.scr-when {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
 }
-
-.todo-item__row {
+.scr-when[hidden] { display: none; }
+.scr-dt {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: background .12s;
+  padding: 8px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
 }
-.todo-item__row:hover { background: var(--pane-hover); }
+.scr-dt__sep {
+  flex: none;
+  width: 1px;
+  height: 13px;
+  background: var(--rule);
+}
 
-/* 체크박스 — 잉크로 그린 네모 */
-.todo-check {
-  flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
+/* 날짜 칸 — 글자는 시안 형식, 누르면 네이티브 달력 */
+.scr-date {
+  position: relative;
+  flex: none;
+  cursor: pointer;
+}
+.scr-date__text {
+  font-family: var(--num);
+  font-size: 14.5px;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+}
+.scr-date.is-empty .scr-date__text { color: var(--ink-faint); }
+.scr-date.is-disabled { cursor: default; opacity: .45; }
+.scr-date:not(.is-disabled):hover .scr-date__text { color: var(--gold-deep); }
+.scr-date__input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 시각 칸 — '15:00' */
+.scr-time {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 48px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--num);
+  font-size: 14.5px;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+}
+.scr-time::placeholder { color: var(--ink-faint); }
+.scr-time:disabled { opacity: .45; }
+.scr-time.is-invalid { color: var(--seal); }
+
+/* 되읽어 주는 한 줄 */
+.scr-summary {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--gold-deep);
+  font-feature-settings: 'tnum';
+}
+
+/* ---- 칩 — 시안의 모든 선택 칩. 켜짐: 금박 윤곽 + 금박 글자 + 옅은 금박 바탕 ---- */
+.scr-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.scr-chip {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.scr-chip[hidden] { display: none; }
+.scr-chip:hover { border-color: var(--ink-soft); }
+.scr-chip.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
+.scr-chip:disabled { opacity: .45; cursor: default; }
+.scr-chip:disabled:hover { border-color: var(--rule); }
+/* 시안: 완료로 표시 — 금박 윤곽 / 삭제 — 인주 윤곽 */
+.scr-chip--gold { border-color: var(--gold); color: var(--gold-deep); }
+.scr-chip--gold:hover { border-color: var(--gold); background: var(--gold-ghost); }
+.scr-chip--seal { border-color: var(--seal); color: var(--seal); }
+.scr-chip--seal:hover { border-color: var(--seal); background: color-mix(in srgb, #8d3a2c 8%, transparent); }
+/* 자리마다 다른 칩 여백 (시안 값 그대로) */
+.scr-chip--when { padding: 6px 12px; font-size: 11.5px; letter-spacing: 0; }
+.scr-chip--len {
+  padding: 4px 10px;
+  font-family: var(--num);
+  font-size: 11.5px;
+  letter-spacing: 0;
+  font-feature-settings: 'tnum';
+}
+.scr-chip--len.is-on { border-color: var(--rule); color: var(--ink-soft); background: transparent; }
+.scr-chip--prio { padding: 5px 11px; font-size: 11px; letter-spacing: 0; }
+.scr-chip--cycle { padding: 6px 13px; font-size: 11.5px; letter-spacing: 0; }
+/* 태그로 걸러 보기 — 시안의 '#업무' 칩을 빌렸다 */
+.scr-chip--tag { padding: 2px 8px; font-size: 10.5px; }
+
+/* ---- 색 — 23×23 칸 안에 13×13 안료 ---- */
+.scr-swatches { display: flex; gap: 8px; }
+.scr-swatch {
   display: grid;
   place-items: center;
-  border: 1.2px solid var(--border-strong);
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--rule);
   border-radius: 1px;
-  color: transparent;
-  transition: border-color .16s, background .16s, color .16s;
+  cursor: pointer;
 }
-.todo-check:hover { border-color: var(--accent); }
-.todo-check.is-on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-color);
-}
-.todo-check .icon { width: .72em; height: .72em; }
+.scr-swatch.is-on { border-color: var(--gold); }
+.scr-swatch__ink { width: 13px; height: 13px; }
 
-/* 색 표시 — 여백에 그은 짧은 세로 획 */
-.todo-dot {
-  flex: 0 0 auto;
-  width: 2px;
-  height: 14px;
-  border-radius: 1px;
+/* ---- 버튼 — 취소 / 추가 ---- */
+.scr-btn {
+  padding: 9px 17px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
+.scr-btn:hover { border-color: var(--ink-soft); }
+.scr-btn--gold {
+  padding: 9px 22px;
+  border-color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: .1em;
+  color: var(--gold-deep);
+}
+.scr-btn--gold:hover { border-color: var(--gold); background: var(--gold-ghost); }
 
-.todo-title {
-  flex: 1;
+/* 링크 입력 — 시안 밖. 제목 입력칸의 밑줄 하나를 빌렸다. */
+.scr-input {
+  width: 100%;
+  padding: 7px 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+.scr-input:focus { border-bottom-color: var(--ink); }
+.scr-input::placeholder { color: var(--ink-faint); }
+
+/* 메모 — 시안: padding 11px 13px · 1px 윤곽 · 300 12px · 행간 1.9 */
+.scr-notes {
+  display: block;
+  width: 100%;
+  min-height: 67px;
+  padding: 11px 13px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-weight: 300;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--ink-soft);
+  resize: vertical;
+  text-wrap: pretty;
+}
+.scr-notes::placeholder { color: var(--ink-faint); }
+
+/* ============================================================ 오늘 — 날짜 머리 */
+
+.todo-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--ink);
+}
+.todo-head__date {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--text);
-  overflow: hidden;
+}
+.todo-head__day {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
-
-/* 우선순위는 배지가 아니라 활자 굵기와 잉크 농도로 */
-.todo-item--p1 .todo-title { font-weight: 600; }
-.todo-item--p2 .todo-title { font-weight: 700; color: var(--accent); }
-
-.todo-title-input {
-  flex: 1;
-  min-width: 0;
-  padding: 1px 3px;
-  border: 1px solid var(--accent);
+.todo-head__week {
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: 12px;
+  letter-spacing: .16em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.todo-head__today {
+  padding: 1px 7px;
+  border: 1px solid var(--gold);
   border-radius: 1px;
-  background: var(--bg-solid);
-  font-size: 12.5px;
-  outline: none;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  color: var(--gold-deep);
+  white-space: nowrap;
 }
-
-/* 완료 — 잉크로 그은 취소선.
-   가짜 선(::after)은 flex:1 인 제목의 전체 폭을 덮어 글자 밖까지 그어진다.
-   text-decoration 은 글자에만 붙으므로 이쪽을 쓴다. */
-.todo-item.is-done .todo-title {
-  color: var(--text-faint);
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--text-faint) 75%, transparent);
-  text-decoration-thickness: 1.2px;
-  text-underline-offset: 0;
-}
-.todo-item.is-done .todo-dot { opacity: .3; }
-.todo-item.is-done.todo-item--p2 .todo-title { color: var(--text-faint); font-weight: 400; }
-
-/* 메타 — 태그·알림·링크·D-day. 오른쪽 끝을 정돈한다. */
-.todo-meta {
-  flex: 0 0 auto;
+.todo-head__today[hidden] { display: none; }
+.todo-head__acts { display: flex; align-items: center; gap: 5px; flex: none; }
+.todo-head__btn {
   display: flex;
   align-items: center;
-  gap: 7px;
-  max-width: 48%;
-  overflow: hidden;
-}
-
-/* 우선순위 — 배지 상자가 아니라 자간을 벌린 작은 낙관(落款) */
-.todo-badge {
-  font-size: 9.5px;
-  letter-spacing: .14em;
-  white-space: nowrap;
-  color: var(--text-faint);
-}
-.todo-badge--p1 { color: var(--gold); }
-.todo-badge--p2 { color: var(--accent); font-weight: 700; }
-.todo-item.is-done .todo-badge { color: var(--text-faint); font-weight: 400; }
-
-.todo-tag {
+  gap: 6px;
+  padding: 4px 11px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
   font-size: 10.5px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  transition: color .16s;
-}
-.todo-tag:hover { color: var(--accent); }
-
-.todo-dday {
-  font-family: var(--font-serif);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: .02em;
-  color: var(--text-dim);
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  cursor: pointer;
   white-space: nowrap;
 }
-.todo-dday--none { color: var(--text-faint); font-family: var(--font); font-size: 10.5px; }
+.todo-head__btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+.todo-head__btn--gold { border-color: var(--gold); color: var(--gold-deep); }
+.todo-head__btn--gold:hover { background: var(--gold-ghost); }
+.todo-head__btn .icon { width: 11px; height: 11px; }
 
-.todo-repeat {
-  display: inline-flex;
+/* ---- 검색 — 시안 밖. 제목 입력칸의 밑줄을 빌렸다. ---- */
+.todo-search {
+  display: flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.todo-repeat .icon { width: .95em; height: .95em; }
-
-/* 「지금 할 일」 — 물어봤을 때만 나오는 답이라, 제안 줄보다 또렷해도 된다. */
-.todo-pick[hidden] { display: none; }
-
-.todo-pick {
-  padding: 10px 12px 11px;
-  border-top: 1px solid var(--rule);
+  gap: 9px;
+  margin-top: 12px;
+  padding: 6px 2px;
   border-bottom: 1px solid var(--rule);
-  background: var(--accent-wash);
+  color: var(--ink-faint);
 }
-.todo-pick__lead {
+.todo-search[hidden] { display: none; }
+.todo-search .icon { width: 12px; height: 12px; flex: none; }
+.todo-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.todo-search__input::placeholder { color: var(--ink-faint); }
+.todo-search__close {
+  flex: none;
+  background: transparent;
+  border: 0;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.todo-search__close:hover { color: var(--seal); }
+
+.todo-tagbar { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.todo-tagbar[hidden] { display: none; }
+
+/* ---- 비서의 한 줄 ---- */
+.todo-aide {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  margin-top: 14px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--gold);
+  border-radius: 1px;
+  background: var(--paper-2);
+}
+.todo-aide[hidden] { display: none; }
+.todo-aide__text {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.todo-aide__seal { color: var(--seal); }
+.todo-aide__acts {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.todo-aide__btn {
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
   font-size: 10px;
-  letter-spacing: .1em;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.todo-aide__btn[hidden] { display: none; }
+.todo-aide__btn:hover,
+.todo-aide__btn.is-on { border-color: var(--gold); color: var(--gold-deep); }
+
+/* 「지금 할 일」 — 시안 밖. 자세한 창(peek)의 구성을 빌렸다. */
+.todo-pick {
+  margin-top: 8px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--gold);
+  border-radius: 2px;
+  background: var(--paper);
+}
+.todo-pick[hidden] { display: none; }
+.todo-pick__lead {
+  font-size: 11.5px;
+  color: var(--ink-faint);
 }
 .todo-pick__title {
+  margin-top: 7px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 17px;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.todo-pick__why {
   margin-top: 4px;
-  font-family: var(--font-serif);
-  font-size: 15px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.todo-pick__why { margin-top: 3px; font-size: 11.5px; color: var(--text-dim); }
-
-.todo-pick__acts[hidden] { display: none; }
-.todo-pick__acts {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-  margin-top: 9px;
-}
-.todo-pick__next,
-.todo-pick__go {
-  padding: 4px 12px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
+  font-weight: 300;
   font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  transition: border-color .16s, color .16s, background .16s;
+  letter-spacing: .04em;
+  color: var(--seal);
 }
-.todo-pick__go { border-color: var(--accent); color: var(--accent); }
-.todo-pick__go:hover { background: var(--accent-soft); }
-.todo-pick__next:hover { border-color: var(--border-strong); color: var(--text); }
+.todo-pick__acts { display: flex; gap: 6px; margin-top: 12px; }
+.todo-pick__acts[hidden] { display: none; }
 
-/* 루틴 후보 제안 — 앱이 먼저 말을 거는 자리다.
-   목록보다 눈에 띄면 매일 보는 화면에서 잔소리가 되므로 조용하게 둔다. */
-.todo-hint[hidden] { display: none; }
-
+/* 루틴 후보 제안 — 시안 밖. 루틴 화면의 이끼색 안내 상자를 빌렸다. */
 .todo-hint {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
-  padding: 8px 12px 9px;
-  border-top: 1px solid var(--rule);
+  margin-top: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--moss);
+  border-radius: 1px;
+  background: var(--paper-2);
 }
-.todo-hint__text { flex: 1 1 12em; min-width: 0; }
-.todo-hint__lead {
-  display: block;
-  font-size: 10px;
-  letter-spacing: .1em;
-  color: var(--text-faint);
+.todo-hint[hidden] { display: none; }
+.todo-hint__text {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink-soft);
+  text-wrap: pretty;
 }
-.todo-hint__body {
-  display: block;
-  margin-top: 2px;
+.todo-hint__em { color: var(--ink); }
+.todo-hint__acts { margin-left: auto; flex: none; display: flex; gap: 5px; }
+.todo-hint__acts .scr-chip { padding: 4px 9px; font-size: 10px; }
+
+/* ============================================================ 오늘 — 섹션 */
+
+.todo-section[hidden] { display: none; }
+.todo-section__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 0 7px;
+}
+.todo-section__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--serif);
+  font-weight: 400;
   font-size: 11.5px;
-  color: var(--text);
+  letter-spacing: .18em;
+  color: var(--ink);
+}
+.todo-section__count {
+  font-family: var(--num);
+  opacity: .75;
+  font-feature-settings: 'tnum';
+}
+.todo-section__rule {
+  flex: 1;
+  height: 1px;
+  background: var(--rule-soft);
+}
+.todo-section__actions { display: flex; align-items: center; gap: 5px; flex: none; }
+.todo-section__actions:empty { display: none; }
+
+/* 지난 일 — 시안: space-between · gap 10 · padding 15px 0 7px, 인주색 제목 */
+.todo-section--overdue .todo-section__head {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 15px 0 7px;
+}
+.todo-section--overdue .todo-section__name { color: var(--seal); }
+.todo-section--overdue .todo-section__rule { display: none; }
+.todo-section__roll {
+  padding: 3px 9px;
+  background: transparent;
+  border: 1px solid var(--seal);
+  border-radius: 1px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--seal);
+  cursor: pointer;
+}
+.todo-section__roll:hover { background: color-mix(in srgb, #8d3a2c 9%, transparent); }
+
+/* 언젠가 — 시안: 제목 + 괘선 + 20×20 ＋. 건수는 적지 않는다. */
+.todo-section--inbox .todo-section__count { display: none; }
+.todo-section__plus {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.todo-section__plus:hover { border-color: var(--gold); color: var(--gold-deep); }
+
+/* ============================================================ 오늘 — 목록 줄 */
+
+.todo-list-wrap { position: relative; }
+.todo-list { list-style: none; }
+.todo-dropline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--gold);
+  pointer-events: none;
+  display: none;
+}
+
+.todo-item { outline-offset: -2px; }
+.todo-item.is-dragging { opacity: .45; }
+
+.todo-item__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+.todo-item__row:hover { background: var(--paper-2); }
+
+/* 지난 일 · 검색 — 시안: grid 14px 44px 1fr auto · gap 10 · padding 7px 2px */
+.todo-section--overdue .todo-item__row,
+.todo-section--search .todo-item__row {
+  display: grid;
+  grid-template-columns: 14px minmax(44px, max-content) 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.todo-check {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--ink-faint);
+  border-radius: 1px;
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+.todo-check:hover { border-color: var(--gold); }
+.todo-check.is-on { border-color: var(--gold); }
+.todo-section--overdue .todo-check { border-color: var(--seal); }
+
+.todo-when {
+  font-family: var(--num);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+}
+.todo-when[hidden] { display: none; }
+.todo-section--overdue .todo-when { color: var(--seal); }
+
+.todo-title {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.todo-hint__acts { display: flex; gap: 6px; flex: 0 0 auto; }
-.todo-hint__yes,
-.todo-hint__no {
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  transition: border-color .16s, color .16s, background .16s;
-}
-.todo-hint__yes { border-color: var(--accent); color: var(--accent); }
-.todo-hint__yes:hover { background: var(--accent-soft); }
-.todo-hint__no:hover { border-color: var(--border-strong); color: var(--text); }
+.todo-item.is-done .todo-title { color: var(--ink-faint); text-decoration: line-through; }
 
-/* 며칠째 이어 오는지 — 루틴에만 붙는다 */
-.todo-streak {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--success);
-}
-
-/* 여러 번 민 일 */
-.todo-defers {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--warn);
-}
-
-/* 매일 체크하는 장기 계획의 진행 — '3/14' */
-.todo-count {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
-}
-.todo-count.is-full { color: var(--success); }
-
-.todo-remind {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  color: var(--accent);
-  opacity: .8;
-}
-.todo-remind.is-done { color: var(--text-faint); opacity: .5; }
-.todo-remind .icon { width: .95em; height: .95em; }
-
-.todo-link {
-  display: inline-flex;
-  align-items: center;
-  font-size: 10.5px;
-  color: var(--text-faint);
-  transition: color .16s, transform .16s;
-}
-.todo-link:hover { color: var(--accent); transform: scale(1.12); }
-.todo-link .icon { width: 1em; height: 1em; }
-
-/* 행 위의 동작 버튼 — 커서를 올렸을 때만 나타난다.
- *
- * 18px 에 --text-faint 로 두었더니 나타나도 눈에 안 띄어서, 누를 수 있는 것인지
- * 알아보기 어려웠다. 크기를 키우고 색을 올리고, 버튼 자리에 옅은 판을 깔아
- * '여기를 누른다'가 보이게 한다.
- *
- * 미루기(→)와 삭제(✕) 는 같은 규격이라 한 곳에서 다룬다.
- */
-.todo-defer,
-.todo-del {
-  flex: 0 0 auto;
-  width: 24px; height: 24px;
-  display: grid; place-items: center;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-dim);
-  opacity: 0;
-  transition: opacity .14s, color .14s, background .14s;
-}
-.todo-item__row:hover .todo-defer,
-.todo-item__row:hover .todo-del { opacity: 1; }
-
-/* 키보드로 짚었을 때도 보여야 한다 */
-.todo-defer:focus-visible,
-.todo-del:focus-visible { opacity: 1; outline: 1.5px solid var(--accent); outline-offset: -1px; }
-
-.todo-defer:hover { background: var(--accent-soft); color: var(--accent); }
-.todo-del:hover   { background: var(--accent-soft); color: var(--danger); }
-
-.todo-defer .icon { width: 12px; height: 12px; }
-.todo-del .icon   { width: 12px; height: 12px; }
-.todo-defer[hidden] { display: none; }
-
-/* 드래그 놓을 자리 — 기본은 숨김.
-   JS 가 드래그 중에만 style.display 로 켠다(엘리먼트는 항상 DOM 에 있다). */
-.todo-dropline {
-  display: none;
-  position: absolute;
-  left: 14px; right: 14px;
-  height: 1.5px;
-  background: var(--accent);
-  pointer-events: none;
-}
-
-/* ------------------------------------------------------------ 상세 */
-
-.todo-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 4px 14px 14px 38px;
-  border-top: 1px dashed var(--rule);
-}
-
-.todo-detail__notes {
+.todo-title-input {
+  min-width: 0;
   width: 100%;
-  min-height: 46px;
-  padding: 7px 9px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--pane);
-  font-size: 12px;
-  line-height: 1.6;
-  resize: vertical;
-  outline: none;
-  transition: border-color .16s;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--ink);
 }
-.todo-detail__notes:focus { border-color: var(--accent); background: var(--bg-solid); }
 
-.todo-detail__row { display: flex; gap: 10px; flex-wrap: wrap; }
-.todo-detail__row > * { min-width: 0; }
-
-/* display 를 가진 요소는 [hidden] 짝 규칙이 있어야 한다.
-   UA 의 [hidden]{display:none} 은 여기 display 선언에 밀린다 —
-   el.hidden = true 를 걸어도 화면에는 그대로 보이고, 오류도 나지 않는다. */
-.todo-field[hidden] { display: none; }
-
-.todo-field {
+.todo-meta {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
   min-width: 0;
 }
-.todo-field__label {
-  font-size: 9.5px;
-  letter-spacing: .1em;
-  color: var(--text-faint);
+.todo-tag {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink-faint);
+  cursor: pointer;
+  white-space: nowrap;
 }
+.todo-tag:hover,
+.todo-tag.is-on { color: var(--gold-deep); }
+.todo-bang { font-family: var(--num); font-size: 13px; line-height: 1; color: var(--seal); }
+.todo-defers {
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--seal);
+  white-space: nowrap;
+}
+.todo-remind { display: grid; place-items: center; color: var(--ink-faint); }
+.todo-link {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+.todo-link:hover { color: var(--gold); }
 
-.todo-detail__date,
-.todo-detail__select,
-.todo-detail__tags,
-.todo-detail__link {
-  padding: 4px 7px;
+/* 커서를 올렸을 때만 오른쪽 끝에 — 내일로 · 삭제 */
+.todo-acts {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  gap: 4px;
+  padding-left: 8px;
+  background: var(--paper-2);
+}
+.todo-item__row:hover .todo-acts,
+.todo-item:focus-within .todo-acts { display: flex; }
+.todo-act {
+  padding: 2px 7px;
+  background: transparent;
   border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
+  border-radius: 1px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.todo-act[hidden] { display: none; }
+.todo-act:hover { border-color: var(--gold); color: var(--gold-deep); }
+.todo-act--seal:hover { border-color: var(--seal); color: var(--seal); }
+
+/* 언젠가 — 시안: 제목 + [3주째] …… [오늘][내일][주말]. 체크 칸은 없다. */
+.todo-section--inbox .todo-item__row { gap: 9px; }
+.todo-section--inbox .todo-check,
+.todo-section--inbox .todo-when,
+.todo-section--inbox .todo-tag,
+.todo-section--inbox .todo-bang,
+.todo-section--inbox .todo-remind { display: none; }
+.todo-section--inbox .todo-title { flex: 0 1 auto; font-size: 12.5px; }
+.todo-section--inbox .todo-meta { margin-left: auto; gap: 5px; }
+/* 언젠가의 오른쪽 끝은 오늘 · 내일 · 주말 자리다 — 삭제는 그 앞에 끼운다 */
+.todo-section--inbox .todo-acts {
+  position: static;
+  transform: none;
+  order: 2;
+  margin-left: auto;
+  padding-left: 0;
+  background: none;
+}
+.todo-section--inbox .todo-meta { order: 3; }
+.todo-section--inbox .todo-item__row:hover .todo-meta,
+.todo-section--inbox .todo-item:focus-within .todo-meta { margin-left: 0; }
+
+.todo-age {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-family: var(--num);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.todo-plan { display: flex; gap: 5px; }
+.todo-plan__btn {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-size: 10px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.todo-plan__btn:hover { border-color: var(--gold); color: var(--gold-deep); }
+
+/* 언젠가 목록 끝 점선 줄 */
+.todo-addline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 9px;
+  background: transparent;
+  border: 1px dashed var(--rule);
+  border-radius: 1px;
+  text-align: left;
+  cursor: pointer;
+}
+.todo-addline:hover { border-color: var(--gold); background: var(--paper-2); }
+.todo-addline__plus { font-size: 12px; line-height: 1; color: var(--gold-deep); }
+.todo-addline__text {
+  font-weight: 300;
   font-size: 11.5px;
-  outline: none;
-  transition: border-color .16s;
+  color: var(--ink-soft);
 }
-.todo-detail__date:focus,
-.todo-detail__select:focus,
-.todo-detail__tags:focus,
-.todo-detail__link:focus { border-color: var(--accent); }
-.todo-detail__link.is-invalid { border-color: var(--danger); }
-.todo-detail__date { font-family: var(--font-serif); font-variant-numeric: tabular-nums; }
-.todo-detail__date:disabled { opacity: .45; }
-
-.todo-detail__linkrow { display: flex; gap: 6px; }
-.todo-detail__link { flex: 1; min-width: 0; }
-
-.todo-detail__linkopen {
-  flex: 0 0 auto;
-  padding: 0 10px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 11px;
-  color: var(--text-dim);
-  transition: border-color .16s, color .16s;
-}
-.todo-detail__linkopen:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.todo-detail__linkopen:disabled { opacity: .4; cursor: default; }
-
-.todo-swatches { display: flex; gap: 5px; }
-.todo-swatch {
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  outline: 1px solid transparent;
-  outline-offset: 2px;
-  transition: outline-color .16s, transform .16s;
-}
-.todo-swatch:hover { transform: scale(1.15); }
-.todo-swatch.is-on,
-.todo-swatch.is-picked { outline-color: var(--text-dim); }
-
-/* ------------------------------------------------------------ 빈 상태 */
 
 .todo-empty {
-  padding: 20px 14px 24px;
-  text-align: center;
-}
-.todo-empty__title {
-  font-family: var(--font-serif);
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-bottom: 5px;
-}
-.todo-empty__desc {
-  font-size: 11.5px;
-  line-height: 1.7;
-  color: var(--text-faint);
-}
-.todo-example {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border: 1px dashed var(--rule);
-  border-radius: 2px;
-  text-align: left;
-}
-.todo-example__code {
+  padding: 12px 2px;
+  font-weight: 300;
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--ink-faint);
 }
-.todo-example__desc { font-size: 10.5px; color: var(--text-faint); }
 
-/* ============================================================ 일정 추가 폼
-   문법을 몰라도 누르기만 해서 일정을 만드는 기본 경로.
-   선택지는 전부 눈에 보이되, 자주 안 쓰는 것은 '더보기'로 접어 둔다. */
+/* ============================================================ 항목 상세 */
 
-.cmp {
-  flex: 0 0 auto;
+/* 시안: 값 줄들은 본문 flex(gap 17) 의 한 칸씩이다 */
+.dt-rows { display: flex; flex-direction: column; gap: 17px; }
+.dt-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.dt-row[hidden] { display: none; }
+.dt-row.is-action { cursor: pointer; }
+.dt-row.is-action:hover .dt-row__value { color: var(--gold-deep) !important; }
+.dt-row--first { border-top: 1px solid var(--rule-soft); }
+.dt-row--last { padding: 0 0 9px; }
+.dt-row__key {
+  font-weight: 300;
+  font-size: 9.5px;
+  letter-spacing: .16em;
+  color: var(--ink-faint);
+}
+.dt-row__val {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 14px 12px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--pane);
-}
-.cmp[hidden] { display: none; }
-
-/*
- * hidden 속성은 UA 스타일시트의 display:none 으로 동작한다.
- * 그런데 여기 요소들은 저마다 display:flex 를 갖고 있어서 그 기본값을 이겨 버린다.
- * 결과적으로 el.hidden = true 를 걸어도 화면에서는 그대로 보인다 — 아무 오류도 안 나서
- * 코드만 읽어서는 알 수 없다. (실제로 '루틴' 폼에서 날짜 칸이 계속 보였다)
- * hidden 을 쓰는 클래스는 반드시 짝이 되는 규칙을 둔다.
- */
-.cmp-field[hidden],
-.cmp-when[hidden],
-.cmp-when__row[hidden],
-.cmp-morebtn[hidden],
-.cmp-row2[hidden] { display: none; }
-
-/*
- * 폼이 열려 있는 동안에는 폼이 패널을 통째로 쓰고 목록은 접는다.
- *
- * 예전에는 목록을 물러나게 하는 규칙에 쉼표가 남아 있어(빠른입력 블록을 지울 때
- * 생긴 흔적) 그 선언이 통째로 사라져 있었다. 그래서 목록이 자리를 그대로 차지하고
- * 폼은 남은 127px 안으로 눌려, 341px 짜리 내용이 이중 스크롤에 갇혔다.
- * 한눈에 안 들어온다는 말이 나온 진짜 이유였다.
- */
-.todo-panel:has(.cmp:not([hidden])) .cmp {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-.todo-panel:has(.cmp:not([hidden])) .todo-body { display: none; }
-
-.cmp-head__title {
-  font-family: var(--font-serif);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .2em;
-  color: var(--text-faint);
-}
-
-/* 제목 — 폼의 주인공. 밑줄 하나로 받는다. */
-.cmp-title {
-  width: 100%;
-  padding: 4px 0 8px;
-  border: none;
-  border-bottom: 1.5px solid var(--border-strong);
-  background: transparent;
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: .01em;
-  outline: none;
-  transition: border-color .16s;
-}
-.cmp-title::placeholder { color: var(--text-faint); font-weight: 400; }
-.cmp-title:focus { border-bottom-color: var(--accent); }
-
-.cmp-field { display: flex; flex-direction: column; gap: 6px; }
-
-.cmp-field__label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .14em;
-  color: var(--text-faint);
-}
-
-/* ------------------------------------------------------------ 칩 */
-
-.cmp-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-
-.cmp-chip {
-  padding: 5px 12px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 11.5px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  transition: border-color .16s, color .16s, background .16s;
-}
-.cmp-chip:hover { border-color: var(--border-strong); color: var(--text); }
-/* 고른 칩 = 금박 테두리 + 금박 글자 + 아주 옅은 금박 면 (핸드오프) */
-.cmp-chip.is-on {
-  background: var(--gold-ghost);
-  border-color: var(--gold);
-  color: var(--gold-deep);
-  font-weight: 400;
-}
-
-/* 두 항목을 한 줄에 — 색·중요도처럼 각각 한 줄이 아까운 것들 */
-.cmp-row2 {
-  display: flex;
-  gap: 18px;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
-.cmp-row2 > .cmp-field { flex: 0 1 auto; }
+.dt-row__value {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-row__value.is-editing { flex: 1 1 auto; overflow: visible; }
+.dt-row__value .scr-date__text { font-size: 12.5px; }
+.dt-row__hint {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink-faint);
+}
+.dt-row__hint:empty { display: none; }
+.dt-row__hint.is-link { cursor: pointer; }
+.dt-row__hint.is-link:hover { color: var(--gold-deep); }
+.dt-row__input {
+  width: 100%;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.dt-row__input.num { font-family: var(--num); }
+/* 색 줄 아래에 펼쳐지는 안료 여섯 */
+.dt-swatches { display: flex; gap: 8px; flex-basis: 100%; padding-top: 4px; }
+.dt-swatches[hidden] { display: none; }
+.dt-acts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
 
-/* 길이 칩 + 요약 — 둘 다 거들어 주는 정보라 한 줄에 나란히 */
-.cmp-when__tail {
+/* ============================================================ 일정 추가 · 루틴 */
+
+.cmp-tokens {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding-top: 7px;
-  border-top: 1px solid var(--rule);
+  gap: 6px;
+  margin-top: 8px;
 }
-.cmp-when__tail .cmp-chips { flex: 0 0 auto; }
-.cmp-when__tail .cmp-when__summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding-top: 0;
-  border-top: none;
+.cmp-tokens[hidden] { display: none; }
+.cmp-tokens__list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.cmp-token {
+  padding: 2px 8px;
+  border: 1px solid var(--gold);
+  border-radius: 1px;
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--gold-deep);
+  white-space: nowrap;
+}
+.cmp-tokens__hint {
+  margin-left: auto;
+  flex: none;
+  font-weight: 300;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.cmp-tokens__help {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+.cmp-tokens__help:hover { color: var(--gold); }
+
+.cmp-whenrow { display: flex; align-items: center; gap: 6px; }
+.cmp-whenrow .scr-chips { gap: 6px; flex-wrap: nowrap; }
+.cmp-datepick {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+}
+.cmp-datepick .scr-date__text { font-size: 12.5px; }
+.cmp-datepick .icon { width: 12px; height: 12px; color: var(--ink-soft); }
+.cmp-datepick:hover { border-color: var(--gold); }
+
+.cmp-len { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.cmp-len[hidden] { display: none; }
+.cmp-len .scr-chips { gap: 7px; }
+.cmp-len .scr-chips.is-disabled { opacity: .45; }
+.cmp-len__rule { flex: 1; height: 1px; background: var(--rule-soft); }
+.cmp-len__summary {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--gold-deep);
+  font-feature-settings: 'tnum';
   text-align: right;
 }
 
-/* --- 매주 반복의 요일 --- */
-.cmp-weekdays { display: flex; gap: 4px; }
-
-.cmp-weekday {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: none;
-  font-size: 11px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: border-color .14s, background .14s, color .14s;
+.cmp-style {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: end;
 }
-.cmp-weekday:hover { border-color: var(--border-strong); color: var(--text); }
-.cmp-weekday.is-on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-color);
-  font-weight: 700;
-}
+.cmp-style.is-single { grid-template-columns: 1fr; }
 
-/* 루틴 폼 — 약속용 칸을 걷어낸 상태.
-   남는 것은 이름 · 주기 · 요일 · 색 · 알림 · 태그뿐이라 한 화면에 여유 있게 들어온다. */
-.cmp--routine .cmp-more {
-  /* 주기가 본문으로 나왔으므로 '더보기' 상자의 들여쓰기·구분선을 없앤다 */
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-/* --- 루틴 토글 --- */
-.cmp-routine {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px 5px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: none;
-  font-size: 11.5px;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: border-color .14s, color .14s;
-}
-.cmp-routine__mark {
-  width: 13px;
-  height: 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: 2px;
-  transition: background .14s, border-color .14s;
-}
-.cmp-routine:hover { border-color: var(--accent); color: var(--accent); }
-.cmp-routine.is-on { border-color: var(--accent); color: var(--accent); }
-.cmp-routine.is-on .cmp-routine__mark {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-/* --- 제목칸이 걷어간 토큰 --- */
-/* '@내일' 을 치면 그 자리에서 날짜칸으로 옮겨 간다. 무엇이 옮겨졌는지 잠깐 보여 준다. */
-.cmp-consumed {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-height: 0;
-}
-.cmp-consumed:empty { display: none; }
-
-.cmp-consumed__chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 2px 7px;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  background: var(--accent-soft);
-  font-size: 10.5px;
-  color: var(--accent);
-  animation: cmp-consumed-in .18s ease-out;
-}
-.cmp-consumed__chip em {
-  font-style: normal;
-  font-size: 9.5px;
-  letter-spacing: .1em;
-  opacity: .75;
-}
-@keyframes cmp-consumed-in {
-  from { opacity: 0; transform: translateY(-3px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* ------------------------------------------------------------ 언제(날짜·시각) */
-/*
- * 시작과 종료가 늘 나란히 있고, 둘이 같으면 하루짜리다.
- * 모드가 없으므로 '펼침' 상태를 나타낼 장식도 필요 없다 — 괘선 하나로 묶기만 한다.
- */
-
-.cmp-when {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border-left: 2px solid var(--accent-soft);
-  background: var(--bg-solid);
-}
-
-.cmp-when__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* '시작' / '종료' — 두 줄의 폭을 맞춰 날짜 칸이 세로로 정렬되게 한다 */
-.cmp-when__key {
-  flex: 0 0 auto;
-  width: 2.4em;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .14em;
-  color: var(--text-faint);
-}
-
-.cmp-date,
-.cmp-time {
-  padding: 5px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  color: var(--text);
-  font-family: var(--font-serif);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  outline: none;
-  transition: border-color .16s, opacity .16s;
-}
-/*
- * 날짜·시각 칸은 네이티브 컨트롤이라 좁아지면 내용을 스스로 잘라 낸다.
- * 잘려도 overflow 로 보고되지 않아 코드로는 알 수 없으므로, 최소 폭을 못박고
- * 그래도 모자라면 줄을 바꾼다. 좁은 위젯에서 '2026-08-22' 가 '2026-0…' 이 되면
- * 무슨 날짜인지 읽을 수 없다.
- */
-.cmp-when__row { flex-wrap: wrap; }
-.cmp-date { flex: 1 1 9em; min-width: 8.6em; }
-.cmp-time { flex: 0 1 auto; width: 9.8em; min-width: 8.4em; }
-.cmp-date:focus,
-.cmp-time:focus { border-color: var(--accent); }
-
-/* 잠긴 칸은 숨기지 않고 흐리게 둔다 — 사라지면 왜 못 고치는지 알 수 없다 */
-.cmp-date:disabled,
-.cmp-time:disabled { opacity: .38; cursor: default; }
-
-.cmp-when .cmp-chips.is-disabled { opacity: .38; }
-
-/*
- * 만들어질 일정을 그대로 되읽어 주는 줄.
- * 이 한 줄이 '시작=종료면 하루' 같은 규칙의 설명을 대신한다.
- */
-.cmp-when__summary {
-  margin-top: 2px;
-  padding-top: 8px;
-  border-top: 1px solid var(--rule);
-  font-family: var(--font-serif);
-  font-size: 12px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.cmp-when__summary:empty { display: none; }
-
-/* ------------------------------------------------------------ 색 */
-
-.cmp-swatches { display: flex; gap: 8px; }
-
-.cmp-swatch {
-  width: 22px; height: 22px;
-  border-radius: 50%;
-  background: var(--sw);
-  outline: 1.5px solid transparent;
-  outline-offset: 2px;
-  transition: outline-color .16s, transform .16s;
-}
-.cmp-swatch:hover { transform: scale(1.12); }
-.cmp-swatch.is-on { outline-color: var(--text-dim); }
-
-/* ------------------------------------------------------------ 더보기 */
-
-.cmp-morebtn {
+/* 더보기 · 반복 · 알림 · 태그 · 링크 */
+.cmp-more {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 0;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-  font-size: 11.5px;
-  color: var(--text-faint);
-  transition: color .16s;
-}
-.cmp-morebtn:hover { color: var(--text-dim); }
-.cmp-morebtn .icon { width: .85em; height: .85em; transition: transform .2s; }
-.cmp-morebtn.is-on { color: var(--text-dim); }
-.cmp-morebtn.is-on .icon { transform: rotate(90deg); }
-
-.cmp-more {
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
-}
-.cmp-more[hidden] { display: none; }
-
-.cmp-input {
-  width: 100%;
-  padding: 6px 9px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  font-size: 12px;
-  outline: none;
-  transition: border-color .16s;
-}
-.cmp-input::placeholder { color: var(--text-faint); }
-.cmp-input:focus { border-color: var(--accent); }
-
-.cmp-suggest { display: flex; flex-wrap: wrap; gap: 4px 9px; }
-.cmp-suggest:empty { display: none; }
-.cmp-suggest__tag {
+  padding: 9px 2px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  border-bottom: 1px solid var(--rule-soft);
   font-size: 11px;
-  color: var(--text-faint);
-  transition: color .16s;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.cmp-suggest__tag:hover { color: var(--accent); }
+.cmp-more:hover { color: var(--gold-deep); }
+.cmp-more .icon { width: 12px; height: 12px; }
+.cmp-more.is-on .icon { transform: rotate(180deg); }
+.cmp-morebox { display: flex; flex-direction: column; gap: 17px; }
+.cmp-morebox[hidden] { display: none; }
+.cmp-morebox > [hidden] { display: none; }
+.cmp-repeatrow { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 
-/* ------------------------------------------------------------ 하단 */
+/* 요일 — 33×33 칸, 월요일부터 */
+.cmp-dows { display: flex; gap: 5px; }
+.cmp-dow {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.cmp-dow.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
 
-/* 주 동작은 스크롤 밖으로 밀리면 안 된다 — 폼 아래에 붙여 둔다 */
-.cmp-foot {
-  position: sticky;
-  bottom: -16px;
-  z-index: 1;
+/* 루틴 시각 — [시각 없음] [19:30] [1시간] */
+.cmp-rtimerow { display: flex; align-items: center; gap: 5px; }
+.cmp-rtime {
+  flex: none;
+  width: 66px;
+  font-family: var(--num);
+  font-size: 12px;
+  letter-spacing: .03em;
+  text-align: center;
+  color: var(--ink-soft);
+  font-feature-settings: 'tnum';
+  cursor: text;
+}
+.cmp-rtime.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
+.cmp-rlen {
+  padding: 6px 11px;
+  border-style: dashed;
+  font-family: var(--num);
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-feature-settings: 'tnum';
+}
+
+.cmp-note {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 -14px -14px;
-  padding: 10px 14px 14px;
-  background: linear-gradient(to bottom, transparent, var(--bg-solid) 35%);
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--moss);
+  border-radius: 1px;
+  background: var(--paper-2);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
+
+/* 태그 — '#건강' 칩 + 점선 ＋ */
+.cmp-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.cmp-tags__list { display: contents; }
+.cmp-tag {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--gold);
+  border-radius: 1px;
+  font-size: 10.5px;
+  color: var(--gold-deep);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cmp-tag[hidden] { display: none; }
+.cmp-tag:hover { text-decoration: line-through; }
+.cmp-tag--add { border: 1px dashed var(--rule); color: var(--ink-faint); }
+.cmp-tag--add:hover { text-decoration: none; border-color: var(--gold); color: var(--gold-deep); }
+.cmp-tag--ghost { border-color: var(--rule); color: var(--ink-faint); }
+.cmp-tag--ghost:hover { text-decoration: none; border-color: var(--gold); color: var(--gold-deep); }
+.cmp-tag__input {
+  width: 96px;
+  padding: 2px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  font-size: 10.5px;
+  color: var(--ink);
+}
+.cmp-tag__input[hidden] { display: none; }
 
 .cmp-err {
-  flex: 1;
-  font-size: 11px;
-  color: var(--danger);
+  font-weight: 300;
+  font-size: 10.5px;
+  color: var(--seal);
 }
 .cmp-err[hidden] { display: none; }
-.cmp-err[hidden] + .cmp-btn--ghost { margin-left: auto; }
 
-.cmp-btn {
-  padding: 8px 20px;
-  border-radius: 2px;
-  font-size: 12px;
-  letter-spacing: .04em;
-  transition: background .16s, color .16s, border-color .16s, filter .16s;
-}
-.cmp-btn--primary {
-  background: var(--accent);
-  color: var(--on-color);
-  font-weight: 600;
-}
-.cmp-btn--primary:hover { filter: brightness(1.12); }
-.cmp-btn--ghost {
-  border: 1px solid var(--rule);
-  color: var(--text-dim);
-}
-.cmp-btn--ghost:hover { color: var(--text); border-color: var(--border-strong); }
-
-/* 빈 상태의 주 동작 — 처음 쓰는 사람이 다음에 뭘 해야 할지 바로 보이게 */
-.todo-empty__ctas {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.todo-empty__cta--ghost {
-  border-color: var(--rule);
-  color: var(--text-dim);
-}
-.todo-empty__cta--ghost:hover { border-color: var(--accent); color: var(--accent); }
-
-.todo-empty__cta {
-  margin-top: 14px;
-  padding: 8px 18px;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  font-size: 12px;
-  letter-spacing: .04em;
-  color: var(--accent);
-  transition: background .16s, color .16s;
-}
-.todo-empty__cta:hover { background: var(--accent); color: var(--on-color); }
-
-/* D-Day 고정 */
-/* 상세 아래쪽 동작 줄. display:flex 라 [hidden] 짝이 없으면 감춰지지 않는다. */
-.todo-detail__row[hidden] { display: none; }
-
-/* '마감까지 계획 세우기' · '반복 전체 삭제' — 고정 버튼과 한 줄에 서므로 생김새를 맞춘다.
-   그동안 이 버튼들은 스타일이 아예 없어서 맨 글자로 놓여 있었다. */
-.todo-detail__series {
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  transition: border-color .16s, color .16s;
-}
-.todo-detail__series:hover { border-color: var(--border-strong); color: var(--text); }
-
-.todo-detail__pin {
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 11px;
-  color: var(--text-faint);
-  transition: border-color .16s, color .16s;
-}
-.todo-detail__pin:hover { border-color: var(--accent); color: var(--accent); }
-.todo-detail__pin.is-on { border-color: var(--accent); color: var(--accent); }
-
-/* 펼친 항목의 제목은 그대로 입력칸이 된다.
-   폼처럼 보이지 않게 글자 크기·굵기를 행의 제목과 똑같이 맞추고,
-   고칠 수 있다는 것만 옅은 밑줄로 알린다. */
-.todo-title--edit {
-  flex: 1;
-  min-width: 0;
-  padding: 1px 4px;
-  border: none;
-  border-bottom: 1px dashed var(--border-strong);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  outline: none;
-  transition: border-color .16s, background .16s;
-}
-.todo-title--edit:hover { border-bottom-color: var(--accent); }
-.todo-title--edit:focus {
-  border-bottom-style: solid;
-  border-bottom-color: var(--accent);
-  background: var(--accent-soft);
-}
-.todo-title--edit::placeholder { color: var(--text-faint); }
-
-/* 검색·지난 일에 붙는 날짜 — 다른 달의 일정이 섞이는 자리라 언제인지 함께 보여 준다 */
-.todo-when {
-  flex: 0 0 auto;
-  font-family: var(--font-serif);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-  letter-spacing: .01em;
-}
-
-/* 루틴 — 달력에 그리지 않는 반복 */
-.todo-section--routine .todo-section__title { letter-spacing: .16em; }
-
-/* ------------------------------------------------------------ 언젠가 */
-/*
- * '언젠가' 는 넣기만 하고 안 나오는 자리가 되기 쉽다.
- * 꺼내 쓰는 버튼을 항목 위에 바로 둬서, 적어 둘 때만큼 가볍게 날짜를 주게 한다.
- */
-
-.todo-plan {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 3px;
-  opacity: 0;
-  transition: opacity .14s;
-}
-.todo-item__row:hover .todo-plan,
-.todo-item:focus-within .todo-plan { opacity: 1; }
-
-.todo-plan__btn {
-  padding: 2px 7px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  font-size: 10px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color .14s, color .14s, background .14s;
-}
-.todo-plan__btn:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-/* 오래 묵은 항목 — 다그치지 않되 눈에는 띄게 */
-.todo-age {
-  flex: 0 0 auto;
-  font-family: var(--font-serif);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
-  letter-spacing: .02em;
-}
-
-/* ------------------------------------------------------------ 집중 모드 */
-/*
- * 하나를 펼치면 나머지는 접는다. 좁은 패널에서 상세와 목록이 자리를 다투면
- * 둘 다 못 쓰게 되므로, 고치는 동안에는 상세에 패널을 통째로 내준다.
- */
-
-/*
- * 스크롤은 평소처럼 .todo-body 가 맡는다.
- * 한때 body 를 overflow:hidden 으로 막고 안쪽 목록만 스크롤하게 했는데,
- * .todo-body 가 flex 컨테이너가 아니라 안쪽 flex 지정이 전부 무효였고
- * 결과적으로 스크롤이 통째로 사라졌다. 머리글만 sticky 로 붙여 두면 충분하다.
- */
-
-/* 집중 모드의 머리글은 '여기서 나가는 길' 이기도 하다.
-   다른 섹션 머리글처럼 옅게 두면 갇힌 느낌이 되므로 띠를 둘러 분명히 한다. */
-/* 목록이 통째로 바뀌는 순간이라 살짝 밀어 올려 들어오게 한다 —
-   무엇이 무엇으로 바뀌었는지 눈이 따라갈 시간을 준다. */
-.todo-panel.is-focusmode .todo-section--focus {
-  animation: todo-focus-in .2s cubic-bezier(.2,.7,.3,1);
-}
-@keyframes todo-focus-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* 애니메이션을 원치 않는 설정이면 전부 끈다 */
-@media (prefers-reduced-motion: reduce) {
-  .todo-panel.is-focusmode .todo-section--focus { animation: none; }
-}
-
-/* 머리글은 '여기서 나가는 길' 이라 스크롤해도 늘 보여야 한다.
-   accent-soft 는 반투명이므로 아래 글자가 비치지 않도록 불투명 배경 위에 얹는다. */
-.todo-panel.is-focusmode .todo-section--focus .todo-section__head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  border-bottom: 1px solid var(--rule);
-  background:
-    linear-gradient(var(--accent-soft), var(--accent-soft)),
-    var(--bg-solid);
-  padding-top: 7px;
-  padding-bottom: 7px;
-}
-.todo-panel.is-focusmode .todo-section--focus .todo-section__title { color: var(--accent); }
-.todo-panel.is-focusmode .todo-section--focus .todo-section__count { display: none; }
-/* 집중 모드에서는 접기 캐럿이 할 일이 없다 — 돌아가는 길만 남긴다 */
-.todo-panel.is-focusmode .todo-section--focus .todo-section__caret { display: none; }
-
-.todo-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 10px 4px 7px;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  font-size: 11px;
-  color: var(--accent);
-  white-space: nowrap;
-  transition: border-color .16s, color .16s;
-}
-.todo-back:hover { background: var(--accent); color: var(--on-color); }
-.todo-back .icon { width: 10px; height: 10px; }
-
-/* ------------------------------------------------------------ 지난 일 */
-/*
- * 기한이 지났는데 안 끝난 일. 다그치는 붉은 경고가 아니라
- * '여기 남아 있다'고 조용히 알리는 정도의 강조로 둔다.
- */
-
-/* 지난 일 — 목록 위에 늘 붙어 있는 넓은 면이다.
-   붉은 세로줄이 이미 '밀렸다'를 말하므로 바탕까지 진할 이유가 없다. */
-.todo-section--overdue {
-  border-left: 2px solid var(--accent);
-  background: var(--accent-wash);
-}
-.todo-section--overdue .todo-section__title { color: var(--accent); }
-
-.todo-rollup {
-  padding: 3px 9px;
-  border: 1px solid var(--accent);
-  border-radius: 2px;
-  font-size: 10.5px;
-  color: var(--accent);
-  white-space: nowrap;
-  transition: background .16s, color .16s;
-}
-.todo-rollup:hover { background: var(--accent); color: var(--on-color); }
-
-/* ------------------------------------------------------------ 항목의 시각 */
-
-.todo-time {
-  flex: 0 0 auto;
-  font-family: var(--font-serif);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-  letter-spacing: .02em;
-}
-.todo-time[hidden] { display: none; }
-.todo-item.is-done .todo-time { opacity: .4; }
-
-/* ------------------------------------------------------------ 상세: 언제 */
-/* 추가 폼(.cmp-when)과 같은 배치 — 만들 때와 고칠 때가 달라선 안 된다 */
-
-.todo-detail__when {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.todo-detail__whenrow[hidden] { display: none; }
-
-.todo-detail__whenrow {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-.todo-detail__whenrow .todo-detail__date { flex: 1 1 9em; min-width: 8.4em; }
-
-.todo-detail__whenkey {
-  flex: 0 0 auto;
-  width: 2.4em;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .14em;
-  color: var(--text-faint);
-}
-
-.todo-detail__time {
-  flex: 0 1 auto;
-  width: 9.8em;   /* '오후 03:00' + 시계 아이콘이 잘리지 않는 최소 폭 */
-  min-width: 8.2em;
-  padding: 4px 6px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: var(--bg-solid);
-  color: var(--text);
-  font-family: var(--font-serif);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  outline: none;
-  transition: border-color .16s, opacity .16s;
-}
-.todo-detail__time:focus { border-color: var(--accent); }
-.todo-detail__time:disabled,
-.todo-detail__date:disabled { opacity: .38; cursor: default; }
-
-.todo-detail__whensummary {
-  padding-top: 5px;
-  font-family: var(--font-serif);
-  font-size: 11.5px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-.todo-detail__whensummary:empty { display: none; }
+.cmp-foot { display: flex; gap: 8px; justify-content: flex-end; }
