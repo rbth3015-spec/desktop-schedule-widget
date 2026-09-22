@@ -39,13 +39,19 @@ const holidays = require('./holidays');
 const ICON_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAiklEQVR42mNgGCrgPxKgptpRB+AF9vUP/sMwMkAWx4bR1VJkMTUcAMNkW04tBxB0BLmGkqqWLAdQEw+o5TgdMeqAAXdA9Nz//+mJRx1AlAP+////GhlTQ27UAUPLAaO5AF9QftiiiYLpngaGnwOwOYJWDsDZIhqwBEhPRxDVMh5Qy2nhEIZRgAcAAETsQEVfTxQCAAAAAElFTkSuQmCC';
 
-/** 크기 프리셋 (CONTRACT 의 snapPreset 키) */
+/**
+ * 크기 프리셋 (CONTRACT 의 snapPreset 키).
+ * 시안의 '창 크기' 는 좁게 / 넓게 두 가지다. 넓게는 시안의 표지 폭(1312px)에
+ * 창 가장자리의 투명 여백(리사이즈를 잡는 자리, 좌우 12px 씩)을 더한 값이고,
+ * 높이는 여섯 주짜리 달까지 스크롤 없이 들어간다(화면이 작으면 작업 영역에 맞춘다).
+ */
 const PRESETS = {
-  compact: { width: 720, height: 460, label: '컴팩트 (720×460)' },
-  normal: { width: 980, height: 620, label: '기본 (980×620)' },
-  wide: { width: 1280, height: 680, label: '와이드 (1280×680)' },
-  tall: { width: 640, height: 900, label: '세로형 (640×900)' },
+  narrow: { width: 1000, height: 900, label: '좁게 (1000×900)' },
+  wide: { width: 1336, height: 950, label: '넓게 (1336×950)' },
 };
+/** 예전 프리셋 키 — 저장해 둔 값이나 오래된 호출이 와도 가까운 쪽으로 맞춘다 */
+const PRESET_ALIASES = { compact: 'narrow', normal: 'narrow', tall: 'narrow' };
+const presetOf = (key) => PRESETS[key] || PRESETS[PRESET_ALIASES[key]] || null;
 
 /** 클릭 통과 모드를 풀 수 있는 탈출용 단축키 후보 (앞에서부터 등록 시도) */
 const ESCAPE_ACCELERATORS = ['Alt+Shift+S', 'Control+Alt+S', 'Control+Shift+F12'];
@@ -246,7 +252,7 @@ function resizeTo(width, height) {
 }
 
 function applyPreset(preset) {
-  const p = PRESETS[preset];
+  const p = presetOf(preset);
   if (!p) return;
   resizeTo(p.width, p.height);
   showWidget();
@@ -309,6 +315,8 @@ let traySummary = { today: 0, overdue: 0, items: [] };
 
 /** 트레이 툴팁 — 마우스만 올려도 오늘 몫이 보인다 */
 function trayTooltip() {
+  // 설정에서 '트레이 요약' 을 끄면 이름만 말한다
+  if (traySummary.off) return '일정관리 비서';
   const parts = [];
   if (traySummary.today) parts.push(`오늘 ${traySummary.today}건`);
   if (traySummary.overdue) parts.push(`밀린 일 ${traySummary.overdue}건`);
@@ -318,6 +326,12 @@ function trayTooltip() {
 /** 트레이 메뉴 맨 위에 오는 오늘 일정 몇 줄 */
 function todayMenuItems() {
   const out = [];
+
+  if (traySummary.off) {
+    out.push({ label: '오늘 브리핑 보기', click: () => sendMenuAction('brief') });
+    out.push({ type: 'separator' });
+    return out;
+  }
 
   if (traySummary.overdue) {
     out.push({
@@ -501,7 +515,7 @@ function registerIpc() {
   ipcMain.on('window:setSize', (_e, width, height) => resizeTo(width, height));
 
   ipcMain.on('window:snapPreset', (_e, preset) => {
-    const p = PRESETS[preset];
+    const p = presetOf(preset);
     if (!p) return;
     resizeTo(p.width, p.height);
   });

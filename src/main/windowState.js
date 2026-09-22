@@ -13,8 +13,8 @@ function getScreen() {
 const FILE_NAME = 'window-state.json';
 const SAVE_DEBOUNCE_MS = 400;
 
-const DEFAULT_WIDTH = 980;
-const DEFAULT_HEIGHT = 620;
+const DEFAULT_WIDTH = 1336;   // 시안의 표지 폭 1312 + 창 가장자리 투명 여백(좌우 12)
+const DEFAULT_HEIGHT = 900;
 const MIN_WIDTH = 560;
 const MIN_HEIGHT = 380;
 

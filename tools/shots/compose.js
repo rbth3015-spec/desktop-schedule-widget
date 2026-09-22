@@ -1,12 +1,13 @@
-// 일정 추가 폼을 열고 시각까지 채운 상태. capture.js --exec 로 쓴다.
+// 일정 추가 화면 — 한 줄 문법이 칩으로 옮겨 간 상태. capture.js --exec 로 쓴다.
 (() => {
-  document.querySelector('.todo-add').click();
-  const rows = document.querySelectorAll('.cmp-when__row');
+  document.querySelector('.todo-head__btn--gold').click();
+  const t = document.querySelector('.cmp .scr-titlein');
+  t.value = '분기 리뷰 미팅 @내일 #업무 ';
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+  const times = document.querySelectorAll('.cmp .scr-time');
   const fire = (el, v) => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
-  document.querySelector('.cmp-title').value = '분기 리뷰 미팅';
-  fire(rows[0].querySelector('.cmp-time'), '15:00');
-  fire(rows[1].querySelector('.cmp-time'), '16:30');
-  // 요약 줄('… · 15:00–16:30')이 화면에 들어오도록
-  document.querySelector('.cmp-when__summary').scrollIntoView({ block: 'center' });
-  return document.querySelector('.cmp-when__summary').textContent;
+  fire(times[0], '15:00');
+  fire(times[1], '16:30');
+  document.activeElement?.blur();
+  return document.querySelector('.cmp-len__summary').textContent;
 })()

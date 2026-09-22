@@ -20,59 +20,20 @@ const KIND_LABELS = { url: '웹주소', script: '스크립트', app: '앱', fold
 /** 사용자가 아이콘을 지정하지 않았을 때 쓰는 기본 선 아이콘 */
 const KIND_ICONS = { url: 'globe', script: 'terminal', app: 'plus', folder: 'folder' };
 /**
- * 도크 전체의 판 색을 정한다.
- *
- * 기본은 이름 해시라 같은 이름이면 늘 같은 색이지만, 안료가 여섯 개뿐이라
- * 서넛만 있어도 옆자리와 색이 겹친다. 겹치면 나란히 놓였을 때 구분이 안 되므로
- * **바로 앞 항목과 같은 색일 때만** 다음 안료로 한 칸 민다.
- * 충돌이 없으면 순서를 바꿔도 색이 그대로다.
+ * 칸에 새길 글자 — 시안(핸드오프 '퀵 런처')의 표기 그대로.
+ *   Notion → N · Figma → F · 주간보고.py → py · 작업 폴더 → ／
+ * 스크립트는 이름보다 종류(확장자)가 먼저 읽혀야 하고, 폴더는 기호 하나로 충분하다.
  */
-function assignPigments(items, palette) {
-  const keys = Object.keys(palette);
-  const out = new Map();
-  let prev = null;
-
-  for (const item of items) {
-    const base = keys.indexOf(pigmentKeyFor(item.label || item.target || item.id, keys));
-    let idx = base;
-    if (keys[idx] === prev) idx = (idx + 1) % keys.length;
-    prev = keys[idx];
-    out.set(item.id, palette[keys[idx]]);
+function markOf(item) {
+  if (item.kind === 'folder') return '／';
+  if (item.kind === 'script') {
+    const m = /\.([A-Za-z0-9]{1,4})$/.exec(String(item.target || '').trim());
+    if (m) return m[1].toLowerCase();
   }
-  return out;
-}
-
-/** 이름 → 안료 키 (해시). 같은 이름이면 언제나 같은 값. */
-function pigmentKeyFor(text, keys) {
-  let h = 0;
-  for (const ch of String(text || '')) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
-  return keys[h % keys.length];
-}
-
-/**
- * 이니셜 — 판 위에 새길 글자.
- *
- * 한 글자만 새기면 '주간 백업'도 '주소록'도 똑같이 '주' 라 무엇인지 알 수 없다.
- * 두 글자까지 보여 주면 도크만 훑어도 구분이 된다.
- * 여러 낱말이면 각 낱말의 첫 글자를 딴다('주간 백업' → '주백' 이 아니라 '주간' 이
- * 더 읽히므로, 첫 낱말이 두 글자 이상이면 그 앞 두 글자를 쓴다).
- */
-function monogramOf(label) {
-  const t = String(label || '').trim();
-  if (!t) return '·';
-
-  const words = t.split(/\s+/).filter(Boolean);
-  const first = [...words[0]];
-
-  // 라틴/숫자는 대문자 두 글자
-  if (/[A-Za-z0-9]/.test(first[0])) {
-    if (first.length >= 2) return first.slice(0, 2).join('').toUpperCase();
-    return (first[0] + (words[1]?.[0] || '')).toUpperCase();
-  }
-
-  // 한글 등 — 첫 낱말이 두 글자 이상이면 그 두 글자, 아니면 다음 낱말의 첫 글자를 붙인다
-  if (first.length >= 2) return first.slice(0, 2).join('');
-  return first[0] + (words[1] ? [...words[1]][0] : '');
+  const label = String(item.label || '').trim();
+  if (!label) return '';
+  const first = [...label][0];
+  return /[a-z]/i.test(first) ? first.toUpperCase() : first;
 }
 
 const KIND_TARGET_LABELS = {
@@ -201,10 +162,9 @@ export function createLauncher({ root, store }) {
 
   const scroll = h('div', 'lnch-scroll');
 
-  const emptyHint = h('div', 'lnch-empty', '+ 눌러 자주 쓰는 사이트나 파이썬 스크립트를 등록하세요');
+  const emptyHint = h('div', 'lnch-empty', '＋ 로 자주 여는 곳을 등록하세요');
 
-  const addBtn = h('button', 'lnch-add');
-  addBtn.append(icon('plus'));
+  const addBtn = h('button', 'lnch-add', '＋');
   addBtn.type = 'button';
   addBtn.setAttribute('aria-label', '바로가기 추가');
 
@@ -268,27 +228,23 @@ export function createLauncher({ root, store }) {
     };
   }
 
-  function updateItem(rec, item, ink) {
+  function updateItem(rec, item) {
     rec.el.dataset.id = item.id;
     rec.label = item.label || '바로가기';
     rec.sub = item.target || '';
     // 이모지도 사용자 입력이므로 textContent 로만 넣는다
     // 사용자가 이모지를 넣었으면 그대로, 아니면 종류별 선 아이콘
     rec.icon.textContent = '';
-    // 판 색은 이름에서 뽑는다 — 같은 이름이면 언제나 같은 색이라 자리를 기억할 수 있다.
-    rec.plate.style.setProperty('--lnch-ink', ink);
 
     if (item.icon) {
       // 사용자가 직접 넣은 이모지는 그대로 존중한다 (사용자 입력이므로 textContent 로만)
       rec.icon.textContent = item.icon;
       rec.icon.className = 'lnch-item__icon is-emoji';
-    } else if (item.label) {
-      // 같은 종류가 여러 개면 선 아이콘이 전부 똑같아져 구분이 안 된다.
-      // 이름 첫 글자를 명조로 새기되, 맨 글자가 아니라 안료 판 위에 얹는다.
-      rec.icon.textContent = monogramOf(item.label);
-      rec.icon.className = 'lnch-item__icon is-monogram';
+    } else if (markOf(item)) {
+      rec.icon.textContent = markOf(item);
+      rec.icon.className = 'lnch-item__icon is-mark';
     } else {
-      rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe'));
+      rec.icon.append(icon(KIND_ICONS[item.kind] || 'globe', 12, 1.4));
       rec.icon.className = 'lnch-item__icon is-glyph';
     }
     rec.badge.textContent = '';
@@ -300,13 +256,12 @@ export function createLauncher({ root, store }) {
     const items = store.launcherItems();
     const seen = new Set();
     const frag = document.createDocumentFragment();
-    const inks = assignPigments(items, store.COLORS);
 
     for (const item of items) {
       seen.add(item.id);
       let rec = itemEls.get(item.id);
       if (!rec) { rec = buildItem(); itemEls.set(item.id, rec); }
-      updateItem(rec, item, inks.get(item.id));
+      updateItem(rec, item);
       frag.append(rec.el);
     }
 

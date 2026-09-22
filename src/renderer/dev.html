@@ -7,10 +7,13 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
                  font-src 'self'; img-src 'self' data:; connect-src 'self';" />
-  <title>일정관리 위젯 — 개발 미리보기</title>
+  <title>일정관리 비서 — 개발 미리보기</title>
+  <link rel="stylesheet" href="styles/fonts-handoff.css" />
+  <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="calendar/calendar.css" />
   <link rel="stylesheet" href="todo/todo.css" />
+  <link rel="stylesheet" href="todo/timetable.css" />
   <link rel="stylesheet" href="dashboard/dashboard.css" />
   <link rel="stylesheet" href="launcher/launcher.css" />
   <style>
@@ -27,8 +30,8 @@
     /* 창 크기를 흉내 내기 위한 리사이즈 가능한 무대 */
     body { padding: 0; display: grid; place-items: center; }
     #stage {
-      width: min(980px, 96vw);
-      height: min(620px, 92vh);
+      width: min(1324px, 96vw);
+      height: min(900px, 92vh);
       resize: both;
       overflow: hidden;
       padding: 6px;
@@ -40,29 +43,55 @@
 <body>
   <div id="stage">
     <div id="widget" class="widget">
+      <!-- 드래그 핸들 겸 상단 바 -->
       <header id="titlebar" class="titlebar">
         <div class="titlebar__drag">
-          <span class="titlebar__dot"></span>
           <span class="titlebar__title">일정관리 비서</span>
+          <span class="titlebar__rule"></span>
+          <span id="titlebar-year" class="titlebar__year"></span>
         </div>
         <div class="titlebar__actions">
-          <button id="btn-help" class="iconbtn" title="도움말"></button>
-          <button id="btn-bell" class="iconbtn" title="알림 기록"></button>
-          <button id="btn-settings" class="iconbtn" title="설정">⚙</button>
-          <button id="btn-pin" class="iconbtn" title="항상 위">📌</button>
-          <button id="btn-min" class="iconbtn" title="최소화">─</button>
-          <button id="btn-close" class="iconbtn iconbtn--danger" title="숨기기">✕</button>
+          <button id="btn-brief" class="iconbtn" type="button" title="아침 브리핑 다시 보기"></button>
+          <button id="btn-search" class="iconbtn" type="button" title="검색"></button>
+          <button id="btn-bell" class="iconbtn" type="button" title="알림 기록"></button>
+          <button id="btn-lock" class="iconbtn" type="button" title="클릭 통과 (Alt+Shift+S)"></button>
+          <button id="btn-settings" class="iconbtn" type="button" title="설정"></button>
+          <span class="titlebar__sep"></span>
+          <button id="btn-close" class="iconbtn iconbtn--danger" type="button" title="트레이로 숨김"></button>
         </div>
       </header>
 
+      <!-- 펼침면 — 왼쪽은 늘 펼쳐진 달력, 오른쪽은 기록면 -->
       <main class="panes">
         <section id="calendar-root" class="pane pane--calendar"></section>
-        <div id="splitter" class="splitter" title="드래그해서 비율 조절"></div>
+        <div id="splitter" class="splitter" title="드래그해서 비율 조절">
+          <span class="splitter__stitch" style="top:8%"></span>
+          <span class="splitter__stitch" style="top:22%"></span>
+          <span class="splitter__stitch" style="top:36%"></span>
+          <span class="splitter__stitch" style="top:50%"></span>
+          <span class="splitter__stitch" style="top:64%"></span>
+          <span class="splitter__stitch" style="top:78%"></span>
+          <span class="splitter__stitch" style="top:92%"></span>
+        </div>
         <section id="todo-root" class="pane pane--todo"></section>
+
+        <!-- 책갈피 탭 — 오른쪽 면 바깥으로 삐져나온다 -->
+        <div class="tabs">
+          <button id="tab-main" class="tab is-on" type="button">오늘</button>
+          <button id="tab-routine" class="tab" type="button">루틴</button>
+          <button id="tab-brief" class="tab tab--brief" type="button">브리핑</button>
+          <button id="tab-settings" class="tab tab--settings" type="button">설정</button>
+        </div>
       </main>
 
-      <section id="dash-root" class="zone zone--dash"></section>
-      <footer id="launcher-root" class="zone zone--launcher"></footer>
+      <!-- 아래 리본 — D-Day 와 퀵 런처가 한 장에 얹힌다 -->
+      <div class="ribbon">
+        <!-- Zone C: D-Day 대시보드 -->
+        <section id="dash-root" class="zone zone--dash"></section>
+
+        <!-- Zone D: 퀵 런처 도크 -->
+        <footer id="launcher-root" class="zone zone--launcher"></footer>
+      </div>
 
       <div id="settings-root" class="settings" hidden></div>
     </div>

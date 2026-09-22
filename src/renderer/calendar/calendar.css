@@ -7,13 +7,14 @@
    값을 바꾸면 막대 배치가 그대로 따라오므로, 이름과 위치를 유지할 것. */
 
 .cal-root {
-  /* 주 행 높이는 70px 안팎이라 여유가 없다. 겹치는 기간 일정이 3개만 되어도
-     레인이 모자라 '+N' 이 한 레인을 먹고 결국 막대 하나만 보였다.
-     막대를 얇게 잡아 같은 높이에서 3레인을 확보한다. */
-  --cal-top-pad: 16px;   /* 날짜 숫자 줄 높이 = 첫 레인의 top */
-  --cal-bar-h: 13px;
+  /* 시안 값: 칸 높이 106px, 기간 막대 높이 19px, 레인 간격 21px(=19+2),
+     첫 레인 top 48px. 날짜 숫자(19px)와 공휴일 이름 아래에 떨어진다.
+     JS 가 이 값을 읽어 막대를 배치하므로 여기서만 고치면 된다. */
+  --cal-cell-h: 106px;   /* 시안의 날짜 칸 높이 */
+  --cal-top-pad: 48px;   /* 첫 레인의 top */
+  --cal-bar-h: 19px;
   --cal-bar-gap: 2px;
-  --cal-dots-h: 2px;     /* 점 표시를 없애고 막대로 통일 — 여백만 남긴다 */
+  --cal-dots-h: 14px;    /* 아래 색점 줄이 차지하는 높이 */
   --cal-on-color: var(--on-color);
 
   container-type: inline-size;
@@ -22,56 +23,74 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
-  padding: 10px 14px 8px;
+  /* 칸 높이를 지키느라 내용이 넘치면 세로로만 흐른다 */
+  overflow: hidden auto;
+  /* 시안 그대로. 왼쪽 30px 은 리본 책갈피가 지나가는 여백이기도 하다. */
+  padding: 24px 26px 20px 30px;
   outline: none;
 }
 
-.cal-root:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent);
-  border-radius: 2px;
-}
 
 /* ------------------------------------------------------------ 헤더 */
 
 .cal-header {
   flex: 0 0 auto;
   display: flex;
-  align-items: baseline;
-  gap: 2px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
   min-width: 0;
-  padding: 0 0 10px;
+  margin-bottom: 18px;
 }
 
+/* 앞뒤 달 — 시안: 25×25, 1px 괘선 테두리, hover 에서 금박 */
+.cal-navpair { display: flex; gap: 3px; flex: 0 0 auto; }
 .cal-navbtn {
   flex: 0 0 auto;
-  align-self: center;
-  width: 22px;
-  height: 22px;
+  width: 25px;
+  height: 25px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  color: var(--text-faint);
-  font-size: 13px;
-  transition: color .16s, background .16s;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--ink-soft);
+  transition: color .16s, border-color .16s;
 }
-.cal-navbtn:hover { background: var(--pane-hover); color: var(--text); }
-.cal-navbtn .icon { width: .8em; height: .8em; }
+.cal-navbtn:hover { border-color: var(--gold); color: var(--gold-deep); }
+.cal-navbtn .icon { width: 12px; height: 12px; }
 
-/* 지면의 표제 — 이 패널에서 가장 큰 활자 */
+/* 지면의 표제 — 이 면에서 가장 큰 활자. 시안 값 그대로. */
 .cal-title {
   flex: 0 1 auto;
   min-width: 0;
-  padding: 0 8px;
-  font-family: var(--font-serif);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: .01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.cal-title__num {
+  font-family: var(--num);
+  font-weight: 300;
+  font-size: 58px;
+  line-height: .82;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+}
+.cal-title__num:empty { display: none; }
+.cal-title__stack { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-title__unit {
+  font-family: var(--serif);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: .2em;
+  color: var(--ink-soft);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+.cal-title__year {
+  font-family: var(--num);
+  font-size: 13px;
+  letter-spacing: .14em;
+  color: var(--ink-faint);
+  font-feature-settings: 'tnum';
 }
 
 .cal-spacer { flex: 1 1 auto; min-width: 8px; }
@@ -85,12 +104,17 @@
   gap: 6px;
   min-width: 0;
 }
-.cal-meter__track {
-  width: 44px;
-  height: 2px;
-  background: var(--rule);
-  overflow: hidden;
+/* 시안에는 막대가 없고 '이번 달 완료 68%' 한 줄이다.
+   막대는 같은 값을 두 번 말하는 셈이라 뺀다. */
+.cal-meter::before {
+  content: '이번 달 완료';
+  font-weight: 300;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: var(--ink-faint);
+  white-space: nowrap;
 }
+.cal-meter__track { display: none; }
 .cal-meter__fill {
   height: 100%;
   width: 0;
@@ -98,21 +122,29 @@
   transition: width .24s ease;
 }
 .cal-meter__label {
-  font-family: var(--font-serif);
-  font-size: 10.5px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--num);
+  font-size: 16px;
+  color: var(--ink-soft);
+  font-feature-settings: 'tnum';
   white-space: nowrap;
 }
+/* 완료율과 조작 버튼 사이의 세로 구분선 */
+.cal-meter::after {
+  content: '';
+  width: 1px;
+  height: 15px;
+  background: var(--rule);
+  margin-left: 5px;
+}
 
+/* 작은 버튼 공통 규격 (시안) */
 .cal-todaybtn {
   flex: 0 0 auto;
   align-self: center;
-  margin-left: 10px;
-  padding: 3px 9px;
-  font-size: 10.5px;
+  padding: 5px 11px;
+  font-size: 11px;
   letter-spacing: .06em;
-  color: var(--text-dim);
+  color: var(--ink-soft);
   border: 1px solid var(--rule);
   border-radius: 2px;
   white-space: nowrap;
@@ -129,26 +161,34 @@
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  padding-bottom: 7px;
-  border-bottom: 1.5px solid var(--border-strong);   /* 지면을 여는 굵은 괘선 */
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 .cal-weekday {
+  padding: 8px 0 7px;
   text-align: center;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .14em;
-  color: var(--text-faint);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: .22em;
+  color: var(--ink-soft);
 }
-.cal-weekday--sun { color: var(--sun); }
-.cal-weekday--sat { color: var(--sat); }
+/* 시안은 일요일만 인주색이다. 토요일은 따로 두지 않는다. */
+.cal-weekday--sun { color: var(--seal); }
 
 /* ------------------------------------------------------------ 그리드 */
 
 .cal-grid {
-  flex: 1 1 auto;
-  min-height: 0;
+  /* 줄어들지 않는다 — 106px 칸이 넘치면 달력 면(.cal-root)이 스크롤한다.
+     줄어들게 두면 넘친 칸이 아래 발치 줄과 겹친다. */
+  flex: none;
+  /* 시안의 칸 높이 106px 를 지킨다. 창이 짧으면 눌러 담는 대신 스크롤한다 —
+     칸을 줄이면 기간 막대 레인이 사라져 '+N' 만 남는다(그게 실제로 일어났다). */
   display: grid;
-  grid-template-rows: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, auto);
+  /* 그리드가 남는 세로를 auto 행에 나눠 주면 행이 106px 보다 커진다.
+     그러면 막대가 날짜 숫자에서 멀리 떨어져 다음 주 행처럼 보인다. */
+  align-content: start;
   /* 기간 배지와 추가 버튼이 이 안에서 절대 위치를 잡는다.
      둘 다 position:absolute 라 그리드 트랙을 차지하지 않는다. */
   position: relative;
@@ -157,8 +197,10 @@
 /* 주(週)는 괘선으로만 나눈다 — 칸을 면으로 채우지 않는다 */
 .cal-week {
   position: relative;
-  min-height: 0;
-  border-bottom: 1px solid var(--rule);
+  /* 날짜 칸(.cal-week__days)이 절대 위치라 칸의 높이가 행을 밀지 못한다.
+     시안의 106px 는 여기에 걸어야 실제 행 높이가 된다. */
+  min-height: 107px;   /* 칸 106px + 아래 괘선 1px */
+  border-bottom: 1px solid var(--rule-soft);
 }
 .cal-week:last-child { border-bottom: none; }
 
@@ -183,18 +225,28 @@
 
 /* ------------------------------------------------------------ 날짜 칸 */
 
+/* 시안: height 106px · padding 8px 9px 0 · 왼쪽 1px --rule-soft.
+   높이는 그리드가 남는 세로를 6주로 나눠 갖는 구조라 min-height 로 바닥을 깐다. */
 .cal-day {
   position: relative;
   min-width: 0;
-  padding: 3px 4px 0;
+  padding: 8px 9px 0;
+  border-left: 1px solid var(--rule-soft);
+  box-sizing: border-box;
   cursor: pointer;
   transition: background .12s;
 }
-.cal-day:hover { background: var(--pane-hover); }
-.cal-day--out { opacity: .28; }
+.cal-day:hover { background: var(--paper-2); }
+.cal-day--out { opacity: .45; }
 
-/* 고른 날 세로줄 — 늘 떠 있는 넓은 면이라 옅은 쪽을 쓴다 */
-.cal-day--sel { background: var(--accent-wash); }
+/* 고른 날은 면을 채우지 않고 안쪽 금박 테두리로 표시한다 */
+.cal-day--sel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--gold);
+  pointer-events: none;
+}
 .cal-day.is-drop {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1.5px var(--accent);
@@ -244,65 +296,36 @@
 
 /* 날짜 숫자 — 명조, 고정폭 */
 .cal-day__num {
-  min-width: 16px;
-  height: 16px;
-  line-height: 16px;
-  text-align: center;
-  font-family: var(--font-serif);
-  font-size: 12px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
+  font-family: var(--num);
+  font-size: 19px;
+  line-height: 1;
+  font-feature-settings: 'tnum';
+  color: var(--ink);
 }
-.cal-day--sun .cal-day__num { color: var(--sun); }
-.cal-day--sat .cal-day__num { color: var(--sat); }
+.cal-day--sun .cal-day__num { color: var(--seal); }
 
-/* 오늘 = 손으로 그린 듯한 잉크 동그라미.
-   완전한 원이 아니라 살짝 찌그러뜨려 필기 흔적처럼 보이게 한다. */
-.cal-day--today .cal-day__num {
-  position: relative;
-  color: var(--accent);
-  font-weight: 700;
-}
-.cal-day--today .cal-day__num::before {
+/* 오늘 = 배경이 아니라 날짜 아래 17×1px 인주 밑줄 (시안).
+   면을 채우지 않는다는 원칙이 여기에도 그대로 적용된다. */
+.cal-day--today::before {
   content: '';
   position: absolute;
-  left: -3px; right: -3px; top: -1px; bottom: -1px;
-  border: 1.3px solid var(--accent);
-  border-radius: 48% 52% 50% 50% / 52% 48% 52% 48%;   /* 살짝 어긋난 타원 */
-  transform: rotate(-4deg);
-  opacity: .85;
-}
-
-/* 선택한 날은 잉크로 채운다.
-   position:relative 가 없으면 ::before 가 .cal-day(칸 전체)를 기준으로 잡혀
-   날짜 하나가 아니라 칸을 통째로 덮는 거대한 얼룩이 된다. */
-.cal-day--sel .cal-day__num {
-  position: relative;
-  color: var(--on-color);
-  font-weight: 700;
-}
-.cal-day--sel .cal-day__num::before {
-  content: '';
-  position: absolute;
-  left: -3px; right: -3px; top: -1px; bottom: -1px;
-  background: var(--accent);
-  border: none;
-  border-radius: 48% 52% 50% 50% / 52% 48% 52% 48%;
-  transform: rotate(-4deg);
-  z-index: -1;
-  opacity: 1;
+  left: 9px;
+  top: 29px;
+  width: 17px;
+  height: 1px;
+  background: var(--seal);
+  pointer-events: none;
 }
 
 /* 그날의 미완료 건수 — 날짜 숫자와 경쟁하지 않도록 아주 조용하게.
    여러 개일 때만 의미가 있으므로 1건이면 JS 가 비워 둔 것과 같게 취급한다. */
 .cal-day__count {
-  margin-left: auto;     /* 개수만 오른쪽 끝으로 */
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  margin-left: auto;
+  font-family: var(--num);
+  font-size: 12px;
+  font-feature-settings: 'tnum';
+  color: var(--ink-faint);
   white-space: nowrap;
-  opacity: .55;
 }
 .cal-day__count:empty { display: none; }
 
@@ -311,20 +334,20 @@
 .cal-day__dots {
   display: none;
   position: absolute;
-  left: 5px;
-  right: 5px;
-  bottom: 3px;
+  left: 9px;
+  right: 9px;
+  bottom: 9px;
   height: var(--cal-dots-h);
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   overflow: hidden;
   pointer-events: none;
 }
 .cal-dot {
   flex: 0 0 auto;
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
 }
 .cal-dot--done { opacity: .3; }
@@ -345,31 +368,35 @@
   position: absolute;
   display: flex;
   align-items: center;
-  padding: 0 6px;
-  margin: 0 3px;                  /* 칸 안쪽으로 물리기 */
+  gap: 6px;
+  padding: 0 8px;
+  box-sizing: border-box;
   border-radius: 1px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: 10.5px;
+  font-weight: 400;
   /* 잡아서 옮길 수 있다는 표시. pointer 로 두면 '누르는 것' 으로만 읽힌다. */
   cursor: grab;
   overflow: hidden;
   pointer-events: auto;
 
-  /* 잉크가 번진 자국 — 진한 블록이 아니라 옅은 워시.
-     글자는 같은 잉크의 진한 값이라 색을 잃지 않으면서 읽힌다. */
-  background: color-mix(in srgb, var(--bar-ink) 26%, transparent);
-  border-left: 2.5px solid var(--bar-ink);
-  color: color-mix(in srgb, var(--bar-ink) 55%, var(--text));
+  /* 시안: 면을 색으로 채우지 않는다. 1px 테두리 + 종이 바탕 + 3×10px 색 캡. */
+  border: 1px solid var(--bar-ink);
+  background: var(--paper);
+  /* 시안: 이름도 항목 색 */
+  color: var(--bar-ink);
   transition: background .16s;
 }
-.cal-bar:hover { background: color-mix(in srgb, var(--bar-ink) 38%, transparent); }
+/* 왼쪽 색 캡 — 시안: 3×10 */
+/* 어두운 면에서는 안료가 바탕에 묻힌다 — 이름만 잉크 쪽으로 끌어올린다 */
+:root[data-theme="dark"] .cal-bar { color: color-mix(in srgb, var(--bar-ink) 45%, var(--ink)); }
+.cal-bar__cap {
+  flex: none;
+  width: 3px;
+  height: 10px;
+  background: var(--bar-ink);
+}
+.cal-bar:hover { background: var(--paper-2); }
 .cal-bar:active { cursor: grabbing; }
-
-/* 잘린 쪽은 여백과 획을 없애 '계속됨'을 보여준다 */
-.cal-bar--cl { margin-left: 0; border-left: none; border-radius: 0 1px 1px 0; }
-.cal-bar--cr { margin-right: 0; border-radius: 1px 0 0 1px; }
-.cal-bar--cl.cal-bar--cr { border-radius: 0; }
 
 /* 양 끝 손잡이 — 기간을 늘리고 줄이는 자리.
    좌표로 판정하는 건 JS 가 하지만, 커서 모양은 CSS 가 정확히 같은 폭으로 잡아 준다.
@@ -422,9 +449,11 @@
   display: flex;
   align-items: center;
   padding-left: 5px;
-  font-size: 9.5px;
-  font-weight: 600;
-  color: var(--text-faint);
+  font-family: var(--num);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-faint);
+  font-feature-settings: 'tnum';
   cursor: pointer;
   pointer-events: auto;
   overflow: hidden;
@@ -432,19 +461,35 @@
 }
 .cal-more:hover { color: var(--accent); }
 
+/* 달력 발치 — 시안: flex · space-between · margin-top 14 · 300 10px .05em --ink-faint */
+.cal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: .05em;
+  color: var(--ink-faint);
+}
+.cal-foot__hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-foot__plus { color: var(--gold-deep); }
+.cal-foot__keys { flex: none; font-family: var(--num); font-feature-settings: 'tnum'; }
+
 /* ------------------------------------------------------------ 좁은 폭 대응 */
 
 @container cal (max-width: 340px) {
   .cal-grid {
-    --cal-top-pad: 15px;
-    --cal-bar-h: 13px;
+    --cal-top-pad: 34px;
+    --cal-bar-h: 16px;
     --cal-bar-gap: 2px;
     --cal-dots-h: 9px;
   }
   .cal-root { padding: 10px 10px 8px; }
   .cal-title { font-size: 15px; padding: 0 5px; }
   .cal-day__head { height: 15px; }
-  .cal-day__num { font-size: 11.5px; min-width: 15px; height: 15px; line-height: 15px; }
+  .cal-day__num { font-size: 15px; }
   .cal-bar { font-size: 9.5px; padding: 0 4px; }
 }
 

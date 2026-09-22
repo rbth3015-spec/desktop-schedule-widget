@@ -1,482 +1,74 @@
-/* Zone C — D-Day 대시보드 스타일.
-   - 모든 셀렉터는 .dash- 접두사로 시작한다 (전역 태그 셀렉터 금지).
-   - 색/반경/그림자는 base.css 변수만 사용. 예외는 두 가지뿐:
-       1) 태스크 색 점(store.COLORS) — JS 인라인
-       2) D-Day 색온도(--dash-c / --dash-c-lt) — JS 가 hsl() 로 계산해 인라인으로 넣는다
-   - 새 블러 레이어를 만들지 않는다. 배경은 셸의 .zone--dash(var(--pane)) 위에 얹는다.
-   - 패널 높이 = 콘텐츠 높이. 기본(카드 한 줄) 약 112px, 접으면 헤더만 약 34px. */
-
-/* 일정을 끌어다 놓을 수 있는 자리라는 표시.
-   버튼을 찾아 누르는 대신 목록·캘린더에서 바로 끌어 고정한다. */
-.dash-root.is-drop {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1.5px var(--accent);
-}
-.dash-root.is-drop .dash-empty__title::after {
-  content: ' — 여기에 놓으면 고정됩니다';
-  color: var(--accent);
-}
+/* Zone C — D-Day. 아래 리본의 왼쪽 칸.
+   시안(핸드오프): display:grid · repeat(3,1fr) · gap 22px · min-width 0.
+   칸 = 제목 11.5px + D-N (--num 15px, 항목 색) / 2px 막대 / 기간 (--num 300 10px). */
 
 .dash-root {
-  container-type: inline-size;
-  container-name: dash;
-
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 7px 10px 9px;
-}
-
-.dash-root [hidden] { display: none !important; }
-
-/* ------------------------------------------------------------ 헤더 */
-
-.dash-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  position: relative;
   min-width: 0;
 }
+.dash-root.is-drop { outline: 1px dashed var(--gold); outline-offset: 4px; }
 
-.dash-label {
-  flex: 0 0 auto;
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  color: var(--text-faint);
-}
-
-.dash-count {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.4;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-  background: var(--pane-hover);
-}
-
-/* 접었을 때만 보이는 한 줄 요약 (가장 임박한 항목) */
-.dash-peek {
-  display: none;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 10.5px;
-  color: var(--text-dim);
-}
-.dash-root.is-collapsed .dash-peek { display: flex; }
-
-.dash-peek__title {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dash-peek__num {
-  flex: 0 0 auto;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--dash-c, var(--accent));
-}
-
-.dash-spacer { flex: 1 1 auto; min-width: 4px; }
-
-.dash-fold {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-dim);
-  white-space: nowrap;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.dash-fold:hover {
-  background: var(--pane-hover);
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-.dash-fold:focus-visible { border-color: var(--accent); color: var(--accent); }
-
-.dash-fold__caret {
-  font-size: 9px;
-  line-height: 1;
-  transition: transform .14s ease;
-}
-.dash-root.is-collapsed .dash-fold__caret { transform: rotate(-90deg); }
-
-/* ------------------------------------------------------------ 본문 */
-
-/* 항목이 아주 많아도 패널이 무한정 커지지 않도록 두 줄에서 끊고 세로 스크롤로 넘긴다.
-   (가로 스크롤은 쓰지 않는다) */
-.dash-body {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 160px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.dash-root.is-collapsed .dash-body { display: none; }
-
-/* 벤토: 가로로 균등 분배되고, 좁아지면 최소 180px 을 지키며 줄바꿈된다 */
 .dash-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  min-width: 0;
 }
-
-/* ------------------------------------------------------------ 카드 */
+.dash-grid[hidden] { display: none; }
 
 .dash-card {
-  position: relative;
-  flex: 1 1 180px;
-  min-width: min(180px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 6px 9px 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--pane);
+  min-width: 0;
   cursor: pointer;
-  outline: none;
-  transition: background .14s, border-color .14s, transform .14s;
 }
-.dash-card:hover {
-  background: var(--pane-hover);
-  border-color: var(--border-strong);
-  transform: translateY(-1px);
-}
-.dash-card:focus-visible {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
+.dash-card:hover .dash-card__title { color: var(--gold-deep); }
+.dash-card.is-done .dash-card__title { color: var(--ink-faint); text-decoration: line-through; }
 
-.dash-card__head {
+.dash-card__top {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding-right: 16px;   /* 우상단 고정 해제 버튼 자리 */
-}
-
-.dash-card__dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.dash-card__title {
-  min-width: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dash-card__num {
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.035em;
-  font-variant-numeric: tabular-nums;
-  color: var(--dash-c, var(--accent));
-}
-
-.dash-card__date {
-  font-size: 10px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dash-card__track {
-  margin-top: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--pane-hover);
-  box-shadow: inset 0 0 0 1px var(--border);
-  overflow: hidden;
-}
-
-.dash-card__fill {
-  height: 100%;
-  width: 0;
-  border-radius: 999px;
-  background: var(--dash-c, var(--accent));
-  /* 색은 전환하지 않는다 — 테마 전환처럼 변수 자체가 갈아끼워질 때
-     background-color 트랜지션이 중간값에 머무는 사고를 피한다. 길이만 부드럽게. */
-  transition: width .28s ease;
-}
-
-/* 고정 해제 — 호버(또는 키보드 포커스) 때만 노출 */
-/* 카드 구석의 작은 동작 둘 — 고정 해제와 계획 세우기.
-   둘 다 카드에 마우스를 올렸을 때만 나타난다. */
-.dash-plan[hidden] { display: none; }
-
-.dash-plan {
-  position: absolute;
-  top: 4px;
-  right: 25px;
-  width: 17px;
-  height: 17px;
-  display: grid;
-  place-items: center;
-  border-radius: 5px;
-  color: var(--text-faint);
-  opacity: 0;
-  transition: opacity .16s, color .16s, background .16s;
-}
-.dash-plan .icon { width: 12px; height: 12px; }
-.dash-card:hover .dash-plan { opacity: 1; }
-.dash-plan:focus-visible { opacity: 1; color: var(--accent); }
-.dash-plan:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.dash-unpin {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 17px;
-  height: 17px;
-  display: grid;
-  place-items: center;
-  border-radius: 5px;
-  font-size: 9px;
-  line-height: 1;
-  color: var(--text-faint);
-  opacity: 0;
-  transition: opacity .12s, color .12s, background .12s;
-}
-.dash-card:hover .dash-unpin { opacity: 1; }
-.dash-unpin:focus-visible { opacity: 1; color: var(--accent); }
-.dash-unpin:hover {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 18%, transparent);
-}
-
-/* 지난 항목 — 점선 테두리 + danger 톤으로 확실히 구분한다 */
-.dash-card--over {
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
-}
-.dash-card--over:hover { border-color: var(--danger); }
-.dash-card--over .dash-card__num,
-.dash-card--over .dash-card__date { color: var(--danger); }
-.dash-card--over .dash-card__fill { background: var(--danger); }
-.dash-peek--over .dash-peek__num { color: var(--danger); }
-
-/* 완료한 고정 항목 */
-.dash-card.is-done { opacity: 0.52; }
-.dash-card.is-done .dash-card__title { text-decoration: line-through; }
-
-/* 임박(3일 이하) — 아주 은은한 맥박 */
-/*
- * 임박 표시는 **가만히 있는다**.
- *
- * 예전에는 막대가 2.6초마다 숨을 쉬었다. 이 창은 테두리 없는 투명 창이라
- * 한 픽셀이라도 바뀌면 DWM 이 창 전체를 알파 합성으로 다시 올린다 —
- * 재어 보니 맥박 하나에 코어 16%였고(끄면 0.1%), 흐림 효과를 걷어내도 같았다.
- * 늘 켜 두는 위젯에서 '보고 있는 동안 계속 16%' 는 낼 수 없는 값이다.
- *
- * 급한 일이라는 건 색과 'D-3' 이 이미 말하고 있다. 움직임까지 필요하지는 않다.
- * (여기에 무엇이든 움직이는 것을 다시 넣으려면 먼저 CPU 를 재 볼 것)
- */
-
-/* ------------------------------------------------------------ 빈 상태 */
-
-/* 고정된 항목이 0개일 때 패널이 카드가 있을 때보다 커지면 우스꽝스럽다.
-   넓으면 한 줄로 눕고, 좁아지면 그때만 줄바꿈된다. */
-.dash-empty {
-  display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 8px;
-  padding: 7px 10px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
+  justify-content: space-between;
+  gap: 10px;
 }
-
-.dash-empty__title {
-  flex: 0 0 auto;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-}
-
-.dash-empty__desc {
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--text-faint);
-}
-
-.dash-empty__how {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--text-faint);
-  opacity: 0.85;
-}
-
-/* ------------------------------------------------------------ 라이트 테마
-   hue 는 같지만 채도·명도가 다른 쌍을 JS 가 미리 계산해 둔다.
-   밝은 배경에서 노란/청록 바가 씻겨 내려가지 않도록 어두운 쪽 값을 쓴다. */
-
-:root[data-theme="light"] .dash-card__num,
-:root[data-theme="light"] .dash-peek__num { color: var(--dash-c-lt, var(--accent)); }
-
-:root[data-theme="light"] .dash-card__fill { background: var(--dash-c-lt, var(--accent)); }
-
-:root[data-theme="light"] .dash-card__track { box-shadow: inset 0 0 0 1px var(--border); }
-
-:root[data-theme="light"] .dash-card--over .dash-card__num,
-:root[data-theme="light"] .dash-card--over .dash-card__date { color: var(--danger); }
-:root[data-theme="light"] .dash-card--over .dash-card__fill { background: var(--danger); }
-:root[data-theme="light"] .dash-peek--over .dash-peek__num { color: var(--danger); }
-
-/* ------------------------------------------------------------ 좁은 폭 */
-
-@container dash (max-width: 420px) {
-  .dash-root { padding: 6px 8px 8px; }
-  .dash-card { padding: 6px 8px 7px; }
-  .dash-card__num { font-size: 19px; }
-  .dash-card__date { font-size: 10px; }
-  .dash-label { letter-spacing: 0.08em; }
-}
-
-/* ------------------------------------------------------------ 모션 축소 */
-
-@media (prefers-reduced-motion: reduce) {
-  .dash-card--urgent .dash-card__fill { animation: none; }
-  .dash-card,
-  .dash-card__fill,
-  .dash-fold,
-  .dash-fold__caret,
-  .dash-unpin { transition: none; }
-  .dash-card:hover { transform: none; }
-}
-
-/* ============================================================ 다이어리 지면
-   면으로 채운 카드가 아니라, 지면 아래쪽에 적어 둔 '남은 날' 메모처럼 보이게 한다. */
-
-.dash-root { padding: 10px 14px 12px; }
-
-.dash-head { gap: 8px; padding-bottom: 8px; }
-
-.dash-label {
-  font-family: var(--font-serif);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .22em;
-  color: var(--text-faint);
-}
-
-.dash-count {
-  font-family: var(--font-serif);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
-}
-
-.dash-fold {
-  font-size: 10.5px;
-  letter-spacing: .04em;
-  color: var(--text-faint);
-  transition: color .16s;
-}
-.dash-fold:hover { color: var(--accent); }
-
-.dash-grid { gap: 10px; }
-
-/* 카드 = 왼쪽에 잉크 획 하나. 상자로 가두지 않는다. */
-.dash-card {
-  position: relative;
-  padding: 4px 10px 6px 11px;
-  border: none;
-  border-left: 2px solid color-mix(in srgb, var(--dash-c, var(--accent)) 72%, transparent);
-  border-radius: 0;
-  background: none;
-  transition: background .16s;
-}
-.dash-card:hover { background: var(--pane-hover); }
-
-.dash-card__head { gap: 6px; }
-.dash-card__dot { display: none; }        /* 왼쪽 획이 이미 색을 말해 준다 */
-
 .dash-card__title {
+  min-width: 0;
   font-size: 11.5px;
-  letter-spacing: .01em;
-  color: var(--text-dim);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-/* 남은 날 — 이 패널의 주인공 */
 .dash-card__num {
-  font-family: var(--font-serif);
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: .005em;
-  font-variant-numeric: tabular-nums;
+  flex: none;
+  font-family: var(--num);
+  font-size: 15px;
+  color: var(--item, var(--ink));
+  font-feature-settings: 'tnum';
 }
 
-.dash-card__date {
-  font-family: var(--font-serif);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
-}
-
-/* 진행 — 잉크가 차오르는 가는 선 */
 .dash-card__track {
-  height: 2px;
   margin-top: 6px;
-  border-radius: 0;
-  background: var(--rule);
+  height: 2px;
+  background: var(--rule-soft);
 }
-.dash-card__fill { border-radius: 0; }
-
-.dash-unpin { color: var(--text-faint); }
-.dash-unpin:hover { color: var(--danger); }
-.dash-unpin .icon { width: .72em; height: .72em; }
-
-.dash-peek {
-  border-radius: 0;
-  border-left: 2px solid var(--rule);
-  background: none;
-}
-.dash-peek__num {
-  font-family: var(--font-serif);
-  font-variant-numeric: tabular-nums;
+.dash-card__fill {
+  height: 2px;
+  background: var(--item, var(--ink));
 }
 
-.dash-empty__title {
-  font-family: var(--font-serif);
-  font-size: 12px;
-  color: var(--text-dim);
+.dash-card__range {
+  margin-top: 4px;
+  font-family: var(--num);
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink-faint);
+  font-feature-settings: 'tnum';
 }
-.dash-empty__desc,
-.dash-empty__how { font-size: 11px; color: var(--text-faint); line-height: 1.65; }
 
-:root[data-theme="light"] .dash-card {
-  border-left-color: color-mix(in srgb, var(--dash-c-lt, var(--accent)) 72%, transparent);
+.dash-empty {
+  font-weight: 300;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-faint);
 }
+.dash-empty[hidden] { display: none; }
