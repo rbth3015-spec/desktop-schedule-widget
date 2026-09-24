@@ -55,10 +55,8 @@ function md(key) {
 }
 
 const VIEWS = [
-  ['strip', '스트립', '하루의 모양을 네모로',
-   '네모의 위치와 길이가 하루의 모양입니다 — 누르면 자세한 창이 뜹니다'],
-  ['compressed', '압축', '일정이 있는 시간대만',
-   '일정이 있는 시간대만 펼쳐 둡니다 — 빈 시간은 한 줄로 접힙니다'],
+  ['strip', '스트립', '하루의 모양'],
+  ['compressed', '압축', '시간 순서'],
 ];
 
 /**
@@ -92,10 +90,10 @@ function tipOf(t) {
 }
 
 /**
- * @param {{store: object, onDetail: (id:string, occDate?:string)=>void,
- *          onAdd: ()=>void, onAddAllDay: ()=>void}} deps
+ * 시간표에는 추가 단추를 두지 않는다 — 일정을 만드는 입구는 날짜 머리의 '＋ 일정 추가' 하나다.
+ * @param {{store: object, onDetail: (id:string, occDate?:string)=>void}} deps
  */
-export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
+export function createTimetable({ store, onDetail }) {
   const el = h('section', 'tt');
   const metaOf = metaOfFactory(store);
 
@@ -103,12 +101,6 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
   const head = h('div', 'tt__head');
   const headTitle = h('span', 'tt__title', '시간표');
   const headRule = h('span', 'tt__rule');
-  const addBtn = h('button', 'tt__add');
-  addBtn.type = 'button';
-  addBtn.title = '시각 있는 일정 추가';
-  addBtn.setAttribute('aria-label', '시각 있는 일정 추가');
-  addBtn.textContent = '＋';
-  addBtn.addEventListener('click', () => onAdd?.());
 
   const chips = h('div', 'tt__views');
   const chipBtns = new Map();
@@ -117,30 +109,18 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
     b.type = 'button';
     b.title = hint;
     b.setAttribute('aria-pressed', 'false');
-    // 시간표 머리의 칩과 설정의 '오늘 시간표' 행은 **같은 값**을 본다.
     b.addEventListener('click', () => store.setSetting('todayView', id));
     chipBtns.set(id, b);
     chips.append(b);
   }
-  head.append(headTitle, headRule, addBtn, chips);
+  head.append(headTitle, headRule, chips);
 
-  const note = h('div', 'tt__note');
 
   // ---------------------------------------------------------------- 종일 띠
   const allDay = h('div', 'tt__allday');
   const allDayKey = h('span', 'tt__key', '종일');
   const allDayBox = h('div', 'tt__chips');
   allDay.append(allDayKey, allDayBox);
-
-  // 종일 띠의 ＋ — 시각 없는 일정을 이 날에 바로 적는다
-  const allDayAdd = h('button', 'tt-allday__add', '＋');
-  allDayAdd.type = 'button';
-  allDayAdd.title = '종일 일정 추가';
-  allDayAdd.setAttribute('aria-label', '종일 일정 추가');
-  allDayAdd.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onAddAllDay?.();
-  });
 
   // ---------------------------------------------------------------- 본문
   const body = h('div', 'tt__body');
@@ -153,7 +133,7 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
   scrim.addEventListener('click', () => closePeek());
   peekCard.addEventListener('click', (e) => e.stopPropagation());
 
-  el.append(head, note, allDay, body);
+  el.append(head, allDay, body);
   // 자세한 창의 스크림은 펼침면 위에 깐다(시안) — 오른쪽 면 안에 두면 면만 어두워진다
   (document.querySelector('.panes') || el).append(scrim);
 
@@ -224,14 +204,14 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
       acts.append(later);
     }
 
-    const more = h('button', 'tt-peek__act tt-peek__act--more', '자세히 · 고치기');
+    const more = h('button', 'tt-peek__act tt-peek__act--more', '자세히');
     more.type = 'button';
     more.addEventListener('click', () => {
       closePeek();
       onDetail?.(item.id, item.occDate);
     });
 
-    const close = h('button', 'tt-peek__act tt-peek__act--ghost', '닫기 · Esc');
+    const close = h('button', 'tt-peek__act tt-peek__act--ghost', '닫기');
     close.type = 'button';
     close.addEventListener('click', () => closePeek());
 
@@ -293,7 +273,8 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
       dragSource(chip, item);
       allDayBox.append(chip);
     }
-    allDayBox.append(allDayAdd);
+    // 시각 없는 일이 없는 날은 띠째 걷는다 — 빈 띠는 할 말이 없다
+    allDay.hidden = !items.length;
   }
 
   /**
@@ -346,6 +327,8 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
       if (now >= lane.s && now < lane.e) {
         const mark = h('span', 'tt-strip__now');
         mark.style.left = `${pct(now)}%`;
+        // 띠 끝 가까이에서는 라벨을 선의 왼쪽으로 — 오른쪽으로 두면 면 밖으로 잘린다
+        mark.classList.toggle('is-end', (now - lane.s) / span > 0.8);
         mark.append(h('span', 'tt-strip__nowdot'),
                     h('span', 'tt-strip__nowlabel num', `지금 ${fmt(now)}`));
         canvas.append(mark);
@@ -375,8 +358,21 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
       dragSource(line, item);
       list.append(line);
     }
-    if (!items.length) list.append(h('span', 'tt-strip__empty', '시각을 정해 둔 일정이 없습니다'));
-    wrap.append(list);
+    // 비어 있으면 목록 자리째 걷는다 — 빈 띠가 이미 '비어 있다' 를 보여 준다
+    if (items.length) wrap.append(list);
+    return wrap;
+  }
+
+  /** 압축 시안에서 시각 일정이 하나도 없을 때 — 접힌 빈 시간 한 줄과 같은 모양 */
+  function emptyDay() {
+    const wrap = h('div', 'tt-comp');
+    const row = h('div', 'tt-comp__gap is-empty');
+    const line = h('span', 'tt-comp__gapline');
+    line.append(h('span', 'tt-comp__dash tt-comp__dash--short'),
+                h('span', 'tt-comp__gaplabel', '비어 있음'),
+                h('span', 'tt-comp__dash'));
+    row.append(h('span', 'tt-comp__at num'), line);
+    wrap.append(row);
     return wrap;
   }
 
@@ -472,7 +468,6 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
       b.classList.toggle('is-on', id === view);
       b.setAttribute('aria-pressed', String(id === view));
     }
-    note.textContent = (VIEWS.find((v) => v[0] === view) || VIEWS[0])[3];
 
     // 루틴도 같은 틀에 앉는다(시안). 시각 있는 루틴은 시간띠 네모 + ↻,
     // 시각 없는 루틴은 종일 띠의 점선 칩이다. 어느 쪽이든 같은 자리에서 체크로 지운다.
@@ -514,7 +509,7 @@ export function createTimetable({ store, onDetail, onAdd, onAddAllDay }) {
     body.replaceChildren(
       view === 'strip'
         ? renderStrip(timed, now)
-        : (timed.length ? renderCompressed(timed, now) : h('div', 'tt__empty', '시각을 정해 둔 일정이 없습니다')),
+        : (timed.length ? renderCompressed(timed, now) : emptyDay()),
     );
 
     // 열려 있던 자세한 창은 자료가 바뀌면 닫는다 — 옛 값이 남아 있는 편이 더 나쁘다

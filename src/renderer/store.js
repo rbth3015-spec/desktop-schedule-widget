@@ -1,7 +1,7 @@
 // 렌더러 전역 상태 저장소. 단일 소스 오브 트루스.
 // 뷰 모듈(calendar / todo)은 store 를 직접 mutate 하지 않고 액션 함수만 호출한다.
 
-import { todayKey, addDays, diffDays, isTimeKey, timeMinutes, fromKeyTime } from './lib/date.js';
+import { todayKey, addDays, diffDays, isTimeKey, timeMinutes, fromKeyTime, weekGrid } from './lib/date.js';
 
 const listeners = new Set();
 
@@ -82,9 +82,15 @@ const DEFAULT_SETTINGS = {
   showLauncher: true,     // Zone D: 퀵 런처 도크
   showHolidays: true,     // 달력에 공휴일 표시
 
-  // 오늘 시간표 시안. 'strip'(기본) | 'compressed'
-  // 시간표 머리의 칩과 설정의 '오늘 시간표' 행이 이 값 하나를 함께 본다.
+  // 오늘 시간표 시안. 'strip'(기본) | 'compressed' — 시간표 머리의 칩이 고른다.
   todayView: 'strip',
+
+  // 계획 화면이 마지막으로 본 단위. 'week' | 'month'
+  planView: 'week',
+
+  // 날씨 — 달력 머리의 스티커와 아침 브리핑에 한 줄. 도시 좌표만 나간다(메인이 받아 온다).
+  weather: true,
+  weatherCity: '서울',
 
   // 트레이 요약 — 창을 열지 않아도 트레이 툴팁과 메뉴가 오늘 몫을 보고한다.
   traySummary: true,
@@ -100,9 +106,6 @@ const DEFAULT_SETTINGS = {
 
   // '이거 루틴으로 만들까요?' 를 거절한 제목들. 한 번 아니라고 한 것을 다시 묻지 않는다.
   hiddenRoutineHints: [],
-
-  // 처음 켰을 때 한 번만 보여 주는 안내. 빈 패널 네 개를 마주하게 두지 않는다.
-  seenWelcome: false,
 };
 
 /**
@@ -120,6 +123,10 @@ const state = {
   tasks: /** @type {Task[]} */ ([]),
   launcher: /** @type {LauncherItem[]} */ ([]),
   reminderLog: /** @type {{id:string,taskId:string,title:string,at:number}[]} */ ([]),
+  // 하루 한 줄 기록 — { 'YYYY-MM-DD': '한 줄' }
+  journal: /** @type {Record<string,string>} */ ({}),
+  // 주 · 달을 돌아보며 적은 글 — { 'w:YYYY-MM-DD' | 'm:YYYY-MM': '한 문단' }
+  retro: /** @type {Record<string,string>} */ ({}),
   settings: { ...DEFAULT_SETTINGS },
   // --- UI 상태(영속화 안 함) ---
   selectedDate: todayKey(),
@@ -135,6 +142,8 @@ const state = {
   saveError: null,      // 마지막 저장 실패 메시지. 성공하면 다시 null.
   // 캘린더에서 기간을 드래그하면 여기 담기고, 투두 패널이 추가 폼을 열면서 비운다.
   composeRequest: /** @type {{start:string,end:string}|null} */ (null),
+  // 오늘 날씨 — 메인이 받아 온 값을 셸이 담아 둔다. 영속화하지 않는다(캐시는 메인이 갖는다).
+  weather: /** @type {null|{city:string,temp:number,high:number|null,low:number|null,icon:string,label:string}} */ (null),
 };
 
 export function getState() {
@@ -156,6 +165,8 @@ function persistPayload() {
     tasks: state.tasks,
     launcher: state.launcher,
     reminderLog: state.reminderLog,
+    journal: state.journal,
+    retro: state.retro,
     settings: state.settings,
   };
 }
@@ -228,12 +239,16 @@ function snapshot() {
   return {
     tasks: structuredClone(state.tasks),
     launcher: structuredClone(state.launcher),
+    journal: { ...state.journal },
+    retro: { ...state.retro },
   };
 }
 
 function restore(snap) {
   state.tasks = snap.tasks;
   state.launcher = snap.launcher;
+  if (snap.journal) state.journal = snap.journal;
+  if (snap.retro) state.retro = snap.retro;
 }
 
 // 연속 편집 묶기.
@@ -308,6 +323,8 @@ export async function init() {
     ? data.launcher.map(normalizeLauncher)
     : defaultLauncher();
   state.reminderLog = Array.isArray(data?.reminderLog) ? data.reminderLog.slice(0, LOG_MAX) : [];
+  state.journal = normalizeJournal(data?.journal);
+  state.retro = normalizeRetro(data?.retro);
   state.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
   migrate();
   state.ready = true;
@@ -327,6 +344,30 @@ export async function init() {
   }
 
   commit({ save: false });
+}
+
+/** 한 줄 기록 — 날짜 키와 한 줄짜리 글만 남긴다 */
+function normalizeJournal(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+    const line = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (line) out[key] = line;
+  }
+  return out;
+}
+
+/** 돌아보며 적은 글 — 주 · 달 키에 한 문단씩 */
+function normalizeRetro(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!PLAN_RE.test(key)) continue;
+    const text = String(value ?? '').slice(0, 2000).trim();
+    if (text) out[key] = text;
+  }
+  return out;
 }
 
 function normalize(t) {
@@ -369,6 +410,9 @@ function normalize(t) {
     // 매일 궁금하다. 둘은 다른 일이라 사용자가 고른다. 체크한 날짜는 위 doneDates 에
     // 함께 쌓는다 — 반복 일정과 뜻이 같으므로 그릇을 하나 더 만들 이유가 없다.
     dailyCheck: !!t.dailyCheck,
+
+    // 어느 주 · 어느 달의 목표인가. 'w:<그 주 일요일>' | 'm:YYYY-MM' | null (아래 '계획' 참고)
+    plan: typeof t.plan === 'string' && PLAN_RE.test(t.plan) ? t.plan : null,
   };
 }
 
@@ -623,7 +667,7 @@ function cryptoId() {
  *   트레이나 브리핑처럼 '화면 밖'에 보고할 때는 false 로 둔다. 태그 필터를 켜 둔
  *   상태에서 트레이가 걸러진 개수를 말하면 사실과 다른 보고가 된다.
  */
-export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
+export function tasksOnDate(key, { filtered = true, routines = false, ignoreTag = false } = {}) {
   const out = [];
   for (const t of state.tasks) {
     if (t.repeat) {
@@ -638,7 +682,7 @@ export function tasksOnDate(key, { filtered = true, routines = false } = {}) {
         : t);
     }
   }
-  return (filtered ? out.filter(passesFilter) : out).sort(byOrder);
+  return (filtered ? out.filter((t) => passesFilter(t, { ignoreTag })) : out).sort(byOrder);
 }
 
 /**
@@ -834,9 +878,69 @@ export function canPlanDeadline(t) {
   return (t.end || t.start) >= addDays(todayKey(), 2);
 }
 
-/** 날짜 없는 '언젠가' 목록 */
+/** 날짜 없는 '언젠가' 목록 — 주 · 달 목표는 계획 화면에 산다 */
 export function inboxTasks() {
-  return state.tasks.filter((t) => !t.start && !t.repeat).filter(passesFilter).sort(byOrder);
+  return state.tasks.filter((t) => !t.start && !t.repeat && !t.plan).filter(passesFilter).sort(byOrder);
+}
+
+// ---------------------------------------------------------------- 계획 (주 · 달 목표)
+//
+// 목표는 '어느 주 · 어느 달' 표시(plan)가 붙은 할 일이다. 그릇을 따로 만들지 않는다 —
+// 일정과 같은 레코드라 상세 · 검색 · 되돌리기 · 백업을 그대로 탄다.
+// 요일에 놓아 날짜를 잡아도 plan 은 남는다. 그래서 목표 목록이 '언제 하기로 했는지' 를 안다.
+
+const PLAN_RE = /^(w:\d{4}-\d{2}-\d{2}|m:\d{4}-\d{2})$/;
+
+/** 이 날짜가 든 주의 목표 자리 — 'w:<그 주 일요일>' (달력과 같은 일요일 시작) */
+export function weekScope(key) {
+  return `w:${weekGrid(key)[0]}`;
+}
+
+/** 이 날짜가 든 달의 목표 자리 — 'm:YYYY-MM' */
+export function monthScope(key) {
+  return `m:${String(key).slice(0, 7)}`;
+}
+
+/** 목표 — 안 끝낸 것 먼저, 그다음 적은 순서 */
+export function planGoals(scope) {
+  return state.tasks
+    .filter((t) => t.plan === scope && !t.repeat)
+    .sort((a, b) => (a.done !== b.done ? (a.done ? 1 : -1)
+      : (a.order - b.order) || (a.createdAt - b.createdAt)));
+}
+
+/** 목표 적기. 날짜는 비워 둔다 — 요일에 놓을 때 잡힌다. */
+export function addGoal(scope, patch = {}) {
+  if (!PLAN_RE.test(scope)) return null;
+  const start = patch.start ?? null;
+  return addTask({ ...patch, start, end: patch.end ?? start, plan: scope });
+}
+
+/**
+ * 목표를 다른 주 · 달로 옮긴다. 여럿이어도 되돌리기는 한 번이다.
+ * 잡아 둔 날짜가 새 주 밖이면 날짜는 걷는다 — 그 주의 목표가 다른 주에 놓여 있으면 거짓말이다.
+ */
+export function moveGoals(ids, scope, label) {
+  if (!PLAN_RE.test(scope)) return 0;
+  const targets = ids.map((id) => state.tasks.find((x) => x.id === id)).filter((t) => t && !t.repeat);
+  if (!targets.length) return 0;
+  pushUndo(label || (targets.length > 1 ? `목표 ${targets.length}개 옮기기` : '목표 옮기기'));
+  const week = scope.startsWith('w:') ? weekGrid(scope.slice(2)) : null;
+  const month = scope.startsWith('m:') ? scope.slice(2) : null;
+  for (const t of targets) {
+    t.plan = scope;
+    const inside = !t.start
+      || (week && t.start >= week[0] && t.start <= week[6])
+      || (month && t.start.slice(0, 7) === month);
+    if (!inside) {
+      t.start = null;
+      t.end = null;
+      t.startTime = null;
+      t.endTime = null;
+    }
+  }
+  commit();
+  return targets.length;
 }
 
 /** 기간이 2일 이상인 장기 계획.
@@ -916,8 +1020,45 @@ export function allTags() {
   return [...s].sort();
 }
 
-function passesFilter(t) {
-  const { text, tag } = state.filter;
+/**
+ * 테마(태그) 목록 — 달력 아래 띠와 걸러 보기가 쓴다.
+ *
+ * 태그는 그동안 '항목에 붙는 작은 글자' 였다. 같은 테마의 일들이 며칠에 흩어져 있어도
+ * 한 번에 짚어 볼 수 있어야 태그가 제 몫을 한다 — 그래서 건수와 색을 함께 돌려준다.
+ * 색은 그 테마에서 가장 많이 쓴 안료다(사용자가 따로 정하지 않아도 테마마다 색이 생긴다).
+ *
+ * @returns {{tag:string, n:number, total:number, color:string}[]} 남은 일 많은 순
+ */
+export function tagSummary() {
+  const map = new Map();
+  for (const t of state.tasks) {
+    for (const tag of t.tags) {
+      if (!map.has(tag)) map.set(tag, { tag, n: 0, total: 0, colors: new Map() });
+      const rec = map.get(tag);
+      rec.total += 1;
+      if (!t.done) rec.n += 1;
+      rec.colors.set(t.color, (rec.colors.get(t.color) || 0) + 1);
+    }
+  }
+  return [...map.values()]
+    .map((rec) => {
+      let color = 'blue';
+      let best = 0;
+      for (const [key, n] of rec.colors) if (n > best) { best = n; color = key; }
+      return { tag: rec.tag, n: rec.n, total: rec.total, color };
+    })
+    .sort((a, b) => b.n - a.n || b.total - a.total || (a.tag < b.tag ? -1 : 1));
+}
+
+/** 지금 걸어 둔 테마에 드는가 (달력은 걸러 내는 대신 이걸로 흐리게 한다) */
+export function matchesTag(t) {
+  const { tag } = state.filter;
+  return !tag || (Array.isArray(t.tags) && t.tags.includes(tag));
+}
+
+function passesFilter(t, { ignoreTag = false } = {}) {
+  const { text } = state.filter;
+  const tag = ignoreTag ? null : state.filter.tag;
 
   // '완료 숨김' 은 끝나면 치우는 할 일을 위한 것이다.
   // 매일 체크하는 것(루틴·매일 체크 장기 계획)의 **그날치**는 여기서 빼지 않는다 —
@@ -961,6 +1102,25 @@ export function addTask(patch = {}) {
   state.tasks.push(task);
   commit();
   return task;
+}
+
+/**
+ * 여러 건을 한 번에 더한다 (받은함 등) — 되돌리기는 한 번이다.
+ * @returns {number} 실제로 더한 건수
+ */
+export function addTasks(patches, label) {
+  const list = (Array.isArray(patches) ? patches : [])
+    .filter((p) => p && String(p.title ?? '').trim());
+  if (!list.length) return 0;
+  pushUndo(label || (list.length > 1 ? `일정 ${list.length}건 추가` : '일정 추가'));
+  for (const patch of list) {
+    const start = patch.start !== undefined ? patch.start : state.selectedDate;
+    const task = normalize({ ...patch, start, end: patch.end ?? start, createdAt: Date.now() });
+    task.order = state.tasks.length;
+    state.tasks.push(task);
+  }
+  commit();
+  return list.length;
 }
 
 export function updateTask(id, patch) {
@@ -1310,11 +1470,24 @@ export function importData(data, mode = 'merge') {
 
   const incoming = data.tasks.map(normalize);
 
+  const journal = normalizeJournal(data.journal);
+  const retro = normalizeRetro(data.retro);
+
   if (mode === 'replace') {
     state.tasks = incoming;
     if (Array.isArray(data.launcher)) state.launcher = data.launcher.map(normalizeLauncher);
+    if (data.journal) state.journal = journal;
+    if (data.retro) state.retro = retro;
     commit();
     return { added: incoming.length, total: incoming.length };
+  }
+
+  // 합치기 — 이미 적어 둔 한 줄 · 돌아보기는 건드리지 않는다
+  for (const [key, line] of Object.entries(journal)) {
+    if (!state.journal[key]) state.journal[key] = line;
+  }
+  for (const [key, body] of Object.entries(retro)) {
+    if (!state.retro[key]) state.retro[key] = body;
   }
 
   const known = new Set(state.tasks.map((t) => t.id));
@@ -1335,6 +1508,138 @@ export function importData(data, mode = 'merge') {
 
   commit();
   return { added, total: state.tasks.length };
+}
+
+// ---------------------------------------------------------------- 한 줄 기록
+//
+// 하루에 한 줄. 일정은 '할 일' 을 적지만, 지나고 나서 남는 건 그날이 어땠는지다.
+// 일정과 섞지 않고 날짜에 한 줄씩 붙여 둔다 — 그릇이 단순해야 매일 적는다.
+
+export function journalOn(key) {
+  return state.journal[key] || '';
+}
+
+/** 그 날의 한 줄을 적는다. 비우면 지운다. */
+export function setJournal(key, text) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(key))) return;
+  const line = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  if ((state.journal[key] || '') === line) return;
+  // 같은 날을 이어 고치면 되돌리기는 한 번으로 묶는다
+  pushUndo('한 줄 기록', `journal:${key}`);
+  if (line) state.journal[key] = line;
+  else delete state.journal[key];
+  commit();
+}
+
+/** 최근에 적은 한 줄들 — before 보다 앞선 날짜만, 가까운 날부터 */
+export function recentJournal(before, limit = 5) {
+  return Object.keys(state.journal)
+    .filter((k) => !before || k < before)
+    .sort((a, b) => (a < b ? 1 : -1))
+    .slice(0, limit)
+    .map((key) => ({ key, text: state.journal[key] }));
+}
+
+// ---------------------------------------------------------------- 돌아보기
+//
+// 지난 한 주 · 지난 달을 펼쳐 놓고 한 문단 적어 두는 자리. 하루치 '한 줄' 이 모인 위에
+// 그때의 이야기를 덧대는 것이라, 계획 화면 맨 아래에 조용히 둔다(주 기능을 밀어내지 않는다).
+
+export function retroOn(scope) {
+  return state.retro[scope] || '';
+}
+
+export function setRetro(scope, text) {
+  if (!PLAN_RE.test(String(scope))) return;
+  const body = String(text ?? '').slice(0, 2000).trim();
+  if ((state.retro[scope] || '') === body) return;
+  pushUndo('돌아보기', `retro:${scope}`);
+  if (body) state.retro[scope] = body;
+  else delete state.retro[scope];
+  commit();
+}
+
+/** 두 날짜 사이(양끝 포함)에 적어 둔 한 줄들 — 가까운 날부터 */
+export function journalBetween(from, to) {
+  return Object.keys(state.journal)
+    .filter((k) => k >= from && k <= to)
+    .sort((a, b) => (a < b ? 1 : -1))
+    .map((key) => ({ key, text: state.journal[key] }));
+}
+
+// ---------------------------------------------------------------- 날씨 (메인이 받아 온다)
+
+export function setWeather(data) {
+  state.weather = data && Number.isFinite(Number(data.temp)) ? data : null;
+  commit({ save: false });
+}
+
+// ---------------------------------------------------------------- 한 달 결산
+//
+// 월말에 한 장으로 돌아보는 값들. 계획 화면의 월간이 쓴다.
+// 화면이 직접 세면 같은 셈을 여러 곳에서 다시 짜게 되므로 여기서 한 번만 센다.
+
+/**
+ * @param {string} ym 'YYYY-MM'
+ * @returns {{total:number, done:number, rate:number, tags:{tag:string,n:number}[],
+ *            busiest:{index:number,n:number}|null, dragged:{title:string,n:number}|null,
+ *            streak:{title:string,n:number}|null}}
+ */
+export function monthReport(ym) {
+  const month = state.tasks.filter((t) => !t.repeat && t.start && t.start.slice(0, 7) === ym);
+  const done = month.filter((t) => t.done).length;
+
+  // 태그별 건수 — 많은 것 셋만
+  const byTag = new Map();
+  for (const t of month) for (const tag of t.tags) byTag.set(tag, (byTag.get(tag) || 0) + 1);
+  const tags = [...byTag.entries()]
+    .map(([tag, n]) => ({ tag, n }))
+    .sort((a, b) => b.n - a.n || (a.tag < b.tag ? -1 : 1))
+    .slice(0, 3);
+
+  // 가장 바쁜 주 — 그 달 안의 주(수요일이 든 달로 센다. 계획 화면과 같은 셈법)
+  const weeks = new Map();
+  for (const t of month) {
+    const sun = weekGrid(t.start)[0];
+    weeks.set(sun, (weeks.get(sun) || 0) + 1);
+  }
+  let busiest = null;
+  const order = [...weeks.keys()].sort();
+  for (const sun of order) {
+    const n = weeks.get(sun);
+    if (!busiest || n > busiest.n) {
+      const mid = weekGrid(sun)[3];
+      busiest = { index: Math.floor((Number(mid.slice(8, 10)) - 1) / 7), n };
+    }
+  }
+
+  // 가장 오래 끈 일 — 가장 많이 미룬 것
+  let dragged = null;
+  for (const t of month) {
+    if (t.deferCount >= 2 && (!dragged || t.deferCount > dragged.n)) {
+      dragged = { title: t.title || '(제목 없음)', n: t.deferCount };
+    }
+  }
+
+  // 루틴 최고 기록 — '지금까지' 의 값이라 이번 달을 볼 때만 뜻이 있다
+  let streak = null;
+  if (ym === todayKey().slice(0, 7)) {
+    for (const t of state.tasks) {
+      if (!t.repeat?.routine) continue;
+      const n = routineStreak(t);
+      if (n >= 2 && (!streak || n > streak.n)) streak = { title: t.title || '(제목 없음)', n };
+    }
+  }
+
+  return {
+    total: month.length,
+    done,
+    rate: month.length ? Math.round((done / month.length) * 100) : 0,
+    tags,
+    busiest,
+    dragged,
+    streak,
+  };
 }
 
 // ---------------------------------------------------------------- 런처 액션

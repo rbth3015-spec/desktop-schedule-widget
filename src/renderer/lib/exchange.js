@@ -15,6 +15,8 @@ export function toBackupJSON(state) {
     app: 'schedule-widget',
     tasks: state.tasks,
     launcher: state.launcher,
+    journal: state.journal,
+    retro: state.retro,
     settings: state.settings,
   }, null, 2);
 }

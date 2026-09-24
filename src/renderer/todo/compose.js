@@ -10,6 +10,8 @@
 //
 // 루틴은 같은 화면의 다른 모드다. 약속용 칸(날짜 · 기간 · 중요도 · 링크)을 걷어내고
 // 주기 · 요일 · 시각만 남긴다. 루틴은 '언제 하루' 가 아니라 '얼마마다' 가 전부다.
+// 어느 쪽으로 여는지는 날짜 머리의 두 단추(＋ 루틴 · ＋ 일정 추가)가 정한다 —
+// 이 화면 안에서 모드를 바꾸지 않는다. 날짜 없이 적을 일만 '언제' 줄의 '언젠가' 로 고른다.
 
 import { todayKey, addDays, diffDays, fromKey, WEEKDAY_LABELS, timeMinutes } from '../lib/date.js';
 import { icon } from '../lib/icons.js';
@@ -176,19 +178,11 @@ export function createCompose({ store, onToggle }) {
   const tokens = h('div', 'cmp-tokens');
   const tokenList = h('span', 'cmp-tokens__list');
   tokenList.setAttribute('aria-live', 'polite');
-  const tokenHint = h('span', 'cmp-tokens__hint', '한 줄로 쳐도 알아듣습니다 · ');
-  const helpBtn = h('button', 'cmp-tokens__help', '?');
-  helpBtn.type = 'button';
-  helpBtn.title = '한 줄 문법 보기';
-  helpBtn.addEventListener('click', () => document.dispatchEvent(new CustomEvent('app:help')));
-  tokenHint.append(helpBtn);
-  tokens.append(tokenList, tokenHint);
-
-  const titleHint = h('div', 'scr-hint',
-    '이름만 적으면 됩니다 — 매일 반복, 달력에 표시 안 함이 미리 켜져 있습니다');
+  // 문법은 설명하지 않는다 — 자리표시자의 예시가 보여 주고, 치면 칩으로 옮겨 가는 것이 가르친다.
+  tokens.append(tokenList);
 
   const titleBox = h('div');
-  titleBox.append(titleIn, tokens, titleHint);
+  titleBox.append(titleIn, tokens);
 
   /**
    * 완결된 토큰만 걷어낸다. 마지막 낱말은 아직 타이핑 중일 수 있으므로 건드리지 않는다
@@ -209,13 +203,15 @@ export function createCompose({ store, onToggle }) {
     }
 
     let moved = false;
-    if (!routineMode && !somedayMode && (parsed.start || parsed.end || parsed.endDays != null)) {
+    if (!routineMode && (parsed.start || parsed.end || parsed.endDays != null)) {
+      setSomeday(false);
       const { start, end } = resolveRange(parsed, startField.get() || todayKey());
       if (start) { setStart(start); dayChips.set(null); }
       if (end && start) { endField.set(end); }
       moved = true;
     }
-    if (parsed.startTime && !somedayMode) {
+    if (parsed.startTime) {
+      if (!routineMode) setSomeday(false);
       if (routineMode) {
         routineTime.set(parsed.startTime);
         paintRoutineTime();
@@ -260,9 +256,13 @@ export function createCompose({ store, onToggle }) {
 
   // ---------------------------------------------------------------- 언제
   const dayChips = chipGroup(
-    [['today', '오늘'], ['tomorrow', '내일'], ['weekend', '이번 주말'], ['nextweek', '다음 주']],
+    [['today', '오늘'], ['tomorrow', '내일'], ['weekend', '주말'], ['nextweek', '다음 주'],
+     ['someday', '언젠가']],
     null,
     (v) => {
+      // '언젠가' — 날짜 없이 적어 둔다. 시작 · 종료 칸이 걷히고 되읽는 줄이 그렇게 말한다.
+      if (v === 'someday') { setSomeday(true); return; }
+      setSomeday(false);
       const base = todayKey();
       const map = {
         today: base,
@@ -281,6 +281,7 @@ export function createCompose({ store, onToggle }) {
     format: (k) => k,
     onPick: (v) => {
       if (!v) return;
+      setSomeday(false);
       dayChips.set(null);
       setStart(v);
     },
@@ -354,9 +355,17 @@ export function createCompose({ store, onToggle }) {
   checkBlock.append(fieldLabel('체크'), checkChips.el);
   checkBlock.hidden = true;
 
-  // 날짜 없이 적는 '언젠가' 모드에서 언제 칸 대신 보이는 한 줄
-  const somedayNote = h('div', 'scr-summary',
-    '날짜 없이 — 「언젠가」에 적어 둡니다. 꺼낼 때는 오늘 · 내일 · 주말을 누르세요.');
+  // 날짜 없이 적는 '언젠가' — 언제 칸 대신 무엇이 만들어지는지만 되읽는다
+  const somedayNote = h('div', 'scr-summary', '언젠가 · 날짜 없음');
+
+  /** 언제 줄의 '언젠가' 를 켜고 끈다. 끄면 날짜 칸이 그대로 돌아온다. */
+  function setSomeday(on) {
+    if (somedayMode === on) return;
+    somedayMode = on;
+    applyMode();
+    syncRepeatExtras();
+    syncWhen();
+  }
 
   // 시작이 바뀌기 직전의 값. 여기 없으면 '며칠짜리였는지'를 알 수 없어 기간이 무너진다.
   let prevStartKey = null;
@@ -389,14 +398,14 @@ export function createCompose({ store, onToggle }) {
     // 종료가 시작보다 빠르면 시작에 맞춘다
     if (!endField.get() || endField.get() < start) endField.set(start);
     const end = endField.get();
-    pickField.set(start);
+    pickField.set(somedayMode ? '' : start);
     // 언제 칩은 지금 시작 날짜를 그대로 가리킨다 — 어떤 길로 골랐든(칩 · 달력 · '@내일')
     const base = todayKey();
     const chipFor = {
       [base]: 'today', [addDays(base, 1)]: 'tomorrow',
       [nextWeekend(base)]: 'weekend', [nextMonday(base)]: 'nextweek',
     };
-    dayChips.set(chipFor[start] || null);
+    dayChips.set(somedayMode ? 'someday' : (chipFor[start] || null));
 
     // 시작 시각이 없으면 종료 시각도 뜻이 없다
     const st = startTime.get();
@@ -517,8 +526,7 @@ export function createCompose({ store, onToggle }) {
     dayPick.append(b);
   }
   const dayBlock = h('div');
-  dayBlock.append(fieldLabel('요일'), dayPick,
-    h('div', 'scr-hint', '고르지 않으면 시작일의 요일을 따릅니다'));
+  dayBlock.append(fieldLabel('요일'), dayPick);
   dayBlock.hidden = true;
 
   function paintDays() {
@@ -556,32 +564,16 @@ export function createCompose({ store, onToggle }) {
     return freq === 'weekly' || !!store.DAY_PRESETS[freq];
   }
 
-  // 일정에서 반복을 켰을 때 '루틴으로(달력에 표시 안 함)' 로 돌릴 수 있는 스위치
-  const routineToggle = h('button', 'scr-chip scr-chip--prio cmp-routine',
-    '루틴 — 달력에 표시하지 않음');
-  routineToggle.type = 'button';
-  routineToggle.setAttribute('aria-pressed', 'false');
-  let routineOn = false;
-  function setRoutineOn(on) {
-    routineOn = on;
-    routineToggle.classList.toggle('is-on', on);
-    routineToggle.setAttribute('aria-pressed', String(on));
-  }
-  routineToggle.addEventListener('click', () => setRoutineOn(!routineOn));
-
-  /** 반복 종류에 따라 요일 · 루틴 스위치를 보인다 */
+  /** 반복 종류에 따라 요일 칸을 보인다 */
   function syncRepeatExtras() {
-    const freq = repeat ? repeat.get() : '';
     // 루틴은 '월·수·금 운동' 처럼 요일을 직접 고르는 일이 흔하다 — 늘 열어 둔다.
     // 일정에서는 반복 자체가 곁가지라 요일이 뜻을 가질 때만 꺼낸다.
     dayBlock.hidden = routineMode ? false : !daysMatter();
-    routineToggle.hidden = routineMode || !freq;
-    if (!freq && !routineMode) setRoutineOn(false);
   }
 
   const repeatBlock = h('div');
   const repeatRow = h('div', 'cmp-repeatrow');
-  repeatRow.append(repeat.el, routineToggle);
+  repeatRow.append(repeat.el);
   repeatBlock.append(fieldLabel('반복'), repeatRow);
 
   // ---------------------------------------------------------------- 알림
@@ -608,7 +600,7 @@ export function createCompose({ store, onToggle }) {
 
   const linkIn = h('input', 'scr-input');
   linkIn.type = 'text';
-  linkIn.placeholder = '관련 링크 (예: meet.google.com/abc)';
+  linkIn.placeholder = 'meet.google.com/abc';
   linkIn.spellcheck = false;
   const linkBlock = h('div');
   linkBlock.append(fieldLabel('링크'), linkIn);
@@ -668,13 +660,8 @@ export function createCompose({ store, onToggle }) {
   });
   const rtimeRow = h('div', 'cmp-rtimerow');
   rtimeRow.append(noTimeChip, routineTime.el, lenChip);
-  const rtimeNote = h('div', 'scr-hint scr-hint--long');
-  rtimeNote.append(
-    '시각을 넣으면 ', h('span', 'scr-hint__em', '시간띠'), '에 그려지고, 비워 두면 ',
-    h('span', 'scr-hint__em', '종일 띠'), '에 놓입니다 — 어느 쪽이든 같은 자리에서 체크로 지웁니다.',
-  );
   const rtimeBlock = h('div');
-  rtimeBlock.append(fieldLabel('시각'), rtimeRow, rtimeNote);
+  rtimeBlock.append(fieldLabel('시각'), rtimeRow);
 
   function paintRoutineTime() {
     const t = routineTime.get();
@@ -691,7 +678,9 @@ export function createCompose({ store, onToggle }) {
   rRemindRow.setAttribute('role', 'button');
   const rRemindValue = h('span', 'dt-row__value');
   const rRemindVal = h('span', 'dt-row__val');
-  rRemindVal.append(rRemindValue, h('span', 'dt-row__hint', '눌러서 시각 지정'));
+  const rRemindMore = h('span', 'dt-row__more');
+  rRemindMore.append(icon('chevronDown', 10, 1.4));
+  rRemindVal.append(rRemindValue, rRemindMore);
   rRemindRow.append(h('span', 'dt-row__key', '알림'), rRemindVal);
   let routineRemind = '';
 
@@ -754,8 +743,6 @@ export function createCompose({ store, onToggle }) {
   const rTagVal = h('span', 'dt-row__val');
   rTagRow.append(h('span', 'dt-row__key', '태그'), rTagVal);
 
-  const routineNote = h('div', 'cmp-note',
-    '되풀이하는 일은 달력에 그리지 않습니다 — 약속이 묻히지 않게.');
 
   // ---------------------------------------------------------------- 하단
   const err = h('div', 'cmp-err');
@@ -777,7 +764,7 @@ export function createCompose({ store, onToggle }) {
     whenBlock, whenGrid, lenRow, checkBlock, somedayNote,
     cycleBlock, rtimeBlock,
     styleRow,
-    rRemindRow, rTagRow, routineNote,
+    rRemindRow, rTagRow,
     moreBtn, moreBox,
     err, foot,
   );
@@ -803,11 +790,11 @@ export function createCompose({ store, onToggle }) {
   function applyMode() {
     const event = !routineMode && !somedayMode;
     head.titleEl.textContent = routineMode ? '루틴' : '일정 추가';
-    titleIn.placeholder = routineMode ? '이름 (예: 운동)' : '무엇을 할 예정인가요?';
+    titleIn.placeholder = routineMode ? '예) 운동' : '예) 치과 @내일 15:00';
     tokens.hidden = routineMode;
-    titleHint.hidden = !routineMode;
 
-    whenBlock.hidden = !event;
+    // 언제 줄은 '언젠가' 를 골라도 남는다 — 거기서 다시 날짜를 고를 수 있어야 한다
+    whenBlock.hidden = routineMode;
     whenGrid.hidden = !event;
     lenRow.hidden = !event;
     somedayNote.hidden = !somedayMode;
@@ -817,7 +804,6 @@ export function createCompose({ store, onToggle }) {
     rtimeBlock.hidden = !routineMode;
     rRemindRow.hidden = !routineMode;
     rTagRow.hidden = !routineMode;
-    routineNote.hidden = !routineMode;
 
     prioBlock.hidden = routineMode;
     styleRow.classList.toggle('is-single', routineMode);
@@ -843,8 +829,8 @@ export function createCompose({ store, onToggle }) {
   /**
    * @param {{start?:string, end?:string, startTime?:string, routine?:boolean, someday?:boolean,
    *           title?:string, dailyCheck?:boolean, color?:string, tags?:string[]}} [preset]
-   *   routine — '루틴' 입구로 열었을 때. 매일 반복 + 달력에 표시 안 함을 미리 켜 둔다.
-   *   someday — '언젠가' 의 ＋ 로 열었을 때. 날짜 없이 적는다.
+   *   routine — 루틴 모드로 연다. 매일 반복 + 달력에 표시 안 함을 미리 켜 둔다.
+   *   someday — 언제를 '언젠가' 로 골라 둔 채 연다.
    */
   function open(preset) {
     const sel = store.getState().selectedDate;
@@ -870,7 +856,6 @@ export function createCompose({ store, onToggle }) {
     picked.clear();
     paintDays();
     checkChips.set(preset?.dailyCheck ? 'daily' : 'once');
-    setRoutineOn(false);
     dayChips.set(start === todayKey() ? 'today' : null);
     endField.setDisabled(false);
     lenChips.el.classList.remove('is-disabled');
@@ -888,7 +873,6 @@ export function createCompose({ store, onToggle }) {
       repeat.set('daily');
       cycles.set('daily');
       setDays(ALL_DAYS);   // '매일' 은 요일 칸에서 7일 전부로 보여야 한다
-      setRoutineOn(true);
       endField.setDisabled(true);
     }
     applyMode();
@@ -981,7 +965,7 @@ export function createCompose({ store, onToggle }) {
       remind: remind.get(),
       // '평일'·'주말'·'격일' 은 여기서 저장 규칙으로 풀린다
       repeat: freq
-        ? { ...store.repeatFreqDays(freq, [...picked].sort((a, b) => a - b)), routine: routineOn }
+        ? { ...store.repeatFreqDays(freq, [...picked].sort((a, b) => a - b)), routine: false }
         : null,
       tags,
     });
@@ -995,6 +979,7 @@ export function createCompose({ store, onToggle }) {
 
   return {
     el: form, open, close,
+    setBack: (label) => { head.back.textContent = label; },
     isOpen: () => !form.hidden,
     /** 지금 어떤 화면인가 — 책갈피 탭이 따라간다 */
     mode: () => (routineMode ? 'routine' : 'compose'),
@@ -1026,7 +1011,7 @@ function createTagEditor(store) {
     const chips = tags.map((tag) => {
       const c = h('button', 'cmp-tag', `#${tag}`);
       c.type = 'button';
-      c.title = '눌러서 빼기';
+      c.title = '빼기';
       c.addEventListener('click', () => { tags = tags.filter((x) => x !== tag); render(); });
       return c;
     });

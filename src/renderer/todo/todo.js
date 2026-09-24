@@ -3,11 +3,15 @@
 // 외부 라이브러리 없음. 순수 ES 모듈 + DOM API. 사용자 입력은 항상 textContent 로만 넣는다.
 //
 // 오른쪽 면은 시안(핸드오프)의 화면을 갈아 끼운다 — 한 번에 하나만 보인다.
-//   오늘      날짜 머리 · 비서의 한 줄 · 지난 일 · 시간표(종일 띠 + 스트립/압축) · 언젠가
-//   일정 추가  compose.js
-//   루틴      compose.js 의 루틴 모드
+//   오늘      날짜 머리 · 비서의 한 줄 · 지난 일 · 시간표(종일 띠 + 스트립/압축) · 언젠가 · 한 줄 기록
+//   계획      plan.js — 주 · 달 목표 (책갈피 '계획')
+//   일정 추가  compose.js (일정 · 루틴)
 //   항목 상세  detail.js
 //   설정      app.js (같은 면을 쓴다)
+//
+// 같은 일을 하는 단추는 한 벌만 둔다. 일정과 루틴은 만드는 것이 서로 달라 날짜 머리에
+// 나란히 둔다(＋ 루틴 · ＋ 일정 추가). 그 대신 추가 화면 안에는 모드 전환을 두지 않는다.
+// 날짜 없이 적을 일만 '언제' 줄의 '언젠가' 로 고른다.
 //
 // 예전에는 목록 한가운데서 항목을 펼쳐 고쳤다. 좁은 면에서 상세가 절반을 먹으면
 // 무엇을 고치는지 흐려져서 '집중 모드' 까지 뒀었다. 시안은 그걸 아예 화면으로 뺐다.
@@ -18,8 +22,9 @@ import { icon } from '../lib/icons.js';
 import { createCompose } from './compose.js';
 import { createTimetable } from './timetable.js';
 import { createDetail } from './detail.js';
+import { createPlan } from './plan.js';
 import { showContextMenu } from '../lib/menu.js';
-import { h, shortDate, openLink, linkLabel } from './ui.js';
+import { h, setValueSafe, shortDate, openLink, linkLabel } from './ui.js';
 
 const WEEKDAY_FULL = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
 
@@ -94,7 +99,7 @@ export function createTodoPanel({ root, store }) {
 
   // ---------------------------------------------------------------- 날짜 머리
   // 시안: '9월 3일' 명조 20px · '목요일' · [오늘]  ……  [＋ 루틴] [＋ 일정 추가]
-  // 일정을 만드는 입구가 여기 있다. 날짜 바로 옆이라 '이 날에 추가한다' 가 읽힌다.
+  // 만드는 입구는 여기 둘뿐이다. 날짜 바로 옆이라 '이 날에 추가한다' 가 읽힌다.
   const head = h('header', 'todo-head');
   const headDate = h('div', 'todo-head__date');
   const dateLabel = h('span', 'todo-head__day');
@@ -105,11 +110,11 @@ export function createTodoPanel({ root, store }) {
   const headActs = h('div', 'todo-head__acts');
   const routineBtn = h('button', 'todo-head__btn');
   routineBtn.type = 'button';
-  routineBtn.title = '루틴 추가';
+  routineBtn.title = '되풀이하는 일 — 달력에 그리지 않는다';
   routineBtn.append(icon('plus', 11, 1.6), document.createTextNode('루틴'));
   const addBtn = h('button', 'todo-head__btn todo-head__btn--gold');
   addBtn.type = 'button';
-  addBtn.title = '새 일정 (N)';
+  addBtn.title = '단축키 N';
   addBtn.append(icon('plus', 11, 1.6), document.createTextNode('일정 추가'));
   headActs.append(routineBtn, addBtn);
   head.append(headDate, headActs);
@@ -120,15 +125,14 @@ export function createTodoPanel({ root, store }) {
   searchRow.hidden = true;
   const searchInput = h('input', 'todo-search__input');
   searchInput.type = 'text';
-  searchInput.placeholder = '전체 일정에서 검색';
+  searchInput.placeholder = '검색';
   searchInput.spellcheck = false;
   searchInput.setAttribute('aria-label', '전체 일정 검색');
-  const searchClose = h('button', 'todo-search__close', '닫기');
-  searchClose.type = 'button';
-  searchRow.append(icon('searchD', 12, 1.4), searchInput, searchClose);
+  // 닫는 단추를 따로 두지 않는다 — 켜 둔 표지의 돋보기를 다시 누르거나 Esc
+  searchRow.append(icon('searchD', 12, 1.4), searchInput);
 
-  // 태그로 걸러 보기 — 검색을 열었거나 태그 필터가 걸려 있을 때만 보인다.
-  // 걸러 놓고 그 사실을 감추면 '일정이 사라졌다' 가 된다.
+  // 태그로 걸러 보기 — 검색 중에만. 평소에는 왼쪽 달력 발치의 테마 띠가 그 일을 한다
+  // (같은 일을 하는 줄을 두 벌 두지 않는다).
   const tagBar = h('div', 'todo-tagbar');
   tagBar.hidden = true;
 
@@ -139,12 +143,9 @@ export function createTodoPanel({ root, store }) {
   const aideActs = h('span', 'todo-aide__acts');
   const pickBtn = h('button', 'todo-aide__btn', '지금 할 일');
   pickBtn.type = 'button';
-  pickBtn.title = '지금 붙잡을 일 하나를 골라 드립니다';
+  pickBtn.title = '하나만 골라 주기';
   pickBtn.setAttribute('aria-pressed', 'false');
-  const briefBtn = h('button', 'todo-aide__btn', '브리핑');
-  briefBtn.type = 'button';
-  briefBtn.addEventListener('click', () => document.dispatchEvent(new CustomEvent('app:brief')));
-  aideActs.append(pickBtn, briefBtn);
+  aideActs.append(pickBtn);
   aide.append(aideText, aideActs);
 
   // ---- 「지금 할 일」 ----
@@ -219,20 +220,57 @@ export function createTodoPanel({ root, store }) {
   });
   sections.overdue.actions.append(rollBtn);
 
-  // 언젠가 — 머리의 ＋ 와 목록 끝 점선 줄. 둘 다 날짜 없이 적는 입구다.
-  const inboxPlus = h('button', 'todo-section__plus', '＋');
-  inboxPlus.type = 'button';
-  inboxPlus.title = '날짜 없이 적어 두기';
-  inboxPlus.setAttribute('aria-label', '날짜 없이 적어 두기');
-  inboxPlus.addEventListener('click', () => compose.open({ someday: true }));
-  sections.inbox.actions.append(inboxPlus);
+  // 언젠가에는 따로 적는 입구가 없다 — '＋ 일정 추가' 에서 언제를 '언젠가' 로 고른다.
 
-  const inboxAdd = h('button', 'todo-addline');
-  inboxAdd.type = 'button';
-  inboxAdd.append(h('span', 'todo-addline__plus', '＋'),
-    h('span', 'todo-addline__text', '날짜 없이 적어 두기 — 나중에 오늘·내일로 끌어옵니다'));
-  inboxAdd.addEventListener('click', () => compose.open({ someday: true }));
-  sections.inbox.el.append(inboxAdd);
+  // ---------------------------------------------------------------- 한 줄 기록
+  //
+  // 일정은 '할 일' 을 적지만, 지나고 나서 남는 건 그날이 어땠는지다.
+  // 하루에 한 줄, 고른 날짜에 붙는다. 아래에는 최근에 적어 둔 줄들이 쌓인다.
+  const jrn = makeSection('journal', '한 줄');
+  const jrnInput = h('input', 'todo-jrn__input');
+  jrnInput.type = 'text';
+  jrnInput.maxLength = 200;
+  jrnInput.spellcheck = false;
+  const jrnLine = h('label', 'todo-jrn');
+  jrnLine.append(h('span', 'todo-jrn__mark', '—'), jrnInput);
+  jrn.el.append(jrnLine);
+  const jrnPast = h('div', 'todo-jrn__past');
+  jrn.el.append(jrnPast);
+
+  const saveJournal = () => {
+    const key = store.getState().selectedDate;
+    if (jrnInput.value.trim() === store.journalOn(key)) return;
+    store.setJournal(key, jrnInput.value);
+  };
+  jrnInput.addEventListener('change', saveJournal);
+  jrnInput.addEventListener('blur', saveJournal);
+  jrnInput.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter') { e.preventDefault(); jrnInput.blur(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      jrnInput.value = store.journalOn(store.getState().selectedDate);
+      jrnInput.blur();
+    }
+  });
+
+  function renderJournal(st) {
+    const key = st.selectedDate;
+    const today = todayKey();
+    setValueSafe(jrnInput, store.journalOn(key));
+    jrnInput.placeholder = key === today ? '오늘 한 줄' : `${monthDayKo(key)} 한 줄`;
+    jrnInput.setAttribute('aria-label', jrnInput.placeholder);
+
+    const past = store.recentJournal(key, 4);
+    jrnPast.replaceChildren(...past.map(({ key: k, text }) => {
+      const row = h('button', 'todo-jrn__row');
+      row.type = 'button';
+      row.append(h('span', 'todo-jrn__when num', shortDate(k)), h('span', 'todo-jrn__text', text));
+      row.addEventListener('click', () => store.selectDate(k));
+      return row;
+    }));
+  }
 
   // ---- 마감 역산 ----
   //
@@ -265,24 +303,21 @@ export function createTodoPanel({ root, store }) {
   const compose = createCompose({ store, onToggle: () => scheduleRender() });
   const detail = createDetail({ store, onPlan: planFor, notify });
 
-  // 오늘 시간표 — 하루의 '모양' 을 맡는다.
-  // 목록은 무엇이 있는지는 알려 줘도, 그 앞이 비었는지 붙어 있는지는 말해 주지 않았다.
-  const timetable = createTimetable({
+  // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 오늘 화면으로 내려간다.
+  let planOpen = false;
+  const plan = createPlan({
     store,
+    notify,
     onDetail: (id) => store.setEditing(id),
-    onAdd: () => {
-      // '시각 있는 일정 추가' — 오늘이면 다음 정각, 다른 날이면 아침 9시로 채워 연다
-      const key = store.getState().selectedDate;
-      const startTime = key === todayKey()
-        ? hhmm(Math.min(23 * 60, (Math.floor(nowMinutes() / 60) + 1) * 60))
-        : '09:00';
-      compose.open({ start: key, end: key, startTime });
-    },
-    onAddAllDay: () => {
-      const key = store.getState().selectedDate;
-      compose.open({ start: key, end: key });
+    onOpenDay: (key) => {
+      planOpen = false;
+      store.selectDate(key);
     },
   });
+
+  // 오늘 시간표 — 하루의 '모양' 을 맡는다.
+  // 목록은 무엇이 있는지는 알려 줘도, 그 앞이 비었는지 붙어 있는지는 말해 주지 않았다.
+  const timetable = createTimetable({ store, onDetail: (id) => store.setEditing(id) });
 
   // 목록의 항목을 시간표로 끌어다 놓으면 고른 날짜로 옮긴다
   timetable.el.addEventListener('dragover', (e) => {
@@ -303,9 +338,9 @@ export function createTodoPanel({ root, store }) {
     store.moveTask(id, store.getState().selectedDate);
   });
 
-  body.append(sections.search.el, sections.overdue.el, timetable.el, sections.inbox.el);
+  body.append(sections.search.el, sections.overdue.el, timetable.el, sections.inbox.el, jrn.el);
   main.append(head, searchRow, tagBar, aide, pick, hint, body);
-  el.append(main, compose.el, detail.el);
+  el.append(main, plan.el, compose.el, detail.el);
   root.append(el);
 
   addBtn.addEventListener('click', () => {
@@ -319,23 +354,35 @@ export function createTodoPanel({ root, store }) {
 
   // 책갈피 탭 · 표지 버튼이 부르는 것들. 탭은 화면을 새로 만들지 않고 이미 있는 입구를 연다.
   document.addEventListener('app:close-compose', () => compose.close());
-  document.addEventListener('app:new-routine', () => {
+  // 책갈피 '오늘' · '계획' — 떠 있던 추가 · 상세 화면은 걷고 그 면으로
+  document.addEventListener('app:today', () => {
+    planOpen = false;
+    compose.close();
     store.setEditing(null);
-    compose.open({ routine: true });
+    scheduleRender();
+  });
+  document.addEventListener('app:plan', () => {
+    planOpen = true;
+    compose.close();
+    store.setEditing(null);
+    scheduleRender();
   });
   document.addEventListener('app:search', () => {
+    planOpen = false;
     compose.close();
     store.setEditing(null);
     if (searchRow.hidden) openSearch();
     else closeSearch();
   });
 
-  // N — 새 일정. 입력 중이거나 다른 화면이 떠 있으면 가로채지 않는다.
+  // N — 새 일정(계획 화면에서는 새 목표). 입력 중이거나 다른 화면이 떠 있으면 가로채지 않는다.
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyN' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     if (isFormControl(document.activeElement) || e.isComposing) return;
-    if (main.hidden || root.classList.contains('is-settings')) return;
-    if (document.querySelector('.brief-scrim, .help, .tt-peek:not([hidden])')) return;
+    if (root.classList.contains('is-settings')) return;
+    if (document.querySelector('.modal-scrim, .tt-peek:not([hidden])')) return;
+    if (!plan.el.hidden) { e.preventDefault(); plan.focusAdd(); return; }
+    if (main.hidden) return;
     e.preventDefault();
     compose.open();
   });
@@ -430,7 +477,7 @@ export function createTodoPanel({ root, store }) {
 
     if (!inSection) {
       // 다른 자리 → 언젠가로 옮기면 날짜를 걷어낸다
-      if (sec.key === 'inbox') store.updateTask(id, { start: null, end: null });
+      if (sec.key === 'inbox') store.updateTask(id, { start: null, end: null, plan: null });
       return;
     }
 
@@ -449,8 +496,8 @@ export function createTodoPanel({ root, store }) {
   //
   // 지난 일 · 언젠가 · 검색 결과의 한 줄. 시안:
   //   지난 일  [□] 9/1 (화)  세금계산서 발행      #경리
-  //   언젠가   포트폴리오 사이트 손보기 [3주째]    [오늘][내일][주말]
-  // 내일로 미루기 · 삭제는 줄에 커서를 올렸을 때만 오른쪽 끝에 뜬다.
+  //   언젠가   포트폴리오 사이트 손보기 [3주째]    [날짜 ⌄]
+  // 미루기 · 삭제는 줄마다 단추로 두지 않는다 — 누르면 열리는 상세에 한 벌 있다(우클릭 · Delete 도 된다).
   function createItem(taskId) {
     const li = h('li', 'todo-item');
     li.dataset.id = taskId;
@@ -470,39 +517,15 @@ export function createTodoPanel({ root, store }) {
     const title = h('span', 'todo-title');
     const meta = h('span', 'todo-meta');
 
-    const acts = h('span', 'todo-acts');
-    // 내일로 미루기 — 오늘 못 할 일을 미는 건 매일 하는 동작이라 손 닿는 곳에 둔다.
-    const defer = h('button', 'todo-act', '내일로');
-    defer.type = 'button';
-    const del = h('button', 'todo-act todo-act--seal', '삭제');
-    del.type = 'button';
-    acts.append(defer, del);
-
-    row.append(check, when, title, meta, acts);
+    row.append(check, when, title, meta);
     li.append(row);
 
-    const rec = { id: taskId, el: li, row, check, when, title, meta, defer, del, task: null };
+    const rec = { id: taskId, el: li, row, check, when, title, meta, task: null };
 
     check.addEventListener('click', (e) => {
       e.stopPropagation();
       // 반복 일정은 '이 회차'만 완료 처리한다
       store.toggleDone(taskId, rec.task?.occDate);
-    });
-
-    defer.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const t = rec.task;
-      if (!t || !t.start || t.repeat) return;
-      // 지난 일을 '내일로' 밀면 어제의 내일(=오늘)이 아니라 진짜 내일로 간다
-      const base = t.start < todayKey() ? todayKey() : t.start;
-      store.moveTask(t.id, addDays(base, 1));
-      notify(`'${t.title || '일정'}' 을(를) 내일로 미뤘습니다`);
-    });
-
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (store.getState().editingTaskId === taskId) store.setEditing(null);
-      store.removeTask(taskId, rec.task?.occDate);
     });
 
     // 우클릭 메뉴 — 자주 쓰는 동작을 손 가까이에 둔다
@@ -572,7 +595,7 @@ export function createTodoPanel({ root, store }) {
       }
     };
     li.addEventListener('click', (e) => {
-      if (e.target.closest('.todo-check, .todo-act, .todo-plan, .todo-tag, .todo-link')) return;
+      if (e.target.closest('.todo-check, .todo-plan, .todo-tag, .todo-link')) return;
       if (e.target.closest('.todo-title-input')) return;
       if (e.detail > 1) return;   // 더블클릭의 두 번째 클릭 무시
       if (e.target.closest('.todo-title')) {
@@ -678,14 +701,6 @@ export function createTodoPanel({ root, store }) {
     const readable = task.title || '제목 없음';
     rec.check.setAttribute('aria-checked', String(!!task.done));
     rec.check.setAttribute('aria-label', `${readable} 완료`);
-    rec.del.setAttribute('aria-label',
-      task.repeat && task.occDate ? `${readable} 이 회차 건너뛰기` : `${readable} 삭제`);
-    rec.del.textContent = task.repeat && task.occDate ? '건너뛰기' : '삭제';
-
-    // 날짜가 없으면 밀 곳이 없고, 반복 일정은 규칙째 움직이면 안 된다
-    const canDefer = !!task.start && !task.repeat;
-    rec.defer.hidden = !canDefer;
-    if (canDefer) rec.defer.setAttribute('aria-label', `${readable} 내일로 미루기`);
 
     // 날짜 칸 — 지난 일 · 검색 결과는 다른 날의 일정이라 언제인지 먼저 보여야 고를 수 있다
     const showWhen = sectionKey !== 'inbox' && !!task.start;
@@ -725,7 +740,7 @@ export function createTodoPanel({ root, store }) {
     // 세 번 넘게 민 일 — '안 할 일' 이거나 '너무 큰 일' 이다. 조용히 알려만 준다.
     if (!task.repeat && task.deferCount >= 3) {
       const dc = h('span', 'todo-defers', `${task.deferCount}번 미룸`);
-      dc.title = '오늘 할 일에서 뒤로 민 횟수입니다. 쪼개거나 「언젠가」로 옮겨 보세요.';
+      dc.title = '미룬 횟수';
       meta.append(dc);
     }
 
@@ -766,24 +781,31 @@ export function createTodoPanel({ root, store }) {
         rec.age = null;
       }
 
-      const plan = h('span', 'todo-plan');
-      for (const [label, key] of [
-        ['오늘', todayKey()],
-        ['내일', addDays(todayKey(), 1)],
-        ['주말', nextWeekendKey()],
-      ]) {
-        const b = h('button', 'todo-plan__btn', label);
-        b.type = 'button';
-        b.setAttribute('aria-label', `'${task.title || '일정'}' 을(를) ${label}로 잡기`);
-        b.addEventListener('click', (e) => {
-          e.stopPropagation();
+      // 꺼내 쓰는 단추는 하나 — 누르면 오늘 · 내일 · 주말 · 이번 주 목표가 펼쳐진다
+      const pick = h('button', 'todo-plan');
+      pick.type = 'button';
+      pick.setAttribute('aria-label', `'${task.title || '일정'}' 날짜 잡기`);
+      pick.append(h('span', null, '날짜'), icon('chevronDown', 10, 1.4));
+      pick.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const r = pick.getBoundingClientRect();
+        const to = (label, key) => () => {
           store.moveTask(task.id, key);
           store.selectDate(key);
           notify(`'${task.title || '일정'}' 을(를) ${label}로 잡았습니다`);
-        });
-        plan.append(b);
-      }
-      meta.append(plan);
+        };
+        showContextMenu(r.left, r.bottom + 2, [
+          { label: '오늘', onSelect: to('오늘', todayKey()) },
+          { label: '내일', onSelect: to('내일', addDays(todayKey(), 1)) },
+          { label: '주말', onSelect: to('주말', nextWeekendKey()) },
+          { separator: true },
+          {
+            label: '이번 주 목표로',
+            onSelect: () => store.moveGoals([task.id], store.weekScope(todayKey())),
+          },
+        ]);
+      });
+      meta.append(pick);
     } else {
       rec.age?.remove();
       rec.age = null;
@@ -823,7 +845,7 @@ export function createTodoPanel({ root, store }) {
   }
 
   function buildSearchEmpty() {
-    return h('div', 'todo-empty', '찾는 일정이 없습니다. 다른 낱말로 찾아보세요.');
+    return h('div', 'todo-empty', '없습니다');
   }
 
   // ---------------------------------------------------------- 머리 · 비서의 한 줄
@@ -915,23 +937,24 @@ export function createTodoPanel({ root, store }) {
 
   /** '왜 이것인가' 를 한 줄로. store 는 종류만 주고 문장은 여기서 만든다. */
   function pickWhyText({ kind, at, task }) {
-    if (kind === 'now') return `지금 ${at} 시간입니다`;
-    if (kind === 'soon') return `${at} 시작 — 곧입니다`;
+    if (kind === 'now') return `지금 ${at}`;
+    if (kind === 'soon') return `${at} 시작`;
     if (kind === 'overdue') {
       const days = Math.max(1, diffDays(task.start, todayKey()));
-      return `${shortDate(task.start)}부터 ${days}일째 밀려 있습니다`;
+      return `${days}일째 밀림`;
     }
-    if (kind === 'check') return '오늘 아직 체크하지 않으셨습니다';
-    if (task.priority >= 2) return '오늘 몫 중 가장 급합니다';
-    if (task.deferCount >= 3) return `${task.deferCount}번 미루신 일입니다`;
-    return '오늘 몫입니다';
+    if (kind === 'check') return '오늘 체크 전';
+    if (task.priority >= 2) return '긴급';
+    if (task.deferCount >= 3) return `${task.deferCount}번 미룸`;
+    return '';
   }
 
   function renderPick() {
     const cur = pickList[pickIdx];
     if (!cur) {
-      pickTitle.textContent = '지금 붙잡을 일이 없습니다';
-      pickWhy.textContent = '오늘 몫은 다 하셨습니다.';
+      pickTitle.textContent = '붙잡을 일이 없습니다';
+      pickWhy.textContent = '';
+      pickWhy.hidden = true;
       pickActs.hidden = true;
       return;
     }
@@ -939,6 +962,7 @@ export function createTodoPanel({ root, store }) {
     pickNext.hidden = pickList.length < 2;
     pickTitle.textContent = cur.task.title || '(제목 없음)';
     pickWhy.textContent = pickWhyText(cur);
+    pickWhy.hidden = !pickWhy.textContent;
   }
 
   pickBtn.addEventListener('click', () => {
@@ -959,7 +983,7 @@ export function createTodoPanel({ root, store }) {
 
   function renderTagBar(st) {
     const tags = store.allTags();
-    const show = (!searchRow.hidden || !!st.filter.tag) && tags.length > 0;
+    const show = !searchRow.hidden && tags.length > 0;
     tagBar.hidden = !show;
     const sig = `${show}|${st.filter.tag || ''}|${tags.join(',')}`;
     if (sig === lastTagSignature) return;
@@ -1060,21 +1084,33 @@ export function createTodoPanel({ root, store }) {
   // ---------------------------------------------------------- 화면 고르기
   /**
    * 지금 어느 화면인가. 추가 화면이 열려 있으면 그쪽이, 고치는 항목이 있으면 상세가 앞에 온다.
+   * 둘 다 없으면 책갈피가 고른 면(오늘 · 계획)이다. 상세 · 추가를 닫으면 그 면으로 돌아간다.
    * 책갈피 탭이 따라가도록 바뀔 때마다 알린다.
    */
   function syncScreen(editingTask) {
-    let screen = 'main';
+    let screen = planOpen ? 'plan' : 'main';
     if (compose.isOpen()) screen = compose.mode();
     else if (editingTask) screen = 'detail';
+    const tab = planOpen ? 'plan' : 'main';
 
     main.hidden = screen !== 'main';
+    plan.el.hidden = screen !== 'plan';
     detail.el.hidden = screen !== 'detail';
-    if (screen !== lastScreen) {
+    // 뒤로 가는 단추는 돌아갈 면의 이름을 단다
+    const back = tab === 'plan' ? '‹ 계획' : '‹ 오늘';
+    detail.setBack(back);
+    compose.setBack(back);
+    // 계획 화면에서 주를 짜는 동안 달력이 그 주를 금박 테두리로 짚는다
+    document.documentElement.dataset.plan = screen === 'plan' ? (store.getState().settings.planView || 'week') : '';
+
+    const sig = `${screen}|${tab}`;
+    if (sig !== lastScreen) {
       // 화면이 바뀌면 맨 위부터 보인다 — 긴 목록 중간에서 상세가 열리면 머리가 안 보인다
       el.scrollTop = 0;
-      if (lastScreen === 'detail') detail.flush();
-      lastScreen = screen;
-      document.dispatchEvent(new CustomEvent('app:screen', { detail: screen }));
+      if (lastScreen.startsWith('detail')) detail.flush();
+      if (lastScreen.startsWith('plan')) plan.flush();
+      lastScreen = sig;
+      document.dispatchEvent(new CustomEvent('app:screen', { detail: { screen, tab } }));
     }
   }
 
@@ -1107,6 +1143,7 @@ export function createTodoPanel({ root, store }) {
 
     syncScreen(editingTask);
     if (editingTask) detail.update(editingTask);
+    if (!plan.el.hidden) plan.update();
 
     renderHead(st);
     renderTagBar(st);
@@ -1122,7 +1159,10 @@ export function createTodoPanel({ root, store }) {
     if (searching) sections.search.titleEl.textContent = `'${st.filter.text.trim()}' 검색 결과`;
     sections.overdue.el.hidden = searching || overdue.length === 0;
     timetable.el.hidden = searching;
-    sections.inbox.el.hidden = searching;
+    // 언젠가가 비었으면 머리째 걷는다 — 적는 입구가 따로 없으니 빈 머리는 할 말이 없다
+    sections.inbox.el.hidden = searching || inboxTasks.length === 0;
+    jrn.el.hidden = searching;
+    if (!searching) renderJournal(st);
     aide.hidden = searching;
     if (!searching) {
       timetable.update(key, addDays(key, 1));
@@ -1142,8 +1182,8 @@ export function createTodoPanel({ root, store }) {
       if (pickIdx >= pickList.length) pickIdx = 0;
       const free = res.freeMinutes;
       pickLead.textContent = free == null
-        ? `지금 ${hhmm(nowMinutes())} · 남은 시각 일정 없음`
-        : `지금 ${hhmm(nowMinutes())} · 다음 일정까지 ${spanText(free)}`;
+        ? `지금 ${hhmm(nowMinutes())}`
+        : `지금 ${hhmm(nowMinutes())} · 다음까지 ${spanText(free)}`;
       renderPick();
     } else {
       pickList = [];
@@ -1155,10 +1195,11 @@ export function createTodoPanel({ root, store }) {
     hint.hidden = !hintNow;
     if (hintNow) {
       hintText.replaceChildren(
-        `「${hintNow.title}」 · 최근 ${hintNow.count}번 적으셨습니다 — `,
+        `「${hintNow.title}」 → `,
         h('span', 'todo-hint__em', `${store.repeatLabel(hintNow.repeat)} 루틴`),
-        '으로 만들까요?',
+        '으로?',
       );
+      hintText.title = `최근 ${hintNow.count}번 적음`;
     }
 
     renderSection(sections.search, searchResults, searching ? buildSearchEmpty : null);
@@ -1198,7 +1239,6 @@ export function createTodoPanel({ root, store }) {
     else scheduleRender();
   }
 
-  searchClose.addEventListener('click', closeSearch);
   searchInput.addEventListener('input', () => {
     store.setFilter({ text: searchInput.value });
   });
@@ -1217,6 +1257,7 @@ export function createTodoPanel({ root, store }) {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = 0;
       detail.flush();
+      plan.flush();
       unsubscribe();
       itemCache.clear();
       root.textContent = '';

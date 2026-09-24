@@ -28,7 +28,8 @@ Electron 데스크톱 위젯. **빌드 스텝 없음.** 렌더러는 순수 ES �
   startTime: 'HH:mm' | null,    // null = 종일. 날짜와 같은 로컬 벽시계 문자열
   endTime:   'HH:mm' | null,    // startTime 이 없으면 항상 null
   done: boolean, priority: 0|1|2, color: 'blue'|'green'|'amber'|'rose'|'violet'|'slate',
-  tags: string[], order: number, createdAt: number, doneAt: number|null
+  tags: string[], order: number, createdAt: number, doneAt: number|null,
+  plan: 'w:YYYY-MM-DD' | 'm:YYYY-MM' | null,   // 주(그 주 일요일) · 달 목표. 날짜를 잡아도 남는다
 }
 ```
 
@@ -39,7 +40,9 @@ Electron 데스크톱 위젯. **빌드 스텝 없음.** 렌더러는 순수 ES �
 - 시작 시각이 사라지면 `'-30m'` 같은 상대 알림도 함께 지운다 (기준점이 없어진다)
 
 디스크 저장 형태:
-`{ "version": 1, "tasks": Task[], "launcher": [...], "reminderLog": [...], "settings": {...} }`
+`{ "version": 1, "tasks": Task[], "launcher": [...], "reminderLog": [...],
+   "journal": { "YYYY-MM-DD": "한 줄" },
+   "retro": { "w:YYYY-MM-DD" | "m:YYYY-MM": "한 문단" }, "settings": {...} }`
 
 > ⚠️ `storage.saveData` 는 렌더러가 보낸 객체를 그대로 쓰지 않고 **필드를 골라 다시 조립**합니다.
 > store 에 새 영속 필드를 더하면 `src/main/storage.js` 의 `payload` 와 `loadData` 반환값에도
@@ -51,10 +54,11 @@ Electron 데스크톱 위젯. **빌드 스텝 없음.** 렌더러는 순수 ES �
 |---|---|
 | `loadNotice` | 부팅 시 데이터 손상·읽기 실패 안내 (셸이 배너로 띄운다) |
 | `saveError` | 마지막 저장 실패 메시지. 성공하면 다시 `null` |
+| `weather` | 오늘 날씨 `{city,temp,high,low,icon,label}`. 메인이 받아 셸이 담는다 |
 
 `settings` 기본값은 `store.js` 의 `DEFAULT_SETTINGS` 참조:
 `theme, opacity, splitRatio, alwaysOnTop, clickThroughLocked, showCompleted, weekStart, fontScale,
-showBrief, lastBriefDate, seenWelcome`
+todayView, planView, weather, weatherCity, showBrief, lastBriefDate`
 
 `remind` 형식은 두 가지입니다.
 
@@ -90,6 +94,7 @@ window.api = {
     hide(): void,                              // 트레이로 숨김
     setAlwaysOnTop(on: boolean): void,
     setIgnoreMouseEvents(on: boolean): void,   // 클릭 통과(잠금 모드)
+    catchMouse(on: boolean): void,             // 클릭 통과 중 자물쇠 위에 있는 동안만 마우스를 받는다
     getBounds(): Promise<{x,y,width,height}>,
     setSize(w: number, h: number): void,
     snapPreset(preset: 'compact'|'normal'|'wide'|'tall'): void,
@@ -105,9 +110,22 @@ window.api = {
     }): void,
   },
 
+  // 받은함 — 바깥에서 들어온 일정. 메인이 파일을 읽어 모양만 보고 넘기면 해석은 렌더러가 한다.
+  inbox: {
+    ready(): void,                                  // 부팅 직후 한 번 — 쌓인 것을 받는다
+    onItems(cb: (p: {source, lines, tasks, goals}) => void): void,
+    open(): Promise<string>,                        // 받은함 폴더 열기
+  },
+
+  // 날씨 — 도시 이름만 넘긴다(좌표표와 네트워크는 메인이 갖는다)
+  weather: {
+    get(city: string): Promise<null | {city,temp,high,low,icon,label,at,stale?}>,
+    cities(): Promise<string[]>,
+  },
+
   // 트레이 메뉴 -> 렌더러.
   // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue'
-  // | 'open-task:<id>' | 'unlock'
+  // | 'open-task:<id>' | 'lock' | 'unlock'   (클릭 통과를 메인 쪽에서 바꿨을 때)
   onMenuAction(cb: (action: string) => void): void,
 }
 ```
@@ -126,12 +144,20 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
 
 - `root` : 이미 존재하는 빈 DOM 엘리먼트. 그 안에만 그립니다.
 - `store`: `src/renderer/store.js` 모듈 네임스페이스 객체 전체.
-  - 읽기: `store.getState()`, `store.tasksOnDate(key, {filtered})`, `store.inboxTasks()`,
+  - 읽기: `store.getState()`, `store.tasksOnDate(key, {filtered, ignoreTag})`, `store.inboxTasks()`,
     `store.spanningTasks()`, `store.overdueTasks(today, {filtered})`, `store.allTags()`,
+    `store.planGoals(scope)`, `store.weekScope(key)`, `store.monthScope(key)`,
+    `store.monthReport(ym)`, `store.journalOn(key)`, `store.recentJournal(before, limit)`,
+    `store.journalBetween(from, to)`, `store.retroOn(scope)`,
+    `store.tagSummary()`, `store.matchesTag(task)` (테마 — 달력은 걷어내는 대신 흐리게),
     `store.COLORS`, `store.PRIORITY_LABELS`
   - 쓰기: `store.addTask()`, `store.updateTask()`, `store.toggleDone()`, `store.removeTask()`,
     `store.reorder()`, `store.moveTask()`, `store.moveTasksTo(ids, key, label)`,
     `store.setPinned(id, on)` (토글이 아니라 값 지정 — 드롭처럼 결과가 정해진 동작용),
+    `store.addGoal(scope, patch)`, `store.moveGoals(ids, scope, label)` (주 · 달 목표),
+    `store.setJournal(key, text)` (하루 한 줄), `store.setRetro(scope, text)` (돌아보기),
+    `store.addTasks(patches, label)` (받은함 등 — 되돌리기 한 번),
+    `store.setWeather(data)` (셸만 부른다),
     `store.selectDate()`, `store.setAnchorMonth()`,
     `store.setFilter()`, `store.setEditing()`, `store.setSetting()`
 

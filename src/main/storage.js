@@ -50,7 +50,7 @@ function rotateBackup(currentPath) {
 
 /** 빈 데이터 기본형 */
 function emptyData() {
-  return { version: 1, tasks: [], launcher: [], reminderLog: [], settings: {} };
+  return { version: 1, tasks: [], launcher: [], reminderLog: [], journal: {}, retro: {}, settings: {} };
 }
 
 /** userData 디렉터리 보장 */
@@ -133,6 +133,8 @@ function loadData() {
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
     launcher: Array.isArray(parsed.launcher) ? parsed.launcher : undefined,
     reminderLog: Array.isArray(parsed.reminderLog) ? parsed.reminderLog : [],
+    journal: parsed.journal && typeof parsed.journal === 'object' ? parsed.journal : {},
+    retro: parsed.retro && typeof parsed.retro === 'object' ? parsed.retro : {},
     settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
   };
 }
@@ -162,6 +164,8 @@ function saveData(data) {
     tasks: data.tasks,
     launcher: Array.isArray(data.launcher) ? data.launcher : [],
     reminderLog: Array.isArray(data.reminderLog) ? data.reminderLog : [],
+    journal: data.journal && typeof data.journal === 'object' ? data.journal : {},
+    retro: data.retro && typeof data.retro === 'object' ? data.retro : {},
     settings: data.settings || {},
   };
 

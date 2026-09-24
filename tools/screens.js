@@ -24,6 +24,10 @@ const SHOTS = [
   ['05-dark', '다크 테마', [...SIZE, '--theme', 'dark']],
   ['06-routine', '루틴', [...SIZE, '--exec', 'tools/shots/routine.js']],
   ['07-settings', '설정', [...SIZE, '--exec', 'tools/shots/settings.js']],
+  ['08-plan', '계획 — 주간', [...SIZE, '--exec', 'tools/shots/plan.js']],
+  ['09-plan-month', '계획 — 월간', [...SIZE, '--exec', 'tools/shots/plan-month.js']],
+  ['10-theme', '테마', [...SIZE, '--exec', 'tools/shots/theme.js']],
+  ['11-retro', '돌아보기', [...SIZE, '--exec', 'tools/shots/retro.js']],
 ];
 
 let failed = 0;

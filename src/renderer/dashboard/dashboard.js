@@ -47,8 +47,10 @@ export function createDashboard({ root, store }) {
 
   const el = h('div', 'dash-root');
   const grid = h('div', 'dash-grid');
-  const empty = h('div', 'dash-empty',
-    'D-Day 로 고정한 일정이 없습니다 — 일정을 여기로 끌어다 놓으면 남은 날이 보입니다');
+  // 비어 있으면 점선 빈 칸 하나. 일정을 끌어 오면 금박으로 받는다 — 문장으로 설명하지 않는다.
+  const empty = h('div', 'dash-empty');
+  empty.append(h('span', 'dash-empty__slot', 'D-Day'));
+  empty.title = '일정을 여기로 끌어다 놓으면 고정됩니다';
   el.append(grid, empty);
   root.append(el);
 

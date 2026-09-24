@@ -32,6 +32,8 @@ const storage = require('./storage');
 const windowState = require('./windowState');
 const runner = require('./runner');
 const holidays = require('./holidays');
+const weather = require('./weather');
+const inbox = require('./inbox');
 
 // ---------------------------------------------------------------- 상수
 
@@ -67,6 +69,7 @@ let trayIcon = null;
 let isQuitting = false;          // 트레이 '종료' 를 눌렀을 때만 true
 let alwaysOnTop = false;         // 항상 위 상태(메인이 진실의 원천)
 let clickThrough = false;        // 클릭 통과(잠금) 상태
+let rendererReady = false;       // 렌더러가 받은함을 받을 준비가 됐는가
 let registeredAccelerator = null; // 실제로 등록에 성공한 전역 단축키
 
 // ---------------------------------------------------------------- 창
@@ -109,6 +112,9 @@ function createWindow() {
       backgroundThrottling: false, // 숨겨져 있어도 타이머(날짜 갱신)가 멈추지 않게
     },
   });
+
+  // 창을 새로 만들면 렌더러는 처음부터 다시 뜬다 — 준비 표시도 되돌린다
+  rendererReady = false;
 
   win.setMenuBarVisibility(false);
   // 명시적으로 한 번 더 — 일부 환경에서 transparent 창이 고정 크기로 잡히는 것 방지
@@ -213,7 +219,7 @@ function setAlwaysOnTop(on) {
 /**
  * 클릭 통과(잠금) 모드.
  * 켜면 마우스 이벤트가 위젯을 통과해 바탕화면으로 간다.
- * forward:true 라야 렌더러가 mousemove 를 계속 받아 해제 UI 를 그릴 수 있다.
+ * forward:true 라야 렌더러가 mousemove 를 계속 받아 자물쇠 위에 커서가 온 것을 안다.
  */
 function setClickThrough(on) {
   clickThrough = !!on;
@@ -222,6 +228,17 @@ function setClickThrough(on) {
     else win.setIgnoreMouseEvents(false);
   }
   refreshTrayMenu();
+}
+
+/**
+ * 클릭 통과 중에도 자물쇠는 다시 누를 수 있어야 한다.
+ * 렌더러가 '커서가 자물쇠 위에 있다' 고 알리면 그동안만 마우스를 받고, 벗어나면 다시 통과시킨다.
+ * 클릭 통과가 꺼져 있으면 할 일이 없다.
+ */
+function catchMouse(on) {
+  if (!clickThrough || !win || win.isDestroyed()) return;
+  if (on) win.setIgnoreMouseEvents(false);
+  else win.setIgnoreMouseEvents(true, { forward: true });
 }
 
 /** 프로그램적 리사이즈 — 최소 크기 보장 + 화면 밖으로 나가지 않게 보정 */
@@ -386,6 +403,8 @@ function buildTrayMenu() {
       checked: clickThrough,
       click: (item) => {
         setClickThrough(item.checked);
+        // 렌더러의 설정(흐림 · 자물쇠 표시)도 맞춘다 — 안 그러면 자물쇠가 반대로 켜고 끈다
+        if (win && !win.isDestroyed()) win.webContents.send('menu:action', item.checked ? 'lock' : 'unlock');
         if (item.checked) showWidget();
       },
     },
@@ -486,6 +505,10 @@ function registerIpc() {
   // 렌더러는 CSP 때문에 네트워크를 쓸 수 없다. 받아오는 일은 메인이 맡고 결과만 넘긴다.
   ipcMain.handle('holidays:get', (_e, years) => holidays.get(years));
 
+  // 날씨 — 고른 도시의 좌표만 나간다. 위치를 추측하지 않는다.
+  ipcMain.handle('weather:get', (_e, city) => weather.get(String(city || '')));
+  ipcMain.handle('weather:cities', () => weather.cities());
+
   ipcMain.handle('data:load', () => storage.loadData());
   ipcMain.handle('data:save', (_e, data) => storage.saveData(data));
 
@@ -504,6 +527,7 @@ function registerIpc() {
   // 쓰지 않는 IPC 를 열어 두면 공격 표면만 넓어진다.
 
   ipcMain.on('window:setIgnoreMouseEvents', (_e, on) => setClickThrough(on));
+  ipcMain.on('window:catchMouse', (_e, on) => catchMouse(!!on));
 
   ipcMain.handle('window:getBounds', (e) => {
     const w = windowFrom(e);
@@ -584,6 +608,17 @@ function registerIpc() {
   });
 
   /** 자동 백업 폴더를 탐색기로 연다 */
+  // 받은함 — 바깥에서 일정을 넣는 문. 렌더러가 준비되면 쌓인 것을 넘긴다.
+  ipcMain.on('inbox:ready', () => {
+    rendererReady = true;
+    inbox.flush();
+  });
+  ipcMain.handle('inbox:open', () => {
+    const dir = inbox.dirPath();
+    shell.openPath(dir);
+    return dir;
+  });
+
   ipcMain.handle('data:openBackups', () => {
     const dir = storage.backupDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* 무시 */ }
@@ -659,6 +694,40 @@ function registerIpc() {
   });
 }
 
+// ---------------------------------------------------------------- 명령줄
+//
+//   ScheduleWidget.exe --add "치과 @내일 15:00 #건강"
+//
+// 스크립트 · 작업 스케줄러 · AI 도구에서 부르는 얇은 입구다. 직접 데이터를 건드리지 않고
+// 받은함에 한 줄 쓰는 것으로 끝낸다 — 바깥에서 들어오는 길은 하나로 모은다.
+//
+// @returns {boolean} 넣을 것이 있었는가 (있으면 창을 띄우지 않는다)
+function takeArgv(argv) {
+  const list = Array.isArray(argv) ? argv.map(String) : [];
+  const texts = [];
+
+  // --add="치과 @내일 15:00" — 값이 스위치에 붙어 있어 순서가 흐트러지지 않는다(권장)
+  for (const a of list) {
+    if (a.startsWith('--add=') && a.length > 6) texts.push(a.slice(6));
+  }
+
+  // --add "치과 @내일 15:00" — Chromium 이 argv 를 '스위치 먼저, 값 나중' 으로 재배열하므로
+  // 바로 다음 칸을 믿을 수 없다(실제로 --add 뒤에 --allow-file-access-from-files 가 끼어 있었다).
+  // 스위치가 아닌 마지막 값을 글로 본다.
+  if (!texts.length && list.includes('--add')) {
+    const rest = list.slice(1).filter((a) => !a.startsWith('-') && a !== '.'
+      && !/(electron|schedulewidget)(\.exe)?$/i.test(a));
+    const text = rest[rest.length - 1];
+    if (text) texts.push(text);
+  }
+
+  let added = false;
+  for (const text of texts) {
+    if (inbox.drop(text, 'cli')) added = true;
+  }
+  return added;
+}
+
 // ---------------------------------------------------------------- 앱 수명주기
 
 // 두 번 실행하면 기존 창을 띄운다 (트레이 앱이므로 중복 실행 방지 필수)
@@ -666,7 +735,10 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => showWidget());
+  // 두 번째 실행이 '--add "치과 @내일 15:00"' 이면 창을 띄우지 않고 받은함에만 넣는다
+  app.on('second-instance', (_e, argv) => {
+    if (!takeArgv(argv)) showWidget();
+  });
 
   app.setAppUserModelId('com.dongik.schedule-widget');
 
@@ -677,6 +749,15 @@ if (!gotLock) {
     createWindow();
     createTray();
     registerGlobalShortcut();
+
+    // 받은함을 연다. 창이 아직 준비 안 됐으면 inbox 가 들고 있다가 나중에 넘긴다.
+    inbox.start((payload) => {
+      if (!rendererReady || !win || win.isDestroyed()) return false;
+      win.webContents.send('inbox:items', payload);
+      return true;
+    });
+    // 명령줄로 들어온 일정 — 받은함에 한 줄 쓰고 같은 길로 들여보낸다
+    takeArgv(process.argv);
 
     app.on('activate', () => showWidget()); // macOS 도크 클릭 대응
   });
@@ -706,6 +787,7 @@ if (!gotLock) {
   });
 
   app.on('will-quit', () => {
+    inbox.stop();
     globalShortcut.unregisterAll();
     if (tray && !tray.isDestroyed()) {
       tray.destroy();

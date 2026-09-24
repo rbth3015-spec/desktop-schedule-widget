@@ -7,10 +7,9 @@
    값을 바꾸면 막대 배치가 그대로 따라오므로, 이름과 위치를 유지할 것. */
 
 .cal-root {
-  /* 시안 값: 칸 높이 106px, 기간 막대 높이 19px, 레인 간격 21px(=19+2),
-     첫 레인 top 48px. 날짜 숫자(19px)와 공휴일 이름 아래에 떨어진다.
+  /* 시안 값: 기간 막대 높이 19px, 레인 간격 21px(=19+2), 첫 레인 top 48px.
+     날짜 숫자(19px)와 공휴일 이름 아래에 떨어진다.
      JS 가 이 값을 읽어 막대를 배치하므로 여기서만 고치면 된다. */
-  --cal-cell-h: 106px;   /* 시안의 날짜 칸 높이 */
   --cal-top-pad: 48px;   /* 첫 레인의 top */
   --cal-bar-h: 19px;
   --cal-bar-gap: 2px;
@@ -23,8 +22,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* 칸 높이를 지키느라 내용이 넘치면 세로로만 흐른다 */
-  overflow: hidden auto;
+  /* 스크롤하지 않는다 — 주 행이 면의 남은 세로에 맞춰 줄고 는다 */
+  overflow: hidden;
   /* 시안 그대로. 왼쪽 30px 은 리본 책갈피가 지나가는 여백이기도 하다. */
   padding: 24px 26px 20px 30px;
   outline: none;
@@ -38,25 +37,82 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 18px;
   min-width: 0;
   margin-bottom: 18px;
 }
 
-/* 앞뒤 달 — 시안: 25×25, 1px 괘선 테두리, hover 에서 금박 */
-.cal-navpair { display: flex; gap: 3px; flex: 0 0 auto; }
-.cal-navbtn {
+/* 조작은 전부 오른쪽 한 줄에 — 완료율 · 구분선 · ‹ 오늘 › · [월간][주간].
+   예전에는 ‹ › 만 바닥 정렬이라 다른 단추와 줄이 어긋나 보였다. */
+.cal-tools {
   flex: 0 0 auto;
-  width: 25px;
-  height: 25px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: center;
+}
+.cal-tools__rule { flex: none; width: 1px; height: 15px; background: var(--rule); }
+
+/* 날씨 스티커 — 지면에 살짝 비뚤게 붙인 종이 조각. 누르면 오늘 한 장(브리핑)이 열린다. */
+.cal-sticker {
+  flex: 0 0 auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+  padding: 4px 9px 5px;
   border: 1px solid var(--rule);
   border-radius: 2px;
+  background: var(--paper-2);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .10);
+  transform: rotate(-2.4deg);
   color: var(--ink-soft);
-  transition: color .16s, border-color .16s;
+  cursor: pointer;
+  transition: transform .16s, border-color .16s, color .16s;
 }
-.cal-navbtn:hover { border-color: var(--gold); color: var(--gold-deep); }
+.cal-sticker[hidden] { display: none; }
+.cal-sticker:hover { transform: rotate(0deg); border-color: var(--gold); color: var(--gold-deep); }
+.cal-sticker__icon { display: grid; place-items: center; }
+.cal-sticker__icon .icon { width: 15px; height: 15px; }
+.cal-sticker__t {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+}
+.cal-sticker:hover .cal-sticker__t { color: var(--gold-deep); }
+
+/* 시간 이동 한 덩어리 — ‹ 오늘 › */
+.cal-nav { display: flex; align-items: center; flex: 0 0 auto; }
+.cal-nav > * + * { margin-left: -1px; }
+.cal-navbtn,
+.cal-todaybtn {
+  flex: 0 0 auto;
+  height: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  transition: color .16s, border-color .16s, background .16s;
+}
+.cal-nav > :first-child { border-radius: 2px 0 0 2px; }
+.cal-nav > :last-child { border-radius: 0 2px 2px 0; }
+.cal-navbtn {
+  width: 26px;
+  display: grid;
+  place-items: center;
+}
+.cal-navbtn:hover,
+.cal-todaybtn:not(.is-off):hover {
+  position: relative;
+  z-index: 1;
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
 .cal-navbtn .icon { width: 12px; height: 12px; }
 
 /* 지면의 표제 — 이 면에서 가장 큰 활자. 시안 값 그대로. */
@@ -93,8 +149,6 @@
   font-feature-settings: 'tnum';
 }
 
-.cal-spacer { flex: 1 1 auto; min-width: 8px; }
-
 /* 이번 달 완료율 — 조용한 보조 정보 */
 .cal-meter {
   flex: 0 1 auto;
@@ -128,31 +182,40 @@
   font-feature-settings: 'tnum';
   white-space: nowrap;
 }
-/* 완료율과 조작 버튼 사이의 세로 구분선 */
-.cal-meter::after {
-  content: '';
-  width: 1px;
-  height: 15px;
-  background: var(--rule);
-  margin-left: 5px;
-}
 
-/* 작은 버튼 공통 규격 (시안) */
+
+/* 오늘로 — 이동 덩어리의 가운데. 이미 오늘이면 누를 것이 없으므로 흐리게 둔다. */
 .cal-todaybtn {
-  flex: 0 0 auto;
-  align-self: center;
-  padding: 5px 11px;
+  padding: 0 13px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cal-todaybtn.is-off { color: var(--ink-faint); cursor: default; }
+
+/* 보기 고르기 — 시간표 머리의 칩과 같은 규격 */
+.cal-views { display: flex; gap: 4px; flex: 0 0 auto; }
+.cal-view {
+  height: 26px;
+  padding: 0 11px;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: transparent;
   font-size: 11px;
   letter-spacing: .06em;
   color: var(--ink-soft);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
+  cursor: pointer;
   white-space: nowrap;
-  transition: background .16s, color .16s, border-color .16s;
+  transition: color .16s, border-color .16s, background .16s;
 }
-.cal-todaybtn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.cal-view:hover { border-color: var(--ink-soft); }
+.cal-view.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
 }
 
 /* ------------------------------------------------------------ 요일 머리글 */
@@ -179,16 +242,12 @@
 /* ------------------------------------------------------------ 그리드 */
 
 .cal-grid {
-  /* 줄어들지 않는다 — 106px 칸이 넘치면 달력 면(.cal-root)이 스크롤한다.
-     줄어들게 두면 넘친 칸이 아래 발치 줄과 겹친다. */
-  flex: none;
-  /* 시안의 칸 높이 106px 를 지킨다. 창이 짧으면 눌러 담는 대신 스크롤한다 —
-     칸을 줄이면 기간 막대 레인이 사라져 '+N' 만 남는다(그게 실제로 일어났다). */
+  /* 면의 남은 세로를 여섯 주가 똑같이 나눈다(행 값은 calendar.js 가 건다).
+     창이 짧아지면 칸이 줄고, 모자란 레인은 오른쪽 위 건수와 '+N' 이 대신 말한다. */
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-rows: repeat(6, auto);
-  /* 그리드가 남는 세로를 auto 행에 나눠 주면 행이 106px 보다 커진다.
-     그러면 막대가 날짜 숫자에서 멀리 떨어져 다음 주 행처럼 보인다. */
-  align-content: start;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   /* 기간 배지와 추가 버튼이 이 안에서 절대 위치를 잡는다.
      둘 다 position:absolute 라 그리드 트랙을 차지하지 않는다. */
   position: relative;
@@ -197,12 +256,20 @@
 /* 주(週)는 괘선으로만 나눈다 — 칸을 면으로 채우지 않는다 */
 .cal-week {
   position: relative;
-  /* 날짜 칸(.cal-week__days)이 절대 위치라 칸의 높이가 행을 밀지 못한다.
-     시안의 106px 는 여기에 걸어야 실제 행 높이가 된다. */
-  min-height: 107px;   /* 칸 106px + 아래 괘선 1px */
+  min-height: 0;
   border-bottom: 1px solid var(--rule-soft);
 }
 .cal-week:last-child { border-bottom: none; }
+
+/* 계획 화면이 짜고 있는 주 — 금박 테두리로 짚는다 (날짜를 누르면 그 주로 옮겨 간다) */
+:root[data-plan="week"] .cal-week--cur::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 1px solid var(--gold);
+  pointer-events: none;
+}
 
 .cal-week__days {
   position: absolute;
@@ -225,8 +292,7 @@
 
 /* ------------------------------------------------------------ 날짜 칸 */
 
-/* 시안: height 106px · padding 8px 9px 0 · 왼쪽 1px --rule-soft.
-   높이는 그리드가 남는 세로를 6주로 나눠 갖는 구조라 min-height 로 바닥을 깐다. */
+/* 시안: padding 8px 9px 0 · 왼쪽 1px --rule-soft. 높이는 주 행이 정한다. */
 .cal-day {
   position: relative;
   min-width: 0;
@@ -461,21 +527,75 @@
 }
 .cal-more:hover { color: var(--accent); }
 
-/* 달력 발치 — 시안: flex · space-between · margin-top 14 · 300 10px .05em --ink-faint */
-.cal-foot {
+/* ------------------------------------------------------------ 테마 띠 (달력 발치)
+   태그가 '항목에 붙은 작은 글자' 로만 있던 걸 지면 아래에 띠로 꺼냈다.
+   하나를 누르면 그 테마만 지면에 남고 나머지는 한 걸음 물러난다(지우지 않는다). */
+
+.cal-themes {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
-  font-weight: 300;
+  gap: 7px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cal-themes[hidden] { display: none; }
+.cal-themes__key {
+  flex: 0 0 auto;
+  margin-right: 3px;
+  font-family: var(--serif);
+  font-weight: 400;
   font-size: 10px;
-  letter-spacing: .05em;
+  letter-spacing: .18em;
   color: var(--ink-faint);
 }
-.cal-foot__hint { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cal-foot__plus { color: var(--gold-deep); }
-.cal-foot__keys { flex: none; font-family: var(--num); font-feature-settings: 'tnum'; }
+.cal-theme {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.cal-theme:hover { border-color: var(--ink-soft); color: var(--ink); }
+.cal-theme.is-on {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  background: var(--gold-ghost);
+}
+.cal-theme__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.cal-theme__n { font-size: 10.5px; color: var(--ink-faint); }
+.cal-theme.is-on .cal-theme__n { color: var(--gold-deep); }
+
+/* 테마 밖으로 밀린 것들 — 지우지 않고 물러난다 */
+.cal-bar--off { opacity: .22; }
+.cal-dot--off { opacity: .22; }
+.cal-day--off .cal-day__num,
+.cal-day--off .cal-day__holiday { opacity: .45; }
+
+/* ------------------------------------------------------------ 낮은 창 대응
+   칸이 100px 보다 짧아지면(calendar.js 가 .cal-grid--compact 를 건다) 숫자와 막대를 조금 줄여
+   레인을 하나 더 들인다. 시안 크기에서는 걸리지 않는다. */
+.cal-grid--compact {
+  --cal-top-pad: 31px;
+  --cal-bar-h: 16px;
+  --cal-bar-gap: 2px;
+  --cal-dots-h: 8px;
+}
+.cal-grid--compact .cal-day { padding-top: 6px; }
+.cal-grid--compact .cal-day__num { font-size: 16px; }
+.cal-grid--compact .cal-day--today::before { top: 25px; }
+.cal-grid--compact .cal-day__dots { bottom: 5px; }
+.cal-grid--compact .cal-bar { font-size: 10px; }
 
 /* ------------------------------------------------------------ 좁은 폭 대응 */
 
@@ -493,9 +613,16 @@
   .cal-bar { font-size: 9.5px; padding: 0 4px; }
 }
 
+@container cal (max-width: 430px) {
+  /* 조작이 먼저다 — 좁아지면 완료율부터 접는다 */
+  .cal-meter,
+  .cal-tools__rule { display: none; }
+}
+
 @container cal (max-width: 290px) {
-  .cal-meter { display: none; }
-  .cal-todaybtn { margin-left: 4px; padding: 2px 6px; }
+  .cal-views,
+  .cal-sticker,
+  .cal-themes { display: none; }
   .cal-day__count { display: none; }
 }
 
@@ -533,49 +660,6 @@
   pointer-events: none;
 }
 .cal-rangetag[hidden] { display: none; }
-
-/* --- 칸 위 추가 버튼 — 커서를 올린 날짜에만 나타난다 --- */
-.cal-addbtn {
-  position: absolute;
-  z-index: 11;
-  width: 17px;
-  height: 17px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: var(--bg-solid);
-  color: var(--text-dim);
-  cursor: pointer;
-  opacity: .75;
-  transition: opacity .12s, color .12s, border-color .12s, transform .12s;
-}
-.cal-addbtn:hover {
-  opacity: 1;
-  color: var(--accent);
-  border-color: var(--accent);
-  transform: scale(1.12);
-}
-.cal-addbtn .icon { width: 9px; height: 9px; }
-.cal-addbtn[hidden] { display: none; }
-
-/* 월간 / 주간 전환 */
-.cal-viewbtn {
-  flex: 0 0 auto;
-  align-self: center;
-  margin-left: 6px;
-  padding: 3px 9px;
-  font-size: 10.5px;
-  letter-spacing: .06em;
-  color: var(--text-dim);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  white-space: nowrap;
-  transition: border-color .16s, color .16s;
-}
-.cal-viewbtn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* 주간 뷰 — 한 주만 크게. 날짜와 일정에 숨 쉴 공간을 준다.
    막대 수치는 calendar.js 가 .cal-grid 에서 읽으므로 여기에 얹어야 반영된다. */
