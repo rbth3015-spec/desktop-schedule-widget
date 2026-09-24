@@ -58,6 +58,11 @@ app.whenReady().then(async () => {
     : path.join(__dirname, '..', 'src', 'renderer', 'index.html');
   await win.loadFile(htmlPath);
 
+  // 화면 밖 창은 합성이 멈춰 애니메이션 시계가 제자리에 서는 일이 있다 — 펼침면이 첫 프레임
+  // (거의 투명)에 멈춘 채 찍혀 표지만 보였다. 캡처에서는 애니메이션을 꺼 늘 마지막 모습을 찍는다.
+  await win.webContents.insertCSS(
+    '*, *::before, *::after { animation: none !important; transition: none !important; }');
+
   // 폰트 로딩과 첫 렌더가 끝날 때까지 기다린다
   await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)').catch(() => {});
   await new Promise((r) => setTimeout(r, DELAY));
@@ -74,6 +79,11 @@ app.whenReady().then(async () => {
     }
     await new Promise((r) => setTimeout(r, 500));
   }
+
+  // 화면 밖 창은 새 프레임을 게을리 만든다 — 방금 바꾼 화면 대신 그 전 프레임(스크림이 덮인
+  // 상태 등)이 찍힌 적이 있다. 찍기 전에 다시 그리게 하고 한 박자 기다린다.
+  win.webContents.invalidate();
+  await new Promise((r) => setTimeout(r, 300));
 
   // 그래도 간헐적으로 0x0 이 나오므로 내용이 잡힐 때까지 몇 번 다시 찍는다
   let image = await win.webContents.capturePage();

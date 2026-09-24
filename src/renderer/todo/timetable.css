@@ -33,22 +33,6 @@
   height: 1px;
   background: var(--rule-soft);
 }
-.tt__add {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-.tt__add:hover { border-color: var(--gold); color: var(--gold-deep); }
-
 .tt__views { display: flex; gap: 4px; flex: 0 0 auto; }
 .tt__view {
   padding: 3px 9px;
@@ -60,25 +44,11 @@
   background: transparent;
   cursor: pointer;
 }
+.tt__view:hover { border-color: var(--ink-soft); }
 .tt__view.is-on {
   border-color: var(--gold);
   color: var(--gold-deep);
   background: var(--gold-ghost);
-}
-
-.tt__note {
-  padding: 0 0 9px;
-  font-weight: 300;
-  font-size: 10px;
-  letter-spacing: .04em;
-  color: var(--ink-faint);
-}
-
-.tt__empty {
-  padding: 14px 0 4px;
-  font-weight: 300;
-  font-size: 11px;
-  color: var(--ink-faint);
 }
 
 /* 왼쪽 라벨 — '종일' · '오전' · '오후' 의 폭을 맞춰 세로로 정렬한다 */
@@ -105,6 +75,8 @@
   border-bottom: 1px solid var(--rule-soft);
 }
 .tt__allday .tt__key { padding-top: 0; }
+/* 시각 없는 일이 없어 종일 띠를 걷은 날 — 띠가 긋던 먹선을 본문이 대신 긋는다 */
+.tt__allday[hidden] + .tt__body { border-top: 1px solid var(--ink); }
 .tt__chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 
 .tt-allday__chip {
@@ -141,19 +113,6 @@
   text-decoration: line-through;
   color: var(--ink-faint);
 }
-/* 종일 띠의 ＋ — 시안의 점선 추가 칩 */
-.tt-allday__add {
-  padding: 4px 9px;
-  border: 1px dashed var(--rule);
-  border-radius: 1px;
-  background: transparent;
-  font-size: 11.5px;
-  line-height: 1.2;
-  color: var(--ink-faint);
-  cursor: pointer;
-}
-.tt-allday__add:hover { border-color: var(--gold); color: var(--gold-deep); }
-
 /* ---- 체크박스 (시간표 어디서든 같은 모양) ---- */
 .tt-check {
   flex: 0 0 auto;
@@ -262,6 +221,7 @@
   color: var(--seal);
   white-space: nowrap;
 }
+.tt-strip__now.is-end .tt-strip__nowlabel { left: auto; right: 5px; }
 
 /* 이름은 이 목록이 맡는다 */
 .tt-strip__list {
@@ -297,15 +257,6 @@
   text-overflow: ellipsis;
 }
 .tt-strip__routine { flex: 0 0 auto; font-size: 10px; color: var(--moss); }
-/* 시각 있는 일정이 하나도 없을 때 — 목록 자리에 한 줄 */
-.tt-strip__empty {
-  grid-column: 1 / -1;
-  padding: 7px 0;
-  font-weight: 300;
-  font-size: 10.5px;
-  color: var(--ink-faint);
-}
-
 /* ---- 압축 ---- */
 .tt-comp { display: flex; flex-direction: column; margin-top: 12px; }
 
@@ -372,6 +323,8 @@
   cursor: pointer;
 }
 .tt-comp__gap:hover .tt-comp__open { color: var(--gold); }
+/* 시각 있는 일이 하나도 없는 날 — 접힌 빈 시간과 같은 한 줄, 누를 것은 없다 */
+.tt-comp__gap.is-empty { cursor: default; }
 /* 펼친 빈 시간 — 짧은 틈과 같은 비율(분×0.45)로 비워 둔다. 누르면 다시 접힌다. */
 .tt-comp__unfold {
   display: grid;

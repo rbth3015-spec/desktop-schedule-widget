@@ -162,7 +162,8 @@ export function createLauncher({ root, store }) {
 
   const scroll = h('div', 'lnch-scroll');
 
-  const emptyHint = h('div', 'lnch-empty', '＋ 로 자주 여는 곳을 등록하세요');
+  // 비어 있을 때도 점선 ＋ 칸 하나면 충분하다
+  const emptyHint = h('div', 'lnch-empty', '');
 
   const addBtn = h('button', 'lnch-add', '＋');
   addBtn.type = 'button';
@@ -270,7 +271,6 @@ export function createLauncher({ root, store }) {
     }
 
     scroll.replaceChildren(frag);
-    if (!items.length) scroll.append(emptyHint);
 
     // 열려 있던 팝오버의 기준 항목이 사라졌으면 닫는다
     if (popMode && popAnchorId && !itemEls.has(popAnchorId)) closePop();
@@ -640,7 +640,7 @@ export function createLauncher({ root, store }) {
     // 여기에 '비우면 기본 아이콘' 같은 안내를 placeholder 로 넣으면 '비우면 기' 까지만
     // 보이고 잘린다 — 안내가 아니라 오히려 무슨 소린지 모를 글자가 된다.
     // 안내는 커서를 올렸을 때 뜨는 설명으로 옮기고, 칸에는 예시 하나만 둔다.
-    const ICON_HINT = '이모지 한두 자. 비워 두면 이름 앞 글자로 인장을 새깁니다.';
+    const ICON_HINT = '비우면 이름 첫 글자';
     const iconField = field('아이콘');
     iconField.classList.add('lnch-field--icon');
     iconField.title = ICON_HINT;
@@ -749,11 +749,8 @@ export function createLauncher({ root, store }) {
 
 
       hint.classList.remove('is-warn');
-      hint.textContent = kind === 'script'
-        ? `실행 가능한 확장자: ${SUPPORTED_EXT} · 절대 경로만 됩니다. 경로를 직접 입력해도 됩니다.`
-        : kind === 'url'
-          ? 'http / https / mailto 주소만 열 수 있습니다.'
-          : '경로를 직접 입력하거나 찾아보기로 고르세요.';
+      hint.textContent = kind === 'script' ? SUPPORTED_EXT : '';
+      hint.hidden = !hint.textContent;
 
       placeFloat(pop, anchor || anchorEl(popAnchorId), 10);
     }
@@ -807,6 +804,7 @@ export function createLauncher({ root, store }) {
       if (!target) {
         hint.textContent = '실행 대상을 입력하세요.';
         hint.classList.add('is-warn');
+        hint.hidden = false;
         targetInput.focus();
         return;
       }

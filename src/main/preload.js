@@ -14,6 +14,8 @@ const api = {
     hide: () => ipcRenderer.send('window:hide'),
     setAlwaysOnTop: (on) => ipcRenderer.send('window:setAlwaysOnTop', !!on),
     setIgnoreMouseEvents: (on) => ipcRenderer.send('window:setIgnoreMouseEvents', !!on),
+    // 클릭 통과 중 자물쇠 위에 커서가 있는 동안만 마우스를 받는다
+    catchMouse: (on) => ipcRenderer.send('window:catchMouse', !!on),
     getBounds: () => ipcRenderer.invoke('window:getBounds'),
     setSize: (w, h) => ipcRenderer.send('window:setSize', Number(w), Number(h)),
     snapPreset: (preset) => ipcRenderer.send('window:snapPreset', String(preset)),
@@ -79,6 +81,26 @@ const api = {
       (Array.isArray(years) ? years : []).slice(0, 12).map(Number)),
   },
 
+  // ------------------------------------------------------------ 받은함 (바깥에서 들어온 일정)
+  // 메인이 파일을 읽어 모양만 본 뒤 넘긴다. 해석(한 줄 문법)과 저장은 렌더러가 한다.
+  inbox: {
+    /** 렌더러가 받을 준비가 됐다고 알린다 (부팅 직후 한 번) */
+    ready: () => ipcRenderer.send('inbox:ready'),
+    /** {source, lines[], tasks[], goals[]} */
+    onItems: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('inbox:items', (_event, payload) => cb(payload));
+    },
+    open: () => ipcRenderer.invoke('inbox:open'),
+  },
+
+  // ------------------------------------------------------------ 날씨
+  // 도시 이름만 넘긴다. 좌표표와 네트워크는 메인이 갖고 있다.
+  weather: {
+    get: (city) => ipcRenderer.invoke('weather:get', String(city || '')),
+    cities: () => ipcRenderer.invoke('weather:cities'),
+  },
+
   // ------------------------------------------------------------ 외부 링크
   // 일정에 붙은 링크를 기본 브라우저로 연다. 프로토콜 검증은 메인이 다시 한다.
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', String(url)),
@@ -122,7 +144,7 @@ const api = {
 
   // ------------------------------------------------------------ 트레이 메뉴 -> 렌더러
   // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue'
-  // | 'open-task:<id>' (+ 전역 단축키 해제 시 'unlock')
+  // | 'open-task:<id>' (+ 클릭 통과를 메인에서 바꿨을 때 'lock' · 'unlock')
   onMenuAction: (cb) => {
     if (typeof cb !== 'function') return;
     // 이벤트 객체는 넘기지 않는다 — 액션 문자열만 전달.

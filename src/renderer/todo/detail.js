@@ -7,14 +7,27 @@
 // 값 줄은 '보이는 값' 이 전부다. 누르면 그 자리에서 고른다(메뉴 · 칩 · 입력칸).
 // 같은 값을 두 번 두지 않는다 — 보이는 그 글자를 바로 고친다.
 
-import { addDays } from '../lib/date.js';
+import { addDays, fromKey, weekGrid } from '../lib/date.js';
 import { remindLabel } from '../reminders.js';
 import { showContextMenu } from '../lib/menu.js';
+import { icon } from '../lib/icons.js';
 import { whenSummary } from './compose.js';
 import {
   h, setValueSafe, shortDate, screenHead, fieldLabel, dateField, timeField,
   normalizeLink, openLink, linkLabel,
 } from './ui.js';
+
+const ORD = ['첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'];
+
+/** 날짜 없는 항목이 어디에 적혀 있는지 — '9월 넷째 주 목표' · '9월 목표' · '언젠가' */
+function planLabel(plan) {
+  if (plan?.startsWith('w:')) {
+    const mid = fromKey(weekGrid(plan.slice(2))[3]);
+    return `${mid.getMonth() + 1}월 ${ORD[Math.floor((mid.getDate() - 1) / 7)]} 주 목표 · 날짜 없음`;
+  }
+  if (plan?.startsWith('m:')) return `${Number(plan.slice(7, 9))}월 목표 · 날짜 없음`;
+  return '언젠가 · 날짜 없음';
+}
 
 // 알림 — '-Nm' 은 시작 시각 N분 전이라 시각이 있어야 뜻이 있다
 const REMIND_CHOICES = [
@@ -73,9 +86,9 @@ export function createDetail({ store, onPlan, notify }) {
     // Esc 는 고치던 글자를 되돌린다. 화면을 닫는 일은 앱 전역 Esc 가 이어서 한다.
     if (e.key === 'Escape') titleIn.value = task?.title || '';
   });
+  // 제목이 곧 입력칸이다. 설명을 달지 않고, 커서를 올리면 밑줄이 금박으로 바뀌어 보여 준다.
   const titleBox = h('div');
-  titleBox.append(titleIn,
-    h('div', 'scr-hint', '보이는 제목이 그대로 입력칸입니다 — 같은 값을 두 번 두지 않습니다'));
+  titleBox.append(titleIn);
 
   // ---------------------------------------------------------------- 시작 · 종료
   const startDate = dateField({
@@ -120,7 +133,10 @@ export function createDetail({ store, onPlan, notify }) {
   // ---------------------------------------------------------------- 값 줄
   const rows = h('div', 'dt-rows');
 
-  /** 라벨 64px + 값. onClick 이 있으면 줄 전체가 버튼이다. */
+  /**
+   * 라벨 64px + 값. onClick 이 있으면 줄 전체가 버튼이다.
+   * '눌러서 변경' 같은 글을 달지 않는다 — 오른쪽 끝의 작은 ⌄ 와 hover 금박이 누를 수 있다고 말한다.
+   */
   function valueRow(label, onClick) {
     const row = h('div', 'dt-row');
     const key = h('span', 'dt-row__key', label);
@@ -130,11 +146,14 @@ export function createDetail({ store, onPlan, notify }) {
     val.append(value, hint);
     row.append(key, val);
     if (onClick) {
+      const more = h('span', 'dt-row__more');
+      more.append(icon('chevronDown', 10, 1.4));
+      val.append(more);
       row.classList.add('is-action');
       row.tabIndex = 0;
       row.setAttribute('role', 'button');
       row.addEventListener('click', (e) => {
-        if (e.target.closest('input, .dt-row__hint.is-link, .dt-swatches')) return;
+        if (e.target.closest('input, .dt-row__open, .dt-swatches')) return;
         onClick(row);
       });
       row.addEventListener('keydown', (e) => {
@@ -157,7 +176,6 @@ export function createDetail({ store, onPlan, notify }) {
   const colorRow = valueRow('색', () => {
     swatches.hidden = !swatches.hidden;
   });
-  colorRow.hint.textContent = '눌러서 변경';
   const swatches = h('div', 'dt-swatches');
   swatches.hidden = true;
   const swatchBtns = {};
@@ -223,7 +241,6 @@ export function createDetail({ store, onPlan, notify }) {
   untilField.setLabel('반복 종료일');
   const untilRow = valueRow('반복 종료', () => untilField.el.click());
   untilRow.value.append(untilField.el);
-  untilRow.hint.textContent = '비우면 계속';
 
   // 체크 방식 — 이틀 이상짜리 계획일 때만
   const checkRow = valueRow('체크', (row) => {
@@ -250,21 +267,26 @@ export function createDetail({ store, onPlan, notify }) {
     '공백으로 구분', (raw) => {
       const tags = raw.split(/[\s,]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean);
       const cur = task?.tags || [];
-      if (tags.join(' ') !== cur.join(' ')) store.updateTask(id(), { tags });
+      if (tags.join('\u0000') !== cur.join('\u0000')) store.updateTask(id(), { tags });
     }));
 
-  // 링크 — 값을 누르면 고치고, 오른쪽 안내를 누르면 연다
+  // 링크 — 값을 누르면 고치고, ↗ 를 누르면 기본 브라우저로 연다
   const linkRow = valueRow('링크', () => startInline(linkRow, task?.link || '',
     'meet.google.com/abc', (raw) => {
       const next = normalizeLink(raw);
       if (next === null) { notify('링크 주소를 확인해 주세요'); return; }
       if (next !== (task?.link || '')) store.updateTask(id(), { link: next });
     }));
-  linkRow.hint.addEventListener('click', (e) => {
-    if (!task?.link) return;
+  const linkOpen = h('button', 'dt-row__open');
+  linkOpen.type = 'button';
+  linkOpen.title = '브라우저로 열기';
+  linkOpen.setAttribute('aria-label', '브라우저로 열기');
+  linkOpen.append(icon('external', 11, 1.4));
+  linkOpen.addEventListener('click', (e) => {
     e.stopPropagation();
-    openLink(task.link);
+    if (task?.link) openLink(task.link);
   });
+  linkRow.hint.replaceWith(linkOpen);
 
   /** 값 칸을 잠깐 입력칸으로 바꾼다. Enter · 바깥 누름이면 저장, Esc 면 취소. */
   function startInline(row, initial, placeholder, onSave) {
@@ -298,7 +320,6 @@ export function createDetail({ store, onPlan, notify }) {
   // ---------------------------------------------------------------- 메모
   const notes = h('textarea', 'scr-notes');
   notes.rows = 3;
-  notes.placeholder = '메모';
   notes.setAttribute('aria-label', '메모');
   let notesTimer = 0;
   let pendingNotes = null;
@@ -392,7 +413,7 @@ export function createDetail({ store, onPlan, notify }) {
           freq: store.repeatChoice(task.repeat),
           dailyCheck: !!task.dailyCheck,
         })
-      : '날짜 없음 · 언젠가 할 일';
+      : planLabel(task.plan);
 
     const colorKey = store.COLORS[task.color] ? task.color : 'blue';
     paintValue(colorRow, store.COLOR_LABELS[colorKey], store.COLORS[colorKey]);
@@ -405,7 +426,6 @@ export function createDetail({ store, onPlan, notify }) {
     paintValue(repeatRow, rp
       ? `${store.repeatLabel(rp)}${rp.routine ? ' · 루틴' : ''}`
       : '없음', rp ? 'var(--ink)' : 'var(--ink-soft)');
-    repeatRow.hint.textContent = rp?.routine ? '달력에 표시하지 않습니다' : '';
 
     untilRow.row.hidden = !rp;
     untilField.set(rp?.until || '', '계속');
@@ -422,15 +442,13 @@ export function createDetail({ store, onPlan, notify }) {
 
     paintValue(remindRow, task.remind ? remindLabel(task.remind) : '없음',
       task.remind ? 'var(--ink)' : 'var(--ink-soft)');
-    remindRow.hint.textContent = task.startTime ? '' : '시각이 있어야 쓸 수 있습니다';
 
     paintValue(tagRow, task.tags.length ? task.tags.map((t) => `#${t}`).join('  ') : '없음',
       task.tags.length ? 'var(--ink)' : 'var(--ink-soft)');
 
     paintValue(linkRow, task.link ? linkLabel(task.link) : '없음',
       task.link ? 'var(--gold-deep)' : 'var(--ink-soft)');
-    linkRow.hint.textContent = task.link ? '기본 브라우저로 열기' : '';
-    linkRow.hint.classList.toggle('is-link', !!task.link);
+    linkOpen.hidden = !task.link;
 
     setValueSafe(notes, task.notes || '');
 
@@ -449,6 +467,7 @@ export function createDetail({ store, onPlan, notify }) {
     el,
     update,
     flush,
+    setBack: (label) => { head.back.textContent = label; },
     focusTitle() { titleIn.focus(); },
   };
 }

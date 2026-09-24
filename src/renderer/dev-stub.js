@@ -97,6 +97,7 @@
       hide: () => console.log('[dev] hide'),
       setAlwaysOnTop: (on) => console.log('[dev] alwaysOnTop', on),
       setIgnoreMouseEvents: (on) => console.log('[dev] ignoreMouse', on),
+      catchMouse: (on) => console.log('[dev] catchMouse', on),
       setZoom: (f) => { document.documentElement.style.zoom = String(f || 1); },
       getBounds: async () => ({ ...win }),
       setSize: (w, h) => { win.width = w; win.height = h; console.log('[dev] setSize', w, h); },
@@ -134,6 +135,12 @@
         window.__devTraySummary = summary;
         console.log('[dev] tray', summary);
       },
+    },
+
+    // 날씨 — 브라우저 미리보기에서는 표본 하나
+    weather: {
+      get: async () => ({ city: '서울', temp: 24, high: 27, low: 18, icon: 'wSunCloud', label: '구름 조금', at: Date.now() }),
+      cities: async () => ['서울', '부산', '제주'],
     },
 
     // 브라우저에는 OS 알림을 띄울 수 없으므로 콘솔로만 확인한다

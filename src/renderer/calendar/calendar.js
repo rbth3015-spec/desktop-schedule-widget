@@ -42,10 +42,16 @@ export function createCalendar({ root, store }) {
     const keys = weekView ? date.weekGrid(st.selectedDate || anchor) : date.monthGrid(anchor);
     const weekCount = weekView ? 1 : 6;
     els.root.classList.toggle('cal-root--week', weekView);
-    els.viewBtn.textContent = weekView ? '월간' : '주간';
-    els.viewBtn.setAttribute('aria-label',
-      weekView ? '주간 보기 (누르면 월간)' : '월간 보기 (누르면 주간)');
+    for (const [id, b] of els.viewBtns) {
+      const on = (id === 'week') === weekView;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
     const today = date.todayKey();
+    // 이미 오늘을 보고 있으면 누를 것이 없다 — 흐리게 두어 '지금 여기' 를 말한다
+    const onToday = st.selectedDate === today && (weekView || date.sameMonth(anchor, today));
+    els.todayBtn.classList.toggle('is-off', onToday);
+    els.todayBtn.setAttribute('aria-disabled', String(onToday));
     const selected = st.selectedDate;
     const showHolidays = st.settings.showHolidays !== false;
 
@@ -68,7 +74,12 @@ export function createCalendar({ root, store }) {
     }
 
     // --- 날짜 칸 갱신 (뼈대는 재사용, 내용만 교체) ---
-    for (let w = 0; w < 6; w++) els.weekRows[w].hidden = w >= weekCount;
+    // 고른 날이 든 주에는 표시를 달아 둔다 — 계획 화면이 그 주를 짜는 동안 금박 테두리로 보인다(CSS)
+    for (let w = 0; w < 6; w++) {
+      els.weekRows[w].hidden = w >= weekCount;
+      els.weekRows[w].classList.toggle('cal-week--cur',
+        !weekView && keys.slice(w * 7, w * 7 + 7).includes(selected));
+    }
 
     for (let i = 0; i < 42; i++) {
       const cell = els.cells[i];
@@ -98,20 +109,28 @@ export function createCalendar({ root, store }) {
         cell.removeAttribute('title');
       }
 
-      // 그날 걸쳐 있는 태스크(기간 포함) — 필터/정렬은 store 셀렉터가 처리
-      const onDate = store.tasksOnDate(key);
+      // 그날 걸쳐 있는 태스크(기간 포함).
+      // 테마를 걸어 뒀어도 **걷어내지 않고** 다 받아 온다 — 달력에서는 지우는 대신 흐리게 해야
+      // 그 테마가 한 달 어디에 놓였는지 '흐름 위에서' 보인다(걷어내면 지면이 텅 빈다).
+      const onDate = store.tasksOnDate(key, { ignoreTag: true });
 
       // 시안: 칸 오른쪽 위에 그날 남은 건수(--num 12px), 아래에 하루짜리 일정의 색점.
       // 달력은 '흐름' 을 맡는다 — 이름은 날짜를 누르면 오른쪽 면이 보여 준다.
-      const left = onDate.filter((t) => !t.done).length;
+      const left = onDate.filter((t) => !t.done && store.matchesTag(t)).length;
       cell.refs.count.textContent = left ? String(left) : '';
       renderDots(cell.refs.dots, onDate, store);
+      // 테마를 걸었으면 그 테마가 없는 날은 숫자도 한 걸음 물러난다
+      cell.classList.toggle('cal-day--off', !!st.filter.tag && left === 0);
     }
+
+    renderThemes(els, st, store);
 
     // --- 기간 막대 ---
     // 시안대로 **여러 날에 걸친 일정만** 막대로 긋는다. 하루짜리는 색점과 건수가 맡는다 —
     // 하루짜리까지 막대로 그리면 기간 막대가 레인에서 밀려 '+N' 으로 접혀 버린다.
     renderBars(els, keys, visibleSpans(store, keys), st, store, weekCount);
+
+    renderWeather(els, st);
 
     // --- 이번 달 완료율 --- (주간 뷰에서는 의미가 약해 숨긴다)
     els.meterFill.parentElement.parentElement.hidden = weekView;
@@ -124,6 +143,19 @@ export function createCalendar({ root, store }) {
     const t = e.target;
     if (!t || typeof t.closest !== 'function') return;
 
+    const theme = t.closest('.cal-theme');
+    if (theme) {
+      const cur = store.getState().filter.tag;
+      const tag = theme.dataset.tag;
+      store.setFilter({ tag: cur === tag ? null : tag });
+      return;
+    }
+
+    if (t.closest('.cal-sticker')) {
+      document.dispatchEvent(new CustomEvent('app:brief'));
+      return;
+    }
+
     const nav = t.closest('.cal-navbtn');
     if (nav) {
       const st = store.getState();
@@ -131,13 +163,14 @@ export function createCalendar({ root, store }) {
       return;
     }
 
-    if (t.closest('.cal-viewbtn')) {
-      const cur = store.getState().settings.calendarView;
-      store.setSetting('calendarView', cur === 'week' ? 'month' : 'week');
+    const view = t.closest('.cal-view');
+    if (view) {
+      store.setSetting('calendarView', view.dataset.view === 'week' ? 'week' : 'month');
       return;
     }
 
     if (t.closest('.cal-todaybtn')) {
+      // 달력이 다른 달을 펼쳐 둔 채였다면 그 달까지 같이 돌아온다
       store.selectDate(date.todayKey());
       els.root.focus({ preventScroll: true });
       return;
@@ -280,9 +313,8 @@ export function createCalendar({ root, store }) {
 
   function onMouseDown(e) {
     if (e.button !== 0) return;
-    // 막대나 '+N', 추가 버튼 위에서 시작한 드래그는 다른 동작이므로 건드리지 않는다
-    if (e.target.closest('.cal-bar') || e.target.closest('.cal-more')
-        || e.target.closest('.cal-addbtn')) return;
+    // 막대나 '+N' 위에서 시작한 드래그는 다른 동작이므로 건드리지 않는다
+    if (e.target.closest('.cal-bar') || e.target.closest('.cal-more')) return;
     const cell = e.target.closest('.cal-day');
     if (!cell) return;
     // 기본 동작(텍스트 선택)이 끌기와 겹치면 칸이 파랗게 반전된다
@@ -292,7 +324,6 @@ export function createCalendar({ root, store }) {
     rangeDragged = false;
     // 끄는 동안 막대가 마우스를 가리지 않게 한다
     els.grid.classList.add('cal-grid--ranging');
-    hideAddButton();
   }
 
   function onMouseMove(e) {
@@ -377,7 +408,6 @@ export function createCalendar({ root, store }) {
     };
     els.grid.classList.add('cal-grid--ranging');
     els.root.classList.add(`cal-root--drag-${mode}`);
-    hideAddButton();
   }
 
   /**
@@ -455,46 +485,8 @@ export function createCalendar({ root, store }) {
     document.dispatchEvent(new CustomEvent('app:toast', { detail: { text, undo } }));
   }
 
-  // ---------------------------------------------------------------- 칸 위 추가 버튼
-  //
-  // 일정을 만드는 길이 여기저기 흩어져 있으면 '이 앱에서는 어떻게 추가하지'가
-  // 매번 물음이 된다. 캘린더 쪽 입구는 이 버튼 하나로 모은다.
-
-  let addKey = null;
-
-  function showAddButton(cell) {
-    if (rangeAnchor) return;               // 기간을 끄는 중에는 방해하지 않는다
-    addKey = cell.dataset.key;
-    const g = els.grid.getBoundingClientRect();
-    const r = cell.getBoundingClientRect();
-    els.addBtn.hidden = false;
-    els.addBtn.style.left = `${r.right - g.left - 20}px`;
-    els.addBtn.style.top = `${r.bottom - g.top - 20}px`;
-    els.addBtn.setAttribute('aria-label', `${shortLabel(addKey)}에 일정 추가`);
-  }
-
-  function hideAddButton() {
-    addKey = null;
-    els.addBtn.hidden = true;
-  }
-
-  els.addBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (!addKey) return;
-    store.requestCompose(addKey, addKey);
-  });
-
-  els.grid.addEventListener('mouseover', (e) => {
-    const cell = e.target.closest?.('.cal-day');
-    // 버튼 자신 위에 올라갔을 때는 그대로 둔다
-    if (!cell) {
-      if (!e.target.closest?.('.cal-addbtn')) hideAddButton();
-      return;
-    }
-    if (cell.hidden) { hideAddButton(); return; }
-    if (cell.dataset.key !== addKey) showAddButton(cell);
-  });
-  els.grid.addEventListener('mouseleave', hideAddButton);
+  // 칸마다 뜨던 ＋ 단추는 걷었다. 일정을 만드는 단추는 날짜 머리의 '＋ 일정 추가' 하나고,
+  // 달력에서는 날짜를 눌러 끄는 손버릇(기간 만들기)과 우클릭 메뉴가 그 일을 한다.
 
   // ---------------------------------------------------------------- 가로 스와이프
   //
@@ -632,8 +624,6 @@ function buildSkeleton(root) {
   next.append(icon('chevronRight'));
   next.title = '다음 달';
 
-  const spacer = div('cal-spacer');
-
   const meter = div('cal-meter');
   meter.title = '이번 달 완료율';
   const track = div('cal-meter__track');
@@ -642,21 +632,40 @@ function buildSkeleton(root) {
   const meterLabel = div('cal-meter__label');
   meter.append(track, meterLabel);
 
-  const viewBtn = make('button', 'cal-viewbtn');
-  viewBtn.type = 'button';
-  viewBtn.dataset.view = '1';
-  // '월간 / 주간 전환' 만으로는 지금이 어느 쪽인지 알 수 없다.
-  // 글자(=누르면 갈 곳)와 별개로, 현재 상태를 이름에 담는다.
-  viewBtn.setAttribute('aria-label', '월간 보기 (누르면 주간)');
+  // 보기 — 지금 어느 쪽인지 칩이 켜져 보인다('주간' 한 글자로는 지금이 뭔지 알 수 없었다).
+  // 시간표 머리의 [스트립][압축] 과 같은 모양이라, 이 앱에서 '보기를 고르는 칩'은 늘 같게 읽힌다.
+  const views = div('cal-views');
+  const viewBtns = new Map();
+  for (const [id, label] of [['month', '월간'], ['week', '주간']]) {
+    const b = make('button', 'cal-view');
+    b.type = 'button';
+    b.dataset.view = id;
+    b.textContent = label;
+    b.setAttribute('aria-pressed', 'false');
+    viewBtns.set(id, b);
+    views.append(b);
+  }
 
   const todayBtn = make('button', 'cal-todaybtn');
-  todayBtn.textContent = '오늘로';
+  todayBtn.textContent = '오늘';
   todayBtn.setAttribute('aria-label', '오늘 날짜로 이동 (T)');
 
-  // 시안: 표제는 왼쪽, 조작은 전부 오른쪽 (완료율 · 구분선 · 오늘로 · 주간 · ‹ ›)
-  const navPair = div('cal-navpair');
-  navPair.append(prev, next);
-  header.append(title, spacer, meter, todayBtn, viewBtn, navPair);
+  // 시간 이동은 한 덩어리다 — ‹ 오늘 › 가 붙어 있어야 '앞 · 지금 · 뒤' 로 읽힌다.
+  const nav = div('cal-nav');
+  nav.append(prev, todayBtn, next);
+
+  // 날씨 스티커 — 지면 위에 살짝 비뚤게 붙인 종이 조각. 표제 옆에 앉는다.
+  const sticker = make('button', 'cal-sticker');
+  sticker.type = 'button';
+  sticker.hidden = true;
+  const stickerIcon = span('cal-sticker__icon');
+  const stickerTemp = span('cal-sticker__t num');
+  sticker.append(stickerIcon, stickerTemp);
+
+  // 시안: 표제는 왼쪽, 조작은 전부 오른쪽. 한 줄에 같은 높이로 세운다.
+  const tools = div('cal-tools');
+  tools.append(meter, div('cal-tools__rule'), nav, views);
+  header.append(title, sticker, tools);
 
   // --- 요일 머리글 ---
   const weekdays = div('cal-weekdays');
@@ -707,29 +716,17 @@ function buildSkeleton(root) {
   const rangeTag = div('cal-rangetag');
   rangeTag.hidden = true;
 
-  // 날짜 칸마다 버튼을 42개 두는 대신, 하나를 만들어 커서가 올라간 칸으로 옮긴다.
-  // 막대 레이어가 칸 위에 깔리므로 그리드 최상단에 두어야 가려지지 않는다.
-  const addBtn = make('button', 'cal-addbtn');
-  addBtn.type = 'button';
-  addBtn.append(icon('plus'));
-  addBtn.hidden = true;
+  grid.append(rangeTag);
 
-  grid.append(rangeTag, addBtn);
+  // 달력 발치의 테마 띠 — 태그를 눌러 그 테마만 지면에 도드라지게 한다
+  const themes = div('cal-themes');
+  themes.hidden = true;
 
-  // 달력 발치의 한 줄 — 시안: 조작 두 가지와 단축키. 말로 설명하지 않고 한 번 보여 준다.
-  const foot = div('cal-foot');
-  const footLeft = make('span', 'cal-foot__hint');
-  const plus = make('span', 'cal-foot__plus');
-  plus.textContent = '＋';
-  footLeft.append('칸에 커서를 올리면 ', plus, ' · 눌러 끌면 기간이 잡힙니다');
-  const footRight = make('span', 'cal-foot__keys num');
-  footRight.textContent = '←→ ±1일 · ↑↓ ±1주 · T 오늘';
-  foot.append(footLeft, footRight);
-
-  root.append(header, weekdays, grid, foot);
+  root.append(header, weekdays, grid, themes);
 
   return { root, title, titleNum, titleUnit, titleYear, grid, cells, barLayers, weekRows,
-           viewBtn, meterFill: fill, meterLabel, rangeTag, addBtn };
+           viewBtns, todayBtn, meterFill: fill, meterLabel, rangeTag, themes,
+           sticker, stickerIcon, stickerTemp };
 }
 
 // ================================================================== 막대
@@ -833,27 +830,26 @@ function laneFree(occupied, lane, seg) {
 }
 
 function renderBars(els, keys, tasks, st, store, weekCount = 6) {
-  const m = readMetrics(els.grid);
-
-  // 시안은 모든 주 행이 106px 다. 예전에는 남는 세로를 주별 레인 수에 비례해
-  // 나눠 줬는데, 그러면 한가한 주는 52px 로 눌리고 바쁜 주는 145px 로 늘어나
-  // 칸 높이가 제각각이 됐다(실측값이었다).
-  //
-  // 기본은 106px 로 고정하고, 기간 일정이 많이 겹치는 주만 레인 수만큼 **늘린다**.
-  // 줄이지는 않는다 — 줄이면 레인이 모자라 '+N' 으로 접혀 버린다.
-  const gridH = els.grid.clientHeight || 0;
-  const need = weekLaneDemand(keys, tasks, weekCount);   // 주별로 필요한 레인 수
+  // 달력은 스크롤하지 않는다 — 여섯 주가 면의 남은 세로를 똑같이 나눠 갖는다.
   // 행 높이는 **모두 같다**. 바쁜 주만 늘리면 칸이 제각각이 되어 시안이 무너진다.
   // 레인이 모자라는 주는 시안대로 오른쪽 위 개수와 '+N' 이 대신 말한다.
-  // 시안의 106px 은 **칸** 높이다. 주 행에는 아래 괘선 1px 이 더해진다(시안: 칸 106 + 행 괘선 1).
-  const rows = need.map(() => `${m.cell + 1}px`);
+  const gridH = els.grid.clientHeight || 0;
   // 값이 같은데 다시 쓰면 레이아웃이 무효화되고, 그 여파로 다시 그리게 되면
-  // 스크롤바가 생겼다 사라졌다 하며 무한히 맴돈다. 바뀔 때만 쓴다.
-  const rowsCss = rows.join(' ');
+  // ResizeObserver 가 맴돈다. 바뀔 때만 쓴다.
+  const rowsCss = `repeat(${weekCount}, minmax(0, 1fr))`;
   if (els.grid.dataset.rows !== rowsCss) {
     els.grid.dataset.rows = rowsCss;
     els.grid.style.gridTemplateRows = rowsCss;
   }
+
+  // 창이 낮아 칸이 시안(106px)보다 한참 짧아지면 숫자 · 막대를 조금 줄여 레인을 하나 더 들인다.
+  // 그대로 두면 칸마다 막대 하나밖에 안 들어가 겹치는 기간이 전부 '+N' 으로 접힌다.
+  const rowH0 = els.weekRows[0].clientHeight || Math.floor(gridH / weekCount);
+  const compact = weekCount > 1 && rowH0 > 0 && rowH0 < 100;
+  if (els.grid.classList.contains('cal-grid--compact') !== compact) {
+    els.grid.classList.toggle('cal-grid--compact', compact);
+  }
+  const m = readMetrics(els.grid);
 
   // 레인 수는 주마다 다르므로 각 주의 실제 높이로 계산한다.
   const lanesFor = (w) => {
@@ -907,25 +903,6 @@ function renderBars(els, keys, tasks, st, store, weekCount = 6) {
   }
 }
 
-/** 주별로 몇 개의 레인이 필요한지 (겹치는 최대 개수) */
-function weekLaneDemand(keys, tasks, weekCount = 6) {
-  const out = new Array(weekCount).fill(0);
-  for (let w = 0; w < weekCount; w++) {
-    let peak = 0;
-    for (let c = 0; c < 7; c++) {
-      const key = keys[w * 7 + c];
-      let n = 0;
-      for (const t of tasks) {
-        const end = t.end || t.start;
-        if (t.start && key >= t.start && key <= end) n++;
-      }
-      peak = Math.max(peak, n);
-    }
-    out[w] = peak;
-  }
-  return out;
-}
-
 function makeBar(seg, m, st, store) {
   const { task } = seg;
   const bar = document.createElement('div');
@@ -934,6 +911,8 @@ function makeBar(seg, m, st, store) {
   if (seg.contLeft) cls += ' cal-bar--cl';
   if (seg.contRight) cls += ' cal-bar--cr';
   if (task.done) cls += ' cal-bar--done';
+  // 걸어 둔 테마 밖이면 지면에서 한 걸음 물러난다(지우지 않는다)
+  if (!store.matchesTag(task)) cls += ' cal-bar--off';
   if (st.editingTaskId === task.id) cls += ' cal-bar--editing';
   bar.className = cls;
 
@@ -979,7 +958,8 @@ function renderDots(container, onDate, store) {
   for (let i = 0; i < shown; i++) {
     const t = singles[i];
     const dot = document.createElement('i');
-    dot.className = 'cal-dot' + (t.done ? ' cal-dot--done' : '');
+    dot.className = 'cal-dot' + (t.done ? ' cal-dot--done' : '')
+      + (store.matchesTag(t) ? '' : ' cal-dot--off');
     dot.style.background = store.COLORS[t.color] || store.COLORS.blue;
     container.appendChild(dot);
   }
@@ -989,6 +969,60 @@ function renderDots(container, onDate, store) {
     more.textContent = `+${singles.length - shown}`;
     container.appendChild(more);
   }
+}
+
+/** 달력 발치의 테마 띠 — 남은 일이 많은 테마부터 여덟 개 */
+function renderThemes(els, st, store) {
+  const list = store.tagSummary().slice(0, 8);
+  els.themes.hidden = !list.length;
+  if (!list.length) return;
+
+  const on = st.filter.tag || '';
+  const sig = `${on}|${list.map((x) => `${x.tag}:${x.n}:${x.color}`).join(',')}`;
+  if (els.themes.dataset.sig === sig) return;
+  els.themes.dataset.sig = sig;
+
+  const out = [span('cal-themes__key')];
+  out[0].textContent = '테마';
+
+  for (const { tag, n, color } of list) {
+    const b = make('button', 'cal-theme');
+    b.type = 'button';
+    b.dataset.tag = tag;
+    b.classList.toggle('is-on', tag === on);
+    b.setAttribute('aria-pressed', String(tag === on));
+    b.title = tag === on ? `${tag} 걸러 보기 끄기` : `${tag} 만 보기`;
+    const dot = span('cal-theme__dot');
+    dot.style.background = store.COLORS[color] || store.COLORS.blue;
+    const name = span('cal-theme__name');
+    name.textContent = tag;
+    const count = span('cal-theme__n num');
+    count.textContent = n ? String(n) : '';
+    b.append(dot, name, count);
+    out.push(b);
+  }
+  els.themes.replaceChildren(...out);
+}
+
+/**
+ * 오늘 날씨 스티커.
+ * 값은 메인이 받아 셸이 store 에 담아 둔다(state.weather). 여기서는 붙이기만 한다.
+ * 설정에서 끄거나 아직 못 받았으면 자리째 걷는다 — 빈 스티커는 종이만 버린다.
+ */
+function renderWeather(els, st) {
+  const w = st.settings.weather === false ? null : st.weather;
+  els.sticker.hidden = !w;
+  if (!w) return;
+
+  const sig = `${w.icon}|${w.temp}|${w.label}|${w.city}|${w.high}|${w.low}`;
+  if (els.sticker.dataset.sig === sig) return;
+  els.sticker.dataset.sig = sig;
+
+  els.stickerIcon.replaceChildren(icon(w.icon, 15, 1.4));
+  els.stickerTemp.textContent = `${w.temp}°`;
+  const range = w.low != null && w.high != null ? ` · ${w.low}° / ${w.high}°` : '';
+  els.sticker.title = `${w.city} · ${w.label}${range}`;
+  els.sticker.setAttribute('aria-label', els.sticker.title);
 }
 
 function renderMeter(els, st, anchor) {
@@ -1041,7 +1075,7 @@ function visibleSpans(store, keys) {
   const out = [];
 
   for (const key of keys) {
-    for (const t of store.tasksOnDate(key)) {
+    for (const t of store.tasksOnDate(key, { ignoreTag: true })) {
       // 반복 일정은 당일짜리다. 루틴은 달력에 그리지 않는다.
       if (t.repeat) continue;
       if (!t.start || !t.end || t.end <= t.start) continue;
@@ -1070,7 +1104,6 @@ function readMetrics(gridEl) {
     barH: num('--cal-bar-h', 14),
     gap: num('--cal-bar-gap', 2),
     dots: num('--cal-dots-h', 11),
-    cell: num('--cal-cell-h', 106),
   };
 }
 

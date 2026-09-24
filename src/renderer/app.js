@@ -10,8 +10,10 @@ import { createDashboard } from './dashboard/dashboard.js';
 import { createLauncher } from './launcher/launcher.js';
 import { todayKey, fromKey, addDays, weekGrid, WEEKDAY_LABELS } from './lib/date.js';
 import { setIcon, icon } from './lib/icons.js';
+import { showContextMenu } from './lib/menu.js';
 import { startReminders, timeAgo } from './reminders.js';
 import { toBackupJSON, parseBackup, toICS, fileStamp } from './lib/exchange.js';
+import { parseQuickInput, resolveRange } from './todo/parse.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -33,12 +35,10 @@ const els = {
   btnSearch: $('#btn-search'),
   btnBell: $('#btn-bell'),
   btnLock: $('#btn-lock'),
-  btnSettings: $('#btn-settings'),
   btnClose: $('#btn-close'),
   year: document.getElementById('titlebar-year'),
   tabMain: document.getElementById('tab-main'),
-  tabRoutine: document.getElementById('tab-routine'),
-  tabBrief: document.getElementById('tab-brief'),
+  tabPlan: document.getElementById('tab-plan'),
   tabSettings: document.getElementById('tab-settings'),
 };
 
@@ -79,6 +79,8 @@ async function boot() {
   wireReminders();
   wireSplitter();
   wireTabs();
+  wireWeather();
+  wireInbox();
   wireMenuActions();
   wireShortcuts();
 
@@ -95,9 +97,8 @@ async function boot() {
 
   if (store.getState().loadNotice) showNotice(store.getState().loadNotice, { sticky: true });
 
-  // 처음 켠 사람에게는 안내를, 그 뒤로는 오늘 브리핑을.
-  // 둘이 겹쳐 뜨면 첫인상이 팝업 두 개가 된다.
-  if (!maybeShowWelcome()) maybeShowBrief();
+  // 처음 켠 사람에게 안내 창을 띄우지 않는다 — 빈 화면의 '＋ 일정 추가' 가 첫 걸음이다
+  maybeShowBrief();
 }
 
 // ---------------------------------------------------------------- 토스트
@@ -270,11 +271,21 @@ function applyChrome(s) {
     document.documentElement.style.setProperty('--glass-a', String(s.opacity));
   }
   if (s.clickThroughLocked !== prev.clickThroughLocked) {
-    window.api.window.setIgnoreMouseEvents(s.clickThroughLocked);
-    els.btnLock?.classList.toggle('is-active', !!s.clickThroughLocked);
+    const on = !!s.clickThroughLocked;
+    window.api.window.setIgnoreMouseEvents(on);
+    // 켜져 있는 동안 위젯은 비쳐 보이는 채로 머문다(커서를 올려도 돌아오지 않는다).
+    // 자물쇠 하나만 또렷하게 남아 다시 누를 수 있다.
+    document.documentElement.classList.toggle('is-through', on);
+    els.btnLock?.classList.toggle('is-active', on);
+    els.btnLock?.setAttribute('aria-pressed', String(on));
+    if (els.btnLock) els.btnLock.title = on ? '클릭 통과 끄기' : '클릭 통과';
   }
 
   // --- 외형 ---
+  if (s.weather !== prev.weather || s.weatherCity !== prev.weatherCity) {
+    // 켜고 끄거나 도시를 바꾸면 곧바로 다시 받는다 (prev 가 비어 있는 첫 호출은 wireWeather 가 맡는다)
+    if (Object.keys(prev).length) pullWeather(true);
+  }
   if (s.blurEnabled !== prev.blurEnabled) {
     // 블러는 dwm.exe GPU 부하가 큰 연산이라 끌 수 있어야 한다
     document.documentElement.dataset.blur = s.blurEnabled ? 'on' : 'off';
@@ -298,7 +309,7 @@ function applyChrome(s) {
 window.addEventListener('resize', () => applySplit(store.getState().settings.splitRatio));
 
 /** 창이 비활성이면 위젯을 배경으로 물린다 (macOS 데스크톱 위젯의 틴팅/디밍 방식).
- *  마우스를 올리면 CSS 가 즉시 원래 질감으로 복원한다. */
+ *  마우스를 올리면 CSS 가 즉시 원래 질감으로 복원한다 — 클릭 통과 중에는 복원하지 않는다. */
 function wireDimming() {
   const setInactive = (v) => document.documentElement.classList.toggle('is-inactive', v);
   window.addEventListener('blur', () => setInactive(true));
@@ -326,18 +337,18 @@ function updateTitle(state) {
 // ---------------------------------------------------------------- 표지 머리
 
 function wireTitlebar() {
-  // 시안의 아이콘 — 14px · stroke 1.4, 닫기만 13px
+  // 시안의 아이콘 — 14px · stroke 1.4, 닫기만 13px.
+  // 설정은 책갈피 '설정' 하나가 연다 — 표지에 톱니를 두 벌로 두지 않는다.
   setIcon(els.btnBrief, 'sunrise', 14, 1.4);
   setIcon(els.btnSearch, 'searchD', 14, 1.4);
   setIcon(els.btnBell, 'bellD', 14, 1.4);
   setIcon(els.btnLock, 'lock', 14, 1.4);
-  setIcon(els.btnSettings, 'gear', 14, 1.4);
   setIcon(els.btnClose, 'close', 13, 1.4);
   // 알림 기록 — 아직 안 본 알림이 있으면 점이 찍힌다
   els.btnBell.append(el('span', 'iconbtn__dot'));
 
   els.btnBell.setAttribute('aria-expanded', 'false');
-  els.btnSettings.setAttribute('aria-expanded', 'false');
+  els.btnLock.setAttribute('aria-pressed', 'false');
 
   els.btnClose.addEventListener('click', () => window.api.window.hide());
   els.btnBrief.addEventListener('click', () => showBrief());
@@ -345,11 +356,16 @@ function wireTitlebar() {
     if (!els.settings.hidden) toggleSettings();
     document.dispatchEvent(new CustomEvent('app:search'));
   });
+  // 클릭 통과 — 같은 자물쇠가 켜고 끈다.
+  // 켜져 있는 동안 창은 마우스를 통과시키지만, 자물쇠 위에 커서가 오면 그 순간만 받는다.
   els.btnLock.addEventListener('click', () => {
-    store.setSetting('clickThroughLocked', true);
-    showToast('클릭 통과를 켰습니다 — Alt+Shift+S 로 풉니다');
+    const on = !store.getState().settings.clickThroughLocked;
+    store.setSetting('clickThroughLocked', on);
+    // 켠 직후 커서는 아직 자물쇠 위에 있다 — 다시 들어오기(mouseenter)를 기다리지 않고 받는 상태로 둔다
+    if (on) window.api.window.catchMouse?.(true);
   });
-  els.btnSettings.addEventListener('click', toggleSettings);
+  els.btnLock.addEventListener('mouseenter', () => window.api.window.catchMouse?.(true));
+  els.btnLock.addEventListener('mouseleave', () => window.api.window.catchMouse?.(false));
   els.btnBell.addEventListener('click', (e) => { e.stopPropagation(); toggleBell(); });
 
   if (els.year) els.year.textContent = romanYear(new Date().getFullYear());
@@ -370,9 +386,9 @@ function romanYear(n) {
 // ---------------------------------------------------------------- 모달 (브리핑 · 안내 · 사용법)
 //
 // 시안의 아침 브리핑 창이 틀이다: 펼침면 위에 스크림, 520px 종이 카드, 명조 머리.
-// 안내와 사용법도 같은 틀을 빌린다 — 모양을 새로 만들지 않는다.
+// 사용법도 같은 틀을 빌린다 — 모양을 새로 만들지 않는다. 닫기는 머리의 ✕ 하나다.
 
-let briefSheet = null;   // 브리핑 · 첫 실행 안내가 자리를 나눠 쓴다
+let briefSheet = null;
 let helpSheet = null;
 
 function openModal(kind, label, onClose) {
@@ -433,79 +449,36 @@ function modalItem(at, title, onClick) {
 // 조작법과 문법을 한 장에 모아 언제든 열어 볼 수 있게 한다(? 키 · 설정 › 사용법).
 
 const HELP = [
-  ['기본 조작', [
-    ['날짜를 클릭', '그날의 시간표가 오른쪽에 펼쳐집니다'],
-    ['날짜를 눌러 옆으로 끌기', '그 기간짜리 일정을 바로 만듭니다'],
-    ['항목을 달력으로 끌기', '일정 날짜를 옮깁니다'],
-    ['항목을 클릭', '항목 상세가 열립니다. 보이는 제목이 그대로 입력칸입니다'],
-    ['Esc · ‹ 목록으로', '어느 화면에서든 한 번에 오늘로 돌아갑니다'],
-    ['제목을 더블클릭', '상세를 열지 않고 이름만 그 자리에서 고칩니다'],
-    ['＋ 일정 추가 (N)', '날짜 머리 오른쪽. 시작 · 종료를 눌러서 지정합니다'],
-    ['달력에서 날짜에 커서', '그 칸에 ＋ 가 떠요. 누르면 그 날짜로 만듭니다'],
-    ['달력 막대를 잡고 끌기', '일정을 옮깁니다 (기간 길이는 그대로)'],
-    ['막대의 양 끝을 끌기', '시작 · 종료를 늘리고 줄입니다'],
-    ['일정을 D-Day 칸으로 끌기', 'D-Day 에 고정합니다'],
-    ['트랙패드 두 손가락 좌우', '달을 넘깁니다 (주간 보기에서는 주 단위)'],
-  ]],
-  ['시간표', [
-    ['스트립 · 압축', '시간표 머리의 칩이나 설정에서 고릅니다'],
-    ['네모를 누르면', '자세한 창이 뜹니다 — 완료 · 내일로 · 고치기'],
-    ['종일 띠', '시각 없는 일정 · 루틴 · 진행 중인 장기 계획이 앉는 자리'],
-    ['압축의 빈 시간', '누르면 펼쳐지고, 다시 누르면 접힙니다'],
-  ]],
-  ['날짜와 시각', [
-    ['시작 = 종료', '하루짜리 일정입니다'],
-    ['종료를 뒤로', '여러 날에 걸친 일정이 됩니다 (+1일 · +1주)'],
-    ['시작을 옮기면', '종료도 같은 간격을 유지한 채 따라옵니다'],
-    ['시각 칸을 비우면', '종일 일정입니다'],
-    ['시각 칸에서 ↑ ↓', '30분씩 옮깁니다'],
-  ]],
-  ['루틴', [
-    ['＋ 루틴 · 루틴 탭', '운동처럼 되풀이하는 일. 달력에 그리지 않습니다'],
-    ['평일 · 주말 · 요일', "'월수금 운동' 처럼 요일을 정할 수 있습니다"],
-    ['시각을 넣으면', '시간띠에 네모로, 비우면 종일 띠에 놓입니다'],
-    ['체크는 그날치만', '오늘 체크해도 내일 것은 그대로 남습니다'],
-  ]],
-  ['언젠가', [
-    ['날짜 없이 적기', "정하기 애매한 일은 '언젠가' 에 일단 적어 둡니다"],
-    ['오늘 · 내일 · 주말', '항목 오른쪽 버튼. 한 번 누르면 그날로 잡힙니다'],
-    ['3주째 · 2달째', '오래 묵은 항목에 붙습니다. 잡거나 지울 때가 됐다는 뜻'],
-  ]],
-  ['비서', [
-    ['비서의 한 줄', '오늘이 어떤지 한 문장으로. 「지금 할 일」은 하나를 골라 줍니다'],
-    ['지난 일', '기한이 지났는데 안 끝난 일이 위에 모입니다'],
-    ['오늘로 당기기', '밀린 일을 한 번에 오늘로 (되돌리기 한 번으로 취소)'],
-    ['아침 브리핑', '하루에 한 번 · 표지의 해돋이 버튼으로 다시 봅니다'],
-    ['트레이 아이콘', '창을 열지 않아도 오늘 일정과 밀린 건수가 보입니다'],
-  ]],
-  ['목록에서 (키보드)', [
-    ['↑ ↓', '항목 사이 이동'],
-    ['Space', '완료 / 완료 취소'],
-    ['Enter', '항목 상세'],
-    ['Delete', '삭제 (반복 일정은 그 회차만)'],
+  ['손으로', [
+    ['날짜를 눌러 옆으로 끌기', '그 기간으로 새 일정'],
+    ['막대를 끌기 · 양 끝 끌기', '옮기기 · 기간 늘이고 줄이기'],
+    ['일정을 날짜 칸으로 끌기', '날짜 옮기기'],
+    ['목표를 요일 · 날짜 칸으로 끌기', '그날로 잡기'],
+    ['일정을 D-Day 칸으로 끌기', 'D-Day 고정'],
+    ['제목 더블클릭', '이름만 고치기'],
+    ['우클릭', '그 자리에서 할 수 있는 일'],
+    ['제본선 두 번 누르기', '오른쪽 면 원래 폭'],
+    ['두 손가락 좌우', '달 넘기기'],
   ]],
   ['단축키', [
-    ['N', '새 일정'],
-    ['Ctrl + Z', '되돌리기'],
-    ['Ctrl + Shift + Z', '다시 실행'],
+    ['N', '새 일정 · 계획에서는 새 목표'],
+    ['Ctrl + Z / Ctrl + Shift + Z', '되돌리기 / 다시 실행'],
     ['Ctrl + ,', '설정'],
-    ['← →', '하루씩 이동'],
-    ['↑ ↓', '일주일씩 이동'],
-    ['PageUp / PageDown', '한 달씩 이동'],
+    ['← → / ↑ ↓', '하루 / 일주일'],
+    ['PageUp / PageDown', '한 달'],
     ['T', '오늘로'],
-    ['?', '이 사용법'],
-    ['Esc', '열린 창 닫기'],
-    ['Alt + Shift + S', '위젯 보이기 · 클릭 통과 풀기 (어디서든)'],
+    ['Space · Enter · Delete', '목록에서 완료 · 상세 · 삭제'],
+    ['Esc', '닫기'],
+    ['Alt + Shift + S', '위젯 보이기 · 클릭 통과 풀기'],
   ]],
-  ['한 줄로 적기 — 추가 화면의 제목칸', [
+  ['한 줄로 적기', [
     ['! / !!', '중요 / 긴급'],
-    ['#태그', '태그 (여러 개 가능)'],
+    ['#태그', '태그'],
     ['@내일  @금  @8/15', '시작일'],
-    ['~3d  ~8/20', '종료일 — 기간 일정이 됩니다'],
+    ['~3d  ~8/20', '종료일'],
     ['15:00  14시  오후3시', '시각'],
     ['15:00~18:00', '시작 · 종료 시각'],
     ['*파랑 *초록 *노랑 *빨강 *보라 *회색', '색'],
-    ['띄어쓰기를 치면', '그 토큰이 제목에서 빠지고 아래 칸으로 옮겨 갑니다'],
   ]],
 ];
 
@@ -513,7 +486,7 @@ function toggleHelp() {
   if (helpSheet) { closeHelp(); return; }
 
   const { scrim, card } = openModal('help', '사용법', closeHelp);
-  const { head } = modalHead('사용법', '조작 · 단축키 · 한 줄 문법', closeHelp);
+  const { head } = modalHead('사용법', '', closeHelp);
   card.append(head);
 
   for (const [section, rows] of HELP) {
@@ -534,56 +507,124 @@ function closeHelp() {
   helpSheet = null;
 }
 
-// ---------------------------------------------------------------- 첫 실행 안내
+// ---------------------------------------------------------------- 받은함
 //
-// 처음 켜면 빈 면이 한꺼번에 펼쳐진다. 기능이 없어서가 아니라
-// '어디부터 손대야 하는지'를 아무도 말해 주지 않아서 막막한 화면이다.
-// 한 번만, 세 줄로 알려 주고 바로 첫 일정을 만들 수 있게 한다.
+// 바깥(스크립트 · AI · 다른 앱)에서 온 일정이 들어오는 자리. 메인이 파일을 읽어 모양만 보고
+// 넘겨 주면, 해석은 여기서 한다 — 한 줄 문법 하나로 통일해 두면 문법이 두 벌이 되지 않는다.
+// 들어온 것은 토스트로 알리고 **한 번에 되돌릴 수 있다**. 조용히 늘어나 있으면 남의 글이 된다.
 
-const WELCOME_STEPS = [
-  ['왼쪽 달력', '기간 일정이 막대로 그려집니다. 날짜를 눌러 옆으로 끌면 그 기간짜리 일정이 만들어져요.'],
-  ['오른쪽 면', '고른 날의 시간표입니다. 시각이 있는 일은 네모로, 없는 일은 종일 띠에 놓입니다.'],
-  ['기한이 지나면', "끝내지 못한 일은 '지난 일'로 올라옵니다. 한 번에 오늘로 당길 수 있어요."],
-];
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-function maybeShowWelcome() {
-  if (store.getState().settings.seenWelcome) return false;
-  store.setSetting('seenWelcome', true);
-  showWelcome();
-  return true;
+/** '치과 @내일 15:00 #건강 !' → 일정 한 건 */
+function taskFromLine(line) {
+  const today = todayKey();
+  const parsed = parseQuickInput(String(line), today);
+  const title = parsed.title.trim();
+  if (!title) return null;
+  // 날짜를 안 적었으면 오늘이다 — 바깥에서 넣는 건 대개 '지금 이 일정을 넣어 둬' 다
+  const { start, end } = resolveRange(parsed, today);
+  return {
+    title: title.slice(0, 200),
+    start: start || today,
+    end: end || start || today,
+    startTime: parsed.startTime || null,
+    endTime: parsed.endTime || null,
+    tags: parsed.tags,
+    priority: parsed.priority,
+    color: parsed.color || 'blue',
+  };
 }
 
-function showWelcome() {
-  if (briefSheet) return;   // 브리핑과 자리를 나눠 쓴다
+/** JSON 한 건 — 모양만 추린다. 날짜 · 시각 규칙은 store 가 다시 본다. */
+function taskFromJSON(raw) {
+  const title = String(raw?.title ?? '').trim().slice(0, 200);
+  if (!title) return null;
+  const today = todayKey();
+  // start 를 '명시적으로 null' 로 주면 날짜 없는 '언젠가' 다
+  const undated = raw.start === null;
+  const start = DATE_RE.test(String(raw.start)) ? raw.start : (undated ? null : today);
+  const end = DATE_RE.test(String(raw.end)) ? raw.end : start;
+  return {
+    title,
+    start,
+    end,
+    startTime: TIME_RE.test(String(raw.startTime)) ? raw.startTime : null,
+    endTime: TIME_RE.test(String(raw.endTime)) ? raw.endTime : null,
+    notes: String(raw.notes ?? '').slice(0, 2000),
+    tags: Array.isArray(raw.tags)
+      ? raw.tags.map((t) => String(t).replace(/^#/, '').trim()).filter(Boolean).slice(0, 8)
+      : [],
+    priority: [0, 1, 2].includes(Number(raw.priority)) ? Number(raw.priority) : 0,
+    color: typeof raw.color === 'string' && store.COLORS[raw.color] ? raw.color : 'blue',
+    link: typeof raw.link === 'string' ? raw.link.slice(0, 500) : '',
+  };
+}
 
-  const { scrim, card } = openModal('brief', '시작하기', closeBrief);
-  const { head } = modalHead('일정관리 비서', '처음 오셨네요', closeBrief);
-  card.append(head, el('div', 'modal__lead', '왼쪽에서 흐름을 보고, 오른쪽에서 오늘을 짭니다.'));
+function takeInbox(payload) {
+  if (!payload) return;
 
-  for (const [term, desc] of WELCOME_STEPS) {
-    const block = modalBlock(term);
-    block.append(el('div', 'modal__desc', desc));
-    card.append(block);
+  const patches = [];
+  for (const line of payload.lines || []) {
+    const t = taskFromLine(line);
+    if (t) patches.push(t);
+  }
+  for (const raw of payload.tasks || []) {
+    const t = taskFromJSON(raw);
+    if (t) patches.push(t);
+  }
+  const added = store.addTasks(patches, `받은함 ${patches.length}건`);
+
+  // 주 · 달 목표도 받는다 — {"goals":[{"scope":"week","title":"보고서 초안"}]}
+  let goals = 0;
+  for (const g of payload.goals || []) {
+    const title = String(g?.title ?? '').trim().slice(0, 200);
+    if (!title) continue;
+    const scope = String(g?.scope) === 'month'
+      ? store.monthScope(todayKey())
+      : store.weekScope(todayKey());
+    if (store.addGoal(scope, { title })) goals++;
   }
 
-  const foot = el('div', 'modal__foot');
-  const acts = el('div', 'modal__acts');
-  const later = el('button', 'modal__btn', '둘러볼게요');
-  later.type = 'button';
-  later.addEventListener('click', closeBrief);
-  const start = el('button', 'modal__btn modal__btn--gold', '첫 일정 만들기');
-  start.type = 'button';
-  start.addEventListener('click', () => {
-    closeBrief();
-    // 투두 패널이 추가 화면을 열도록 오늘 날짜로 요청한다
-    const today = todayKey();
-    store.requestCompose(today, today);
-  });
-  acts.append(later, start);
-  foot.append(el('span', 'modal__note', '자세한 조작은 설정 › 사용법에 있습니다'), acts);
-  card.append(foot);
+  const n = added + goals;
+  if (n) showToast(`밖에서 ${n}건이 들어왔습니다`, { undo: true });
+}
 
-  briefSheet = scrim;
+function wireInbox() {
+  window.api.inbox?.onItems?.(takeInbox);
+  // 이제 받을 준비가 됐다 — 앱이 꺼져 있는 동안 쌓인 것이 여기서 들어온다
+  window.api.inbox?.ready?.();
+}
+
+// ---------------------------------------------------------------- 날씨
+//
+// 달력 머리의 스티커와 아침 브리핑 한 줄이 쓴다. 받아오는 일은 메인이 한다(CSP).
+// 30분마다 한 번, 그리고 창을 다시 볼 때. 못 받으면 조용히 있던 값을 쓴다.
+
+const WEATHER_MS = 30 * 60 * 1000;
+let weatherTimer = 0;
+let weatherAt = 0;
+
+async function pullWeather(force = false) {
+  const s = store.getState().settings;
+  if (s.weather === false) { store.setWeather(null); return; }
+  if (!force && Date.now() - weatherAt < WEATHER_MS) return;
+  weatherAt = Date.now();
+  try {
+    const data = await window.api.weather?.get(s.weatherCity || '서울');
+    store.setWeather(data || null);
+  } catch { /* 날씨 한 줄 때문에 앱이 시끄러울 이유는 없다 */ }
+}
+
+function wireWeather() {
+  pullWeather(true);
+  clearInterval(weatherTimer);
+  weatherTimer = setInterval(() => pullWeather(), WEATHER_MS);
+  // 절전에서 깨면 타이머가 늦는다 — 창을 다시 볼 때도 확인한다
+  window.addEventListener('focus', () => pullWeather());
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pullWeather();
+  });
 }
 
 // ---------------------------------------------------------------- 날짜 감시
@@ -643,7 +684,6 @@ function checkDayChange() {
   else store.touch();
 
   reportToTray();
-  syncBriefTab();
   if (els.year) els.year.textContent = romanYear(new Date().getFullYear());
 
   // 자정에 모달을 띄우면 방해다. 다음에 창을 볼 때 보여 준다.
@@ -656,47 +696,37 @@ function checkDayChange() {
 
 // ---------------------------------------------------------------- 책갈피 탭
 //
-// 오른쪽 면 바깥에 붙어 화면을 갈아 끼운다(시안). 탭은 화면을 새로 만들지 않고
-// 이미 있는 입구를 연다. 지금 어느 화면인지는 오른쪽 면이 알려 준다(app:screen).
-// 브리핑 탭은 시안대로 **한 번 닫으면 사라진다**. 그 뒤로는 표지의 해돋이 버튼으로만 연다.
+// 오른쪽 면 바깥에 붙어 면을 갈아 끼운다(시안) — 오늘 · 계획 · 설정.
+// 탭 하나가 면 하나다. 같은 면을 여는 단추를 다른 곳에 또 두지 않는다
+// (설정 톱니 · 루틴 탭 · 브리핑 탭은 걷었다. 브리핑은 표지의 해돋이가 연다).
+// 상세 · 추가 화면은 그 면 안의 한 장이라 탭은 그 면을 켠 채로 둔다.
 
-let screenNow = 'main';
+let tabNow = 'main';   // 'main' | 'plan' — 오른쪽 면이 알려 준다(app:screen)
 
 function paintTabs() {
   const settingsOpen = !els.settings.hidden;
-  els.tabMain?.classList.toggle('is-on', !settingsOpen && screenNow === 'main');
-  els.tabRoutine?.classList.toggle('is-on', !settingsOpen && screenNow === 'routine');
+  els.tabMain?.classList.toggle('is-on', !settingsOpen && tabNow === 'main');
+  els.tabPlan?.classList.toggle('is-on', !settingsOpen && tabNow === 'plan');
   els.tabSettings?.classList.toggle('is-on', settingsOpen);
+}
+
+function goTab(name) {
+  if (!els.settings.hidden) toggleSettings();
+  document.dispatchEvent(new CustomEvent(name === 'plan' ? 'app:plan' : 'app:today'));
 }
 
 function wireTabs() {
   document.addEventListener('app:screen', (e) => {
-    screenNow = e.detail;
+    tabNow = e.detail?.tab || 'main';
     paintTabs();
   });
 
-  els.tabMain?.addEventListener('click', () => {
-    if (!els.settings.hidden) toggleSettings();
-    store.setEditing(null);
-    document.dispatchEvent(new CustomEvent('app:close-compose'));
-  });
-  els.tabRoutine?.addEventListener('click', () => {
-    if (!els.settings.hidden) toggleSettings();
-    document.dispatchEvent(new CustomEvent('app:new-routine'));
-  });
-  els.tabBrief?.addEventListener('click', () => showBrief());
+  els.tabMain?.addEventListener('click', () => goTab('main'));
+  els.tabPlan?.addEventListener('click', () => goTab('plan'));
   els.tabSettings?.addEventListener('click', () => {
     if (els.settings.hidden) toggleSettings();
   });
-  syncBriefTab();
-  store.subscribe(syncBriefTab);
   paintTabs();
-}
-
-/** 브리핑 탭은 아직 안 본 날에만 보인다 — 한 번 닫으면 표지 아이콘으로만 연다(시안) */
-function syncBriefTab() {
-  if (!els.tabBrief) return;
-  els.tabBrief.hidden = store.getState().settings.lastBriefDate === todayKey();
 }
 
 // ---------------------------------------------------------------- 아침 브리핑
@@ -815,7 +845,7 @@ function briefLead({ today, todays, overdue }) {
 
 function showBrief() {
   if (briefSheet) return;
-  // 한 번 열었으면 오늘 몫은 본 것이다 — 책갈피 탭이 사라진다
+  // 한 번 열었으면 오늘 몫은 본 것이다 — 오늘은 다시 저절로 뜨지 않는다
   store.setSetting('lastBriefDate', todayKey());
 
   const data = briefData();
@@ -825,7 +855,19 @@ function showBrief() {
   const { scrim, card } = openModal('brief', '아침 브리핑', closeBrief);
   const { head } = modalHead('아침 브리핑',
     `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAY_FULL[d.getDay()]} · ${nowHHMM()}`, closeBrief);
-  card.append(head, el('div', 'modal__lead', briefLead(data)));
+  card.append(head);
+
+  // 오늘 날씨 — 하루를 짜기 전에 먼저 보는 것
+  const w = store.getState().settings.weather === false ? null : store.getState().weather;
+  if (w) {
+    const line = el('div', 'modal__weather');
+    line.append(icon(w.icon, 15, 1.4), el('span', 'modal__weathert num', `${w.temp}°`));
+    const range = w.low != null && w.high != null ? ` · ${w.low}° / ${w.high}°` : '';
+    line.append(el('span', null, `${w.label}${range}`), el('span', 'modal__weatherc', w.city));
+    card.append(line);
+  }
+
+  card.append(el('div', 'modal__lead', briefLead(data)));
 
   const openTask = (t) => () => {
     if (t.start) store.selectDate(t.occDate || t.start);
@@ -875,14 +917,10 @@ function showBrief() {
   }
   card.append(blocks);
 
-  // --- 꼬리
-  const foot = el('div', 'modal__foot');
-  const acts = el('div', 'modal__acts');
-  const done = el('button', 'modal__btn', '닫기');
-  done.type = 'button';
-  done.addEventListener('click', closeBrief);
-  acts.append(done);
+  // --- 꼬리 — 밀린 일이 있을 때만. 닫기는 머리의 ✕ 하나다.
   if (overdue.length) {
+    const foot = el('div', 'modal__foot');
+    const acts = el('div', 'modal__acts');
     const roll = el('button', 'modal__btn modal__btn--seal', '밀린 일 오늘로 당기기');
     roll.type = 'button';
     roll.addEventListener('click', () => {
@@ -893,9 +931,9 @@ function showBrief() {
       if (n) showToast(`${n}건을 오늘로 옮겼습니다`, { undo: true });
     });
     acts.append(roll);
+    foot.append(acts);
+    card.append(foot);
   }
-  foot.append(el('span', 'modal__note', '할 말이 없는 날에는 뜨지 않습니다'), acts);
-  card.append(foot);
 
   briefSheet = scrim;
 }
@@ -947,8 +985,7 @@ function toggleBell() {
   pop.append(head);
 
   if (!log.length) {
-    pop.append(el('div', 'bell__empty',
-      '아직 받은 알림이 없습니다.\n항목 상세에서 알림 시각을 정해 두면 여기에 쌓입니다.'));
+    pop.append(el('div', 'bell__empty', '받은 알림이 없습니다'));
   } else {
     const list = el('div', 'bell__list');
     for (const entry of log) {
@@ -1045,8 +1082,6 @@ function toggleSettings() {
   const open = els.settings.hidden;
   els.settings.hidden = !open;
   els.todo.classList.toggle('is-settings', open);
-  els.btnSettings.classList.toggle('is-active', open);
-  els.btnSettings.setAttribute('aria-expanded', String(open));
   if (open) {
     renderSettings();
     els.settings.scrollTop = 0;
@@ -1096,12 +1131,10 @@ function renderSettings() {
     opt('끔', s[key] === false, set(key, false)),
   ]);
 
+  // 설정은 책갈피 면이다 — 돌아가는 단추 대신 옆의 '오늘' 탭(또는 Esc)
   const screen = el('div', 'scr set-screen');
   const head = el('div', 'scr-head');
-  const back = el('button', 'scr-head__back', '‹ 목록으로 · Esc');
-  back.type = 'button';
-  back.addEventListener('click', toggleSettings);
-  head.append(el('span', 'scr-head__title', '설정'), back);
+  head.append(el('span', 'scr-head__title', '설정'));
 
   // 글자 크기 — 확대 비율. 예전 설정(0.8~1.4)은 가까운 칸으로 읽는다.
   const scale = s.fontScale || 1;
@@ -1120,7 +1153,7 @@ function renderSettings() {
     wideBtn?.classList.toggle('is-on', wide);
   }).catch(() => {});
 
-  const autoRow = setRow('부팅 시 자동 시작', '로그인할 때 트레이에만 조용히', [
+  const autoRow = setRow('부팅 시 자동 시작', '', [
     opt('켬', false, async () => applyAutoLaunch(true)),
     opt('끔', false, async () => applyAutoLaunch(false)),
   ]);
@@ -1131,6 +1164,12 @@ function renderSettings() {
     if (r?.dev) autoRow.row.title = '개발 실행 중에는 적용되지 않습니다 (설치본에서 동작).';
   }).catch(() => {});
 
+  // 도시 — 목록에서 고른다. 좌표는 앱이 들고 있어서 검색에 네트워크를 쓰지 않는다.
+  const weatherRow = setRow('도시', '', [
+    opt(s.weatherCity || '서울', false, () => pickCity(weatherRow.box)),
+  ]);
+  weatherRow.row.hidden = s.weather === false;
+
   const body = el('div', 'set-body');
   body.append(
     setGroup('보임', [
@@ -1138,13 +1177,8 @@ function renderSettings() {
         opt('밝게', s.theme !== 'dark', set('theme', 'light')),
         opt('어둡게', s.theme === 'dark', set('theme', 'dark')),
       ]),
-      // 시간표 머리의 칩과 **같은 값**을 본다. 두 자리에서 고르되 상태는 하나다.
-      setRow('오늘 시간표', '스트립은 하루의 모양을, 압축은 순서를 보여줍니다', [
-        opt('스트립', s.todayView !== 'compressed', set('todayView', 'strip')),
-        opt('압축', s.todayView === 'compressed', set('todayView', 'compressed')),
-      ]),
       // 예전 설정(40~100% 슬라이더)은 가장 가까운 칸으로 읽는다
-      setRow('배경 투명도', '배경 알파로 조절합니다 — 글자는 또렷하게 남습니다',
+      setRow('배경 투명도', '',
         [0.7, 0.85, 1].map((v, _i, all) => {
           const cur = s.opacity ?? 0.85;
           const nearest = all.reduce((a, b) => (Math.abs(b - cur) < Math.abs(a - cur) ? b : a));
@@ -1156,72 +1190,85 @@ function renderSettings() {
         opt('크게', sizeBucket === 'large', set('fontScale', 1.1)),
       ]),
       sizeRow,
-      onOff('blurEnabled', '끄면 GPU 사용량이 줄어듭니다', '배경 흐림'),
-      onOff('dimInactive', '다른 창을 쓰는 동안 한 걸음 물러납니다', '비활성일 때 흐리게'),
-      onOff('showHolidays', '대체공휴일까지 달력에 적습니다', '공휴일'),
-      onOff('showDashboard', '아래 리본 왼쪽 — 고정한 일정의 남은 날', 'D-Day'),
-      onOff('showLauncher', '아래 리본 오른쪽 — 자주 여는 곳', '퀵 런처'),
+      onOff('blurEnabled', '', '배경 흐림'),
+      onOff('dimInactive', '', '비활성일 때 흐리게'),
+      onOff('showHolidays', '', '공휴일'),
+      onOff('showDashboard', '', 'D-Day'),
+      onOff('showLauncher', '', '퀵 런처'),
       setRow('완료 항목', '', [
         opt('보임', s.showCompleted !== false, set('showCompleted', true)),
         opt('숨김', s.showCompleted === false, set('showCompleted', false)),
       ]),
-      setRow('정렬', '같은 자리 안에서의 순서', [
+      setRow('정렬', '', [
         opt('직접', s.sortMode !== 'priority', set('sortMode', 'manual')),
         opt('중요도순', s.sortMode === 'priority', set('sortMode', 'priority')),
       ]),
     ]),
     setGroup('비서 노릇', [
-      onOff('showBrief', '하루에 한 번, 앱을 처음 켤 때', '아침 브리핑'),
-      onOff('traySummary', '창을 열지 않아도 오늘 몫을 보고합니다', '트레이 요약'),
+      onOff('weather', '', '날씨'),
+      weatherRow,
+      onOff('showBrief', '', '아침 브리핑'),
+      onOff('traySummary', '', '트레이 요약'),
       autoRow,
-      setRow('항상 위에', '다른 창 위에 늘 떠 있습니다', [
+      setRow('항상 위에', '', [
         opt('켬', !!s.alwaysOnTop, set('alwaysOnTop', true)),
         opt('끔', !s.alwaysOnTop, set('alwaysOnTop', false)),
       ]),
-      setRow('클릭 통과', '위젯이 마우스를 통과시킵니다 — 풀 때는 Alt+Shift+S', [
-        opt('켜기', false, () => {
-          store.setSetting('clickThroughLocked', true);
-          toggleSettings();   // 잠그면 더 이상 클릭이 안 되므로 화면을 닫는다
-          showToast('클릭 통과를 켰습니다 — Alt+Shift+S 로 풉니다');
-        }),
-      ]),
     ]),
     setGroup('보관', [
-      setRow('백업 폴더 열기', '최근 14일치를 보관합니다', [
+      setRow('백업 폴더', '', [
         opt('열기', false, () => window.api.data.openBackups()),
       ]),
-      setRow('내보내기', '이 앱으로 되돌릴 수 있는 형식 / 표준 캘린더', [
+      // 바깥에서 일정을 넣는 문 — 파일 한 장을 떨어뜨리면 들어온다
+      setRow('받은함', '', [
+        opt('열기', false, () => window.api.inbox?.open()),
+      ]),
+      setRow('내보내기', '', [
         opt('.json', false, exportBackup),
         opt('.ics', false, exportICS),
       ]),
-      setRow('가져오기', '합치기는 기존 일정을 건드리지 않습니다', [
+      setRow('가져오기', '', [
         opt('합치기', false, () => importBackup('merge')),
         opt('덮어쓰기', false, () => importBackup('replace')),
       ]),
-      setRow('새 버전 확인', '릴리스 페이지를 엽니다', [
+      setRow('새 버전', '', [
         opt('확인', false, () => window.api.openExternal(
           'https://github.com/rbth3015-spec/desktop-schedule-widget/releases')),
       ]),
-      setRow('의견 보내기', '기본 메일 앱이 열립니다', [
+      setRow('의견 보내기', '', [
         opt('메일 쓰기', false, sendFeedback),
       ]),
-      setRow('사용법', '조작 · 단축키 · 한 줄 문법', [
+      setRow('사용법', '', [
         opt('보기', false, () => toggleHelp()),
       ]),
     ]),
   );
 
   // 자동 업데이트는 붙이지 않았다. 배포판에 서명이 없으면 업데이트 과정에서
-  // Windows 경고가 반복되고, 릴리스를 실제로 올려야만 동작한다.
-  const foot = el('div', 'set-foot', '버전 … · 자동 업데이트는 두지 않습니다. 설정에서 릴리스 페이지를 열어 확인하세요.');
+  // Windows 경고가 반복되고, 릴리스를 실제로 올려야만 동작한다. 새 버전은 '새 버전' 줄이 연다.
+  const foot = el('div', 'set-foot', '버전');
   window.api.app?.getVersion?.().then((info) => {
     const v = info?.version || '';
-    foot.textContent = `버전 ${/^\d/.test(v) ? v : (v || '—')} · 자동 업데이트는 두지 않습니다. 설정에서 릴리스 페이지를 열어 확인하세요.`;
+    foot.textContent = `버전 ${/^\d/.test(v) ? v : (v || '—')}`;
   }).catch(() => {});
   body.append(foot);
 
   screen.append(head, body);
   els.settings.replaceChildren(screen);
+}
+
+/** 도시 고르기 — 설정 줄 아래로 목록을 펼친다 */
+async function pickCity(box) {
+  let cities = [];
+  try { cities = (await window.api.weather?.cities()) || []; } catch { /* 목록을 못 받으면 아래에서 막는다 */ }
+  if (!cities.length) { showToast('도시 목록을 읽지 못했습니다'); return; }
+  const cur = store.getState().settings.weatherCity || '서울';
+  const r = box.getBoundingClientRect();
+  showContextMenu(r.left, r.bottom + 4, cities.map((city) => ({
+    label: city,
+    checked: city === cur,
+    onSelect: () => store.setSetting('weatherCity', city),
+  })));
 }
 
 async function applyAutoLaunch(on) {
@@ -1316,8 +1363,9 @@ function wireMenuActions() {
     if (action === 'toggle-completed') {
       store.setSetting('showCompleted', !store.getState().settings.showCompleted);
     }
-    // 전역 단축키로 잠금을 풀면 메인 프로세스만 상태가 바뀌므로 설정도 맞춰준다
+    // 전역 단축키 · 트레이로 잠그거나 풀면 메인 프로세스만 상태가 바뀌므로 설정도 맞춰준다
     if (action === 'unlock') store.setSetting('clickThroughLocked', false);
+    if (action === 'lock') store.setSetting('clickThroughLocked', true);
 
     if (action === 'brief') showBrief();
 
@@ -1403,12 +1451,13 @@ function wireShortcuts() {
       if (briefSheet) { closeBrief(); return; }
       if (bellPopover) { closeBell(); return; }
       if (!els.settings.hidden) { toggleSettings(); return; }
-      // 항목 상세 · 추가 화면에서 빠져나오기 — 오늘 화면으로
+      // 항목 상세 · 추가 화면에서 빠져나오기 — 그 면(오늘 · 계획)으로
       if (store.getState().editingTaskId) { store.setEditing(null); return; }
       if (document.querySelector('.cmp:not([hidden])')) {
         document.dispatchEvent(new CustomEvent('app:close-compose'));
         return;
       }
+      if (tabNow === 'plan') { goTab('main'); return; }
     }
     if (e.ctrlKey && e.key === ',') { toggleSettings(); e.preventDefault(); }
     if (e.key === '?' || (e.key === '/' && e.shiftKey)) { toggleHelp(); e.preventDefault(); return; }

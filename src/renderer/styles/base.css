@@ -232,6 +232,37 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 :root.is-inactive .widget:hover { opacity: 1; }
 :root[data-dim="off"] .widget { opacity: 1; }
 
+/*
+ * 클릭 통과 — 창이 마우스를 받지 않는 동안.
+ * 뒤를 누르려면 뒤가 보여야 한다. 위젯은 비쳐 보이는 채로 머물고 커서를 올려도 돌아오지 않는다
+ * (마우스를 받지 않으니 hover 도 걸지 않는다). 자물쇠 하나만 또렷하게 남아 다시 누를 수 있다.
+ * 흐림은 층마다 건다 — .widget 에 걸면 자물쇠까지 함께 흐려진다.
+ */
+:root.is-through .widget {
+  opacity: 1;
+  background: color-mix(in srgb, var(--cover) 18%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+:root.is-through .widget::before,
+:root.is-through .widget::after,
+:root.is-through .panes,
+:root.is-through .ribbon,
+:root.is-through .titlebar__drag,
+:root.is-through .titlebar__actions > :not(#btn-lock) {
+  opacity: .28;
+  transition: opacity .28s ease;
+}
+:root.is-through .widget,
+:root.is-through .widget * { pointer-events: none; }
+:root.is-through #btn-lock {
+  pointer-events: auto;
+  color: var(--cover-ink-hi);
+  border-color: rgba(214, 196, 160, .6);
+  background: var(--cover);
+}
+:root.is-through #btn-lock:hover { border-color: var(--gold); color: #fff; }
+
 /* ------------------------------------------------------------ 타이틀바 */
 
 .titlebar {
@@ -394,9 +425,9 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   box-shadow: 0 2px 5px rgba(0, 0, 0, .28);
   cursor: pointer;
 }
-/* 시안: 오늘 · 루틴은 --paper-2, 브리핑 · 설정은 --paper-3, 지금 화면만 --paper */
-.tab--settings,
-.tab--brief { background: var(--paper-3); }
+/* 시안: 면 탭(오늘 · 계획)은 --paper-2, 설정은 --paper-3, 지금 면만 --paper */
+.tab--settings { background: var(--paper-3); }
+.tab:hover { color: var(--ink); }
 .tab.is-on { background: var(--paper); }
 .tab[hidden] { display: none; }
 
@@ -546,15 +577,14 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 }
 .set-foot {
   padding-top: 6px;
-  font-weight: 300;
-  font-size: 10px;
-  line-height: 1.8;
+  font-family: var(--num);
+  font-size: 11px;
   color: var(--ink-faint);
-  text-wrap: pretty;
+  font-feature-settings: 'tnum';
 }
 
 /* ------------------------------------------------------------ 모달 — 시안의 아침 브리핑 창
-   펼침면 위 스크림(rgba(34,32,29,.42)) + 520px 종이 카드. 첫 실행 안내 · 사용법도 이 틀을 빌린다. */
+   펼침면 위 스크림(rgba(34,32,29,.42)) + 520px 종이 카드. 사용법도 이 틀을 빌린다. */
 
 .modal-scrim {
   position: absolute;
@@ -618,6 +648,25 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 }
 .modal__close:hover { border-color: var(--rule); color: var(--seal); }
 
+/* 브리핑의 날씨 한 줄 — 첫 문장 위에 조용히 */
+.modal__weather {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 0;
+  font-weight: 300;
+  font-size: 11.5px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+}
+.modal__weather .icon { width: 15px; height: 15px; color: var(--gold-deep); }
+.modal__weathert {
+  font-size: 15px;
+  color: var(--ink);
+  font-feature-settings: 'tnum';
+}
+.modal__weatherc { margin-left: auto; color: var(--ink-faint); }
+
 .modal__lead {
   padding: 16px 0 4px;
   font-family: var(--serif);
@@ -666,16 +715,14 @@ button.modal__item:hover .modal__what { color: var(--gold-deep); }
   white-space: nowrap;
 }
 .modal__what { font-size: 12.5px; color: var(--ink); }
-.modal__desc { font-size: 12.5px; line-height: 1.75; color: var(--ink-soft); text-wrap: pretty; }
 
 .modal__foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 14px;
   padding-top: 16px;
 }
-.modal__note { font-weight: 300; font-size: 10px; color: var(--ink-faint); }
 .modal__acts { display: flex; gap: 7px; flex: none; }
 .modal__btn {
   padding: 8px 15px;
@@ -763,9 +810,7 @@ button.modal__item:hover .modal__what { color: var(--gold-deep); }
   padding: 12px 0 4px;
   font-weight: 300;
   font-size: 11px;
-  line-height: 1.7;
   color: var(--ink-faint);
-  white-space: pre-line;
 }
 .bell__list { overflow-y: auto; }
 .bell__row {

@@ -45,6 +45,14 @@ const recentWeekdays = (n) => {
   return out;
 };
 
+/** 이번 주(일요일 시작)에서 n주 떨어진 주의 일요일 + off 일 */
+const weekDay = (n, off = 0) => {
+  const d = new Date(d0);
+  d.setDate(d.getDate() - d.getDay() + 7 * n + off);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const thisMonth = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}`;
+
 /** 오늘 직전 n일 (매일 루틴의 연속 기록용) */
 const recentDays = (n) => Array.from({ length: n }, (_, i) => day(-(i + 1)));
 
@@ -57,14 +65,22 @@ const lastWeekdays = (count) => {
 
 const SAMPLE = {
   version: 1,
-  // 첫 실행 안내와 아침 브리핑은 다른 컷을 덮으므로 기본은 꺼 둔다.
-  // 그 화면을 찍고 싶으면 --set '{"seenWelcome":false}' / '{"lastBriefDate":""}' 로 되돌린다.
-  settings: { seenWelcome: true, lastBriefDate: day(0) },
+  // 아침 브리핑은 다른 컷을 덮으므로 기본은 꺼 둔다.
+  // 그 화면을 찍고 싶으면 --set '{"lastBriefDate":""}' 로 되돌린다.
+  settings: { lastBriefDate: day(0) },
   launcher: [
     { id: 'l_cal', label: '구글 캘린더', icon: '', kind: 'url', target: 'https://calendar.google.com', order: 0 },
     { id: 'l_mail', label: '메일', icon: '', kind: 'url', target: 'https://mail.google.com', order: 1 },
     { id: 'l_py', label: '주간 백업', icon: '', kind: 'script', target: 'C:\\scripts\\backup.py', order: 2 },
   ],
+  journal: {
+    [day(-1)]: '보고서 초안 끝. 저녁엔 걷기.',
+    [day(-2)]: '비. 종일 책상에 앉아 있었다.',
+    [day(-4)]: '오랜만에 친구와 통화.',
+  },
+  retro: {
+    [`w:${weekDay(-1)}`]: '몰아치던 한 주. 보고서는 끝냈고 운동은 두 번 빠졌다. 다음 주엔 오전에 하자.',
+  },
   reminderLog: [
     { id: 'r1', taskId: 't1', title: '아침 스탠드업 회의', at: Date.now() - 42 * 60000 },
     { id: 'r2', taskId: 's4', title: '월간 보고서 마감', at: Date.now() - 5 * 3600000 },
@@ -102,6 +118,15 @@ const SAMPLE = {
     t({ id: 'o2', title: '건강검진 예약', start: day(-9), end: day(-9), color: 'green', priority: 1, order: 11 }),
 
     t({ id: 'i1', title: '책상 정리하기', start: null, end: null, color: 'slate', order: 12 }),
+
+    // 계획 — 이번 주 · 이번 달 목표. 하나는 요일에 놓였고 하나는 끝냈다.
+    t({ id: 'g1', title: '분기 보고서 초안 끝내기', plan: `w:${weekDay(0)}`, start: weekDay(0, 3), end: weekDay(0, 3), color: 'rose', tags: ['업무'], order: 30 }),
+    t({ id: 'g2', title: '포트폴리오 두 장 다듬기', plan: `w:${weekDay(0)}`, start: null, end: null, color: 'violet', order: 31 }),
+    t({ id: 'g3', title: '운동 세 번 채우기', plan: `w:${weekDay(0)}`, start: null, end: null, color: 'amber', done: true, doneAt: Date.now(), order: 32 }),
+    t({ id: 'g4', title: '책 한 권 끝까지', plan: `w:${weekDay(-1)}`, start: null, end: null, color: 'green', order: 33 }),
+    t({ id: 'g5', title: '발표 자료 뼈대', plan: `w:${weekDay(1)}`, start: null, end: null, color: 'blue', order: 34 }),
+    t({ id: 'g6', title: '정보처리기사 실기 합격', plan: `m:${thisMonth}`, start: null, end: null, color: 'violet', priority: 2, order: 35 }),
+    t({ id: 'g7', title: '이사 업체 세 곳 견적', plan: `m:${thisMonth}`, start: null, end: null, color: 'slate', order: 36 }),
     t({ id: 'i2', title: '포트폴리오 사이트 리뉴얼', start: null, end: null, color: 'violet', priority: 1, tags: ['개인'], order: 13 }),
   ],
 };
@@ -128,10 +153,15 @@ contextBridge.exposeInMainWorld('api', {
   saveData: async () => ({ ok: true }),          // 저장하지 않는다
   window: {
     minimize: noop, hide: noop, setAlwaysOnTop: noop, setOpacity: noop,
-    setIgnoreMouseEvents: noop, setSize: noop, snapPreset: noop, setZoom: noop,
+    setIgnoreMouseEvents: noop, catchMouse: noop, setSize: noop, snapPreset: noop, setZoom: noop,
     getBounds: async () => ({ x: 0, y: 0, width: 1100, height: 700 }),
   },
   reminder: { notify: async () => ({ ok: true }), onClick: noop },
+  // 날씨 — 캡처에서는 네트워크를 쓰지 않고 표본 하나를 돌려준다
+  weather: {
+    get: async () => ({ city: '서울', temp: 24, high: 27, low: 18, icon: 'wSunCloud', label: '구름 조금', at: Date.now() }),
+    cities: async () => ['서울', '부산', '대구', '인천', '광주', '대전', '제주'],
+  },
   // 캡처 환경에서는 파일을 쓰지 않는다. 마지막 요청은 captureProbe 로 확인할 수 있다.
   data: {
     saveAs: async (o) => {
