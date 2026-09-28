@@ -35,11 +35,18 @@ function statePath() {
   return path.join(app.getPath('userData'), FILE_NAME);
 }
 
+/** 작업 영역 하나에 맞춘 처음 크기 */
+function fitDefault(wa) {
+  return {
+    width: Math.max(MIN_WIDTH, Math.min(DEFAULT_WIDTH, wa.width - 32)),
+    height: Math.max(MIN_HEIGHT, Math.min(DEFAULT_HEIGHT, wa.height - 8)),
+  };
+}
+
 /** 기본 위치: 주 디스플레이 작업영역 중앙 */
 function defaultBounds() {
   const wa = getScreen().getPrimaryDisplay().workArea;
-  const width = Math.max(MIN_WIDTH, Math.min(DEFAULT_WIDTH, wa.width - 32));
-  const height = Math.max(MIN_HEIGHT, Math.min(DEFAULT_HEIGHT, wa.height - 8));
+  const { width, height } = fitDefault(wa);
   return {
     x: Math.round(wa.x + (wa.width - width) / 2),
     y: Math.round(wa.y + (wa.height - height) / 2),
@@ -117,13 +124,15 @@ function load() {
 
   // 1.5.0 — 기본 크기를 키웠다. 그 전에 저장된 창이 새 기본보다 작으면 한 번 키운다.
   // 한 번뿐이다 — 그다음부터는 사용자가 줄여 둔 크기를 그대로 따른다(저장할 때 v 가 오른다).
+  // 창이 놓여 있던 모니터에서 키운다 — 다른 모니터로 옮기지 않고, 커진 크기로 가운데에 둔다.
   if (!(saved.v >= STATE_VERSION) && !bounds.maximized) {
-    const def = defaultBounds();
+    const wa = getScreen().getDisplayMatching(bounds).workArea;
+    const def = fitDefault(wa);
     if (bounds.width < def.width || bounds.height < def.height) {
-      bounds.width = Math.max(bounds.width, def.width);
-      bounds.height = Math.max(bounds.height, def.height);
-      bounds.x = def.x;
-      bounds.y = def.y;
+      bounds.width = Math.min(wa.width, Math.max(bounds.width, def.width));
+      bounds.height = Math.min(wa.height, Math.max(bounds.height, def.height));
+      bounds.x = Math.round(wa.x + (wa.width - bounds.width) / 2);
+      bounds.y = Math.round(wa.y + (wa.height - bounds.height) / 2);
     }
   }
 

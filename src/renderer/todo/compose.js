@@ -960,7 +960,7 @@ export function createCompose({ store, onToggle }) {
       endTime: endTime.get() || null,
       link,
       color: pickedColor,
-      // 반복 일정은 당일짜리라 '매일 체크'가 성립하지 않는다
+      // 반복 일정은 당일짜리라 '날마다 체크'가 성립하지 않는다
       dailyCheck: !freq && end > start && checkChips.get() === 'daily',
       priority: Number(prio.get()) || 0,
       remind: remind.get(),

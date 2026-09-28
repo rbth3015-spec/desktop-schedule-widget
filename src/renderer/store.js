@@ -567,7 +567,7 @@ export function isDailyCheck(t) {
   return !!(t && t.dailyCheck && !t.repeat && t.start && t.end && t.end > t.start);
 }
 
-/** 매일 체크 장기 계획의 진행 — {done, total}. 아니면 null */
+/** 날마다 체크하는 장기 계획의 진행 — {done, total}. 아니면 null */
 export function spanProgress(t) {
   if (!isDailyCheck(t)) return null;
   const total = diffDays(t.start, t.end) + 1;
@@ -871,7 +871,7 @@ export function pickNow(key = todayKey()) {
 /**
  * 이 일정에서 마감 역산 계획을 세울 수 있는가.
  * 마감이 모레 이후라야 '오늘부터 마감 전날까지' 에 하루라도 칸이 생긴다.
- * (이미 매일 체크로 만든 계획은 역산할 것이 없다)
+ * (이미 날마다 체크로 만든 계획은 역산할 것이 없다)
  */
 export function canPlanDeadline(t) {
   if (!t || !t.start || t.repeat || t.dailyCheck) return false;
@@ -1154,7 +1154,7 @@ export function updateTask(id, patch) {
  * 장기 계획을 한 번에 끝낼지, 하루하루 체크할지 고른다.
  *
  * 어느 쪽으로 바꾸든 이미 표시해 둔 것을 잃지 않는다 —
- * '끝냈다'고 해 둔 계획을 매일 체크로 바꾸면 모든 날이 체크된 상태로 옮겨 가고,
+ * '끝냈다'고 해 둔 계획을 날마다 체크로 바꾸면 모든 날이 체크된 상태로 옮겨 가고,
  * 도로 한 번에로 바꾸면 '전부 체크했는가'가 그대로 완료 여부가 된다.
  */
 export function setDailyCheck(id, on) {

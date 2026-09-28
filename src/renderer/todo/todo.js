@@ -94,7 +94,7 @@ export function createTodoPanel({ root, store }) {
 
   const el = h('div', 'todo-panel');
 
-  // ============================================================ 오늘 화면
+  // ============================================================ 하루 화면
   const main = h('div', 'todo-main scr');
 
   // ---------------------------------------------------------------- 날짜 머리
@@ -303,7 +303,7 @@ export function createTodoPanel({ root, store }) {
   const compose = createCompose({ store, onToggle: () => scheduleRender() });
   const detail = createDetail({ store, onPlan: planFor, notify });
 
-  // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 오늘 화면으로 내려간다.
+  // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 하루 화면으로 내려간다.
   let planOpen = false;
   const plan = createPlan({
     store,

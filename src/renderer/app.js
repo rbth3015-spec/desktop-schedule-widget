@@ -44,7 +44,7 @@ const els = {
   tabSettings: document.getElementById('tab-settings'),
 };
 
-// 설정은 오른쪽 면의 한 화면이다(시안). 같은 면 안에 두고 오늘 화면과 갈아 끼운다.
+// 설정은 오른쪽 면의 한 화면이다(시안). 같은 면 안에 두고 하루 화면과 갈아 끼운다.
 els.todo.append(els.settings);
 
 let calendar = null;

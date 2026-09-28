@@ -162,7 +162,7 @@ export function createPlan({ store, onOpenDay, onDetail, notify }) {
 
   el.append(head, goals.el, days.el, habits.el, weeks.el, report.el, retro.el);
 
-  /** 섹션 머리 — 오늘 화면의 섹션과 같은 부품(이름 · 건수 · 괘선 · 동작 자리) */
+  /** 섹션 머리 — 하루 화면의 섹션과 같은 부품(이름 · 건수 · 괘선 · 동작 자리) */
   function section(name) {
     const sec = h('section', 'todo-section pln-sec');
     const top = h('div', 'todo-section__head');
@@ -361,7 +361,7 @@ export function createPlan({ store, onOpenDay, onDetail, notify }) {
     return c;
   }
 
-  /** 한 줄에 이름표 둘까지 — 나머지는 '+N'. 그날 전부는 줄을 누르면 오늘 화면이 보여 준다. */
+  /** 한 줄에 이름표 둘까지 — 나머지는 '+N'. 그날 전부는 줄을 누르면 하루 화면이 보여 준다. */
   const MAX_CHIPS = 2;
 
   function chipsOf(items) {
