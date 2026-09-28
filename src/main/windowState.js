@@ -13,10 +13,15 @@ function getScreen() {
 const FILE_NAME = 'window-state.json';
 const SAVE_DEBOUNCE_MS = 400;
 
-const DEFAULT_WIDTH = 1336;   // 시안의 표지 폭 1312 + 창 가장자리 투명 여백(좌우 12)
-const DEFAULT_HEIGHT = 900;
+// 처음 여는 크기. 시안의 표지 폭(1312)보다 한 뼘 넓게 잡아 달력 칸에 여유를 준다.
+// 화면이 작으면 작업 영역에 맞춰 줄어든다(125% 배율 노트북이면 세로 ~816).
+const DEFAULT_WIDTH = 1480;
+const DEFAULT_HEIGHT = 950;
 const MIN_WIDTH = 560;
 const MIN_HEIGHT = 380;
+
+// 저장 형식 판. 2 — 기본 크기를 키웠다(1.5.0). 그 전에 저장된 창이 새 기본보다 작으면 한 번 키운다.
+const STATE_VERSION = 2;
 
 // 창이 "보인다"고 인정할 최소 교집합 크기 (이보다 작으면 화면 밖으로 본다)
 const MIN_VISIBLE_W = 140;
@@ -30,11 +35,18 @@ function statePath() {
   return path.join(app.getPath('userData'), FILE_NAME);
 }
 
+/** 작업 영역 하나에 맞춘 처음 크기 */
+function fitDefault(wa) {
+  return {
+    width: Math.max(MIN_WIDTH, Math.min(DEFAULT_WIDTH, wa.width - 32)),
+    height: Math.max(MIN_HEIGHT, Math.min(DEFAULT_HEIGHT, wa.height - 8)),
+  };
+}
+
 /** 기본 위치: 주 디스플레이 작업영역 중앙 */
 function defaultBounds() {
   const wa = getScreen().getPrimaryDisplay().workArea;
-  const width = Math.max(MIN_WIDTH, Math.min(DEFAULT_WIDTH, wa.width - 40));
-  const height = Math.max(MIN_HEIGHT, Math.min(DEFAULT_HEIGHT, wa.height - 40));
+  const { width, height } = fitDefault(wa);
   return {
     x: Math.round(wa.x + (wa.width - width) / 2),
     y: Math.round(wa.y + (wa.height - height) / 2),
@@ -110,6 +122,20 @@ function load() {
     }
   }
 
+  // 1.5.0 — 기본 크기를 키웠다. 그 전에 저장된 창이 새 기본보다 작으면 한 번 키운다.
+  // 한 번뿐이다 — 그다음부터는 사용자가 줄여 둔 크기를 그대로 따른다(저장할 때 v 가 오른다).
+  // 창이 놓여 있던 모니터에서 키운다 — 다른 모니터로 옮기지 않고, 커진 크기로 가운데에 둔다.
+  if (!(saved.v >= STATE_VERSION) && !bounds.maximized) {
+    const wa = getScreen().getDisplayMatching(bounds).workArea;
+    const def = fitDefault(wa);
+    if (bounds.width < def.width || bounds.height < def.height) {
+      bounds.width = Math.min(wa.width, Math.max(bounds.width, def.width));
+      bounds.height = Math.min(wa.height, Math.max(bounds.height, def.height));
+      bounds.x = Math.round(wa.x + (wa.width - bounds.width) / 2);
+      bounds.y = Math.round(wa.y + (wa.height - bounds.height) / 2);
+    }
+  }
+
   current = bounds;
   return { ...bounds };
 }
@@ -126,6 +152,7 @@ function snapshot(win) {
     width: Math.max(MIN_WIDTH, Math.round(b.width)),
     height: Math.max(MIN_HEIGHT, Math.round(b.height)),
     maximized,
+    v: STATE_VERSION,
   };
 }
 

@@ -94,7 +94,7 @@ export function createTodoPanel({ root, store }) {
 
   const el = h('div', 'todo-panel');
 
-  // ============================================================ 오늘 화면
+  // ============================================================ 하루 화면
   const main = h('div', 'todo-main scr');
 
   // ---------------------------------------------------------------- 날짜 머리
@@ -277,7 +277,7 @@ export function createTodoPanel({ root, store }) {
   // 시험이 12일 뒤라는 걸 알아도, 오늘 뭘 해야 하는지는 여전히 사람이 계산해야 했다.
   // 마감에서 거꾸로 짚어 '오늘부터 마감 전날까지' 하루하루 체크할 칸을 만들어 준다.
   // 새 폼을 따로 만들지 않고 추가 화면을 미리 채워 연다 — 되읽어 주는 그 줄이
-  // 역산 결과를 그대로 말한다('9월 3일 → 9월 13일 · 11일간 · 매일 체크 (11칸)').
+  // 역산 결과를 그대로 말한다('9월 3일 → 9월 13일 · 11일간 · 날마다 체크').
   function planFor(t) {
     if (!store.canPlanDeadline(t)) return;
     const today = todayKey();
@@ -303,7 +303,7 @@ export function createTodoPanel({ root, store }) {
   const compose = createCompose({ store, onToggle: () => scheduleRender() });
   const detail = createDetail({ store, onPlan: planFor, notify });
 
-  // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 오늘 화면으로 내려간다.
+  // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 하루 화면으로 내려간다.
   let planOpen = false;
   const plan = createPlan({
     store,

@@ -153,6 +153,7 @@ contextBridge.exposeInMainWorld('api', {
   saveData: async () => ({ ok: true }),          // 저장하지 않는다
   window: {
     minimize: noop, hide: noop, setAlwaysOnTop: noop, setOpacity: noop,
+    toggleMaximize: noop, isMaximized: async () => false, onState: noop,
     setIgnoreMouseEvents: noop, catchMouse: noop, setSize: noop, snapPreset: noop, setZoom: noop,
     getBounds: async () => ({ x: 0, y: 0, width: 1100, height: 700 }),
   },

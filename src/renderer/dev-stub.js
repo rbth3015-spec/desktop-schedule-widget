@@ -59,6 +59,7 @@
   };
 
   let win = { x: 100, y: 100, width: 980, height: 620 };
+  const maxListeners = [];
 
   // 미리보기용 표본 — 실제 앱은 메인 프로세스가 월력요항 자료를 받아 온다
   const SAMPLE_HOLIDAYS = {
@@ -95,6 +96,13 @@
     window: {
       minimize: () => console.log('[dev] minimize'),
       hide: () => console.log('[dev] hide'),
+      // 브라우저에는 창이 없다 — 최대화는 상태만 흉내 내서 단추 그림이 바뀌는지 볼 수 있게
+      toggleMaximize: () => {
+        win.maximized = !win.maximized;
+        for (const cb of maxListeners) cb({ maximized: win.maximized });
+      },
+      isMaximized: async () => !!win.maximized,
+      onState: (cb) => { if (typeof cb === 'function') maxListeners.push(cb); },
       setAlwaysOnTop: (on) => console.log('[dev] alwaysOnTop', on),
       setIgnoreMouseEvents: (on) => console.log('[dev] ignoreMouse', on),
       catchMouse: (on) => console.log('[dev] catchMouse', on),

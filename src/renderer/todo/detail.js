@@ -245,8 +245,8 @@ export function createDetail({ store, onPlan, notify }) {
   // 체크 방식 — 이틀 이상짜리 계획일 때만
   const checkRow = valueRow('체크', (row) => {
     menuAt(row, [
-      { label: '한 번에 체크', checked: !task?.dailyCheck, onSelect: () => store.setDailyCheck(id(), false) },
-      { label: '매일 체크', checked: !!task?.dailyCheck, onSelect: () => store.setDailyCheck(id(), true) },
+      { label: '끝나면 한 번', checked: !task?.dailyCheck, onSelect: () => store.setDailyCheck(id(), false) },
+      { label: '날마다', checked: !!task?.dailyCheck, onSelect: () => store.setDailyCheck(id(), true) },
     ]);
   });
 
@@ -436,8 +436,8 @@ export function createDetail({ store, onPlan, notify }) {
     if (isSpan) {
       const prog = store.spanProgress(task);
       paintValue(checkRow, task.dailyCheck
-        ? `매일 체크${prog ? ` · ${prog.done}/${prog.total}` : ''}`
-        : '한 번에 체크', 'var(--ink)');
+        ? `날마다${prog ? ` · ${prog.done}/${prog.total}일` : ''}`
+        : '끝나면 한 번', 'var(--ink)');
     }
 
     paintValue(remindRow, task.remind ? remindLabel(task.remind) : '없음',

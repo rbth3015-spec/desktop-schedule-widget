@@ -35,6 +35,8 @@ const els = {
   btnSearch: $('#btn-search'),
   btnBell: $('#btn-bell'),
   btnLock: $('#btn-lock'),
+  btnMin: $('#btn-min'),
+  btnMax: $('#btn-max'),
   btnClose: $('#btn-close'),
   year: document.getElementById('titlebar-year'),
   tabMain: document.getElementById('tab-main'),
@@ -42,7 +44,7 @@ const els = {
   tabSettings: document.getElementById('tab-settings'),
 };
 
-// 설정은 오른쪽 면의 한 화면이다(시안). 같은 면 안에 두고 오늘 화면과 갈아 끼운다.
+// 설정은 오른쪽 면의 한 화면이다(시안). 같은 면 안에 두고 하루 화면과 갈아 끼운다.
 els.todo.append(els.settings);
 
 let calendar = null;
@@ -343,6 +345,9 @@ function wireTitlebar() {
   setIcon(els.btnSearch, 'searchD', 14, 1.4);
   setIcon(els.btnBell, 'bellD', 14, 1.4);
   setIcon(els.btnLock, 'lock', 14, 1.4);
+  // 창 단추 — 윈도우의 순서 그대로(최소화 · 최대화 · 닫기). 닫기는 종료가 아니라 트레이로.
+  setIcon(els.btnMin, 'minimize', 13, 1.4);
+  paintMaximized(false);
   setIcon(els.btnClose, 'close', 13, 1.4);
   // 알림 기록 — 아직 안 본 알림이 있으면 점이 찍힌다
   els.btnBell.append(el('span', 'iconbtn__dot'));
@@ -350,6 +355,10 @@ function wireTitlebar() {
   els.btnBell.setAttribute('aria-expanded', 'false');
   els.btnLock.setAttribute('aria-pressed', 'false');
 
+  els.btnMin.addEventListener('click', () => window.api.window.minimize());
+  els.btnMax.addEventListener('click', () => window.api.window.toggleMaximize?.());
+  window.api.window.onState?.((s) => paintMaximized(s.maximized));
+  window.api.window.isMaximized?.().then(paintMaximized).catch(() => {});
   els.btnClose.addEventListener('click', () => window.api.window.hide());
   els.btnBrief.addEventListener('click', () => showBrief());
   els.btnSearch.addEventListener('click', () => {
@@ -369,6 +378,14 @@ function wireTitlebar() {
   els.btnBell.addEventListener('click', (e) => { e.stopPropagation(); toggleBell(); });
 
   if (els.year) els.year.textContent = romanYear(new Date().getFullYear());
+}
+
+/** 최대화 단추는 지금 상태를 그린다 — □ 최대화 / ❐ 이전 크기로 */
+function paintMaximized(on) {
+  const max = !!on;
+  setIcon(els.btnMax, max ? 'restore' : 'maximize', 13, 1.4);
+  els.btnMax.title = max ? '이전 크기로' : '최대화';
+  document.documentElement.classList.toggle('is-max', max);
 }
 
 /**
@@ -516,9 +533,9 @@ function closeHelp() {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** '치과 @내일 15:00 #건강 !' → 일정 한 건 */
-function taskFromLine(line) {
-  const today = todayKey();
+/** '치과 @내일 15:00 #건강 !' → 일정 한 건. base 는 파일을 쓴 날('@내일' 의 기준) */
+function taskFromLine(line, base = todayKey()) {
+  const today = base;
   const parsed = parseQuickInput(String(line), today);
   const title = parsed.title.trim();
   if (!title) return null;
@@ -537,10 +554,10 @@ function taskFromLine(line) {
 }
 
 /** JSON 한 건 — 모양만 추린다. 날짜 · 시각 규칙은 store 가 다시 본다. */
-function taskFromJSON(raw) {
+function taskFromJSON(raw, base = todayKey()) {
   const title = String(raw?.title ?? '').trim().slice(0, 200);
   if (!title) return null;
-  const today = todayKey();
+  const today = base;
   // start 를 '명시적으로 null' 로 주면 날짜 없는 '언젠가' 다
   const undated = raw.start === null;
   const start = DATE_RE.test(String(raw.start)) ? raw.start : (undated ? null : today);
@@ -564,13 +581,18 @@ function taskFromJSON(raw) {
 function takeInbox(payload) {
   if (!payload) return;
 
+  // '@내일' · '이번 주' 는 파일을 쓴 날 기준이다 — 앱이 꺼져 있다가 다음 날 읽어도 밀리지 않게.
+  // 시계가 어긋나 앞날로 찍혀 있으면 오늘로 본다.
+  const today = todayKey();
+  const base = DATE_RE.test(String(payload.written)) && payload.written < today ? payload.written : today;
+
   const patches = [];
   for (const line of payload.lines || []) {
-    const t = taskFromLine(line);
+    const t = taskFromLine(line, base);
     if (t) patches.push(t);
   }
   for (const raw of payload.tasks || []) {
-    const t = taskFromJSON(raw);
+    const t = taskFromJSON(raw, base);
     if (t) patches.push(t);
   }
   const added = store.addTasks(patches, `받은함 ${patches.length}건`);
@@ -581,8 +603,8 @@ function takeInbox(payload) {
     const title = String(g?.title ?? '').trim().slice(0, 200);
     if (!title) continue;
     const scope = String(g?.scope) === 'month'
-      ? store.monthScope(todayKey())
-      : store.weekScope(todayKey());
+      ? store.monthScope(base)
+      : store.weekScope(base);
     if (store.addGoal(scope, { title })) goals++;
   }
 

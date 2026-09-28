@@ -12,6 +12,13 @@ const api = {
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     hide: () => ipcRenderer.send('window:hide'),
+    // 최대화 ↔ 이전 크기 (제목줄의 □). 지금 상태는 isMaximized · onState 로 받는다
+    toggleMaximize: () => ipcRenderer.send('window:toggleMaximize'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    onState: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('window:state', (_event, s) => cb({ maximized: !!s?.maximized }));
+    },
     setAlwaysOnTop: (on) => ipcRenderer.send('window:setAlwaysOnTop', !!on),
     setIgnoreMouseEvents: (on) => ipcRenderer.send('window:setIgnoreMouseEvents', !!on),
     // 클릭 통과 중 자물쇠 위에 커서가 있는 동안만 마우스를 받는다
