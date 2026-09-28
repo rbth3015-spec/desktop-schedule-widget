@@ -34,11 +34,11 @@ export function monthDay(key) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** 화면 머리 — 제목 + 돌아갈 면('‹ 오늘' · '‹ 계획'). Esc 도 같은 곳으로 돌아간다. */
+/** 화면 머리 — 제목 + 돌아갈 면('‹ 하루' · '‹ 계획'). Esc 도 같은 곳으로 돌아간다. */
 export function screenHead(title, onBack) {
   const el = h('div', 'scr-head');
   const titleEl = h('span', 'scr-head__title', title);
-  const back = h('button', 'scr-head__back', '‹ 오늘');
+  const back = h('button', 'scr-head__back', '‹ 하루');
   back.type = 'button';
   back.addEventListener('click', () => onBack?.());
   el.append(titleEl, back);

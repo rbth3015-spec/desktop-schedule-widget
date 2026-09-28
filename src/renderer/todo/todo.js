@@ -3,7 +3,7 @@
 // 외부 라이브러리 없음. 순수 ES 모듈 + DOM API. 사용자 입력은 항상 textContent 로만 넣는다.
 //
 // 오른쪽 면은 시안(핸드오프)의 화면을 갈아 끼운다 — 한 번에 하나만 보인다.
-//   오늘      날짜 머리 · 비서의 한 줄 · 지난 일 · 시간표(종일 띠 + 스트립/압축) · 언젠가 · 한 줄 기록
+//   하루      날짜 머리 · 비서의 한 줄 · 지난 일 · 시간표(종일 띠 + 스트립/압축) · 언젠가 · 한 줄 기록
 //   계획      plan.js — 주 · 달 목표 (책갈피 '계획')
 //   일정 추가  compose.js (일정 · 루틴)
 //   항목 상세  detail.js
@@ -354,7 +354,7 @@ export function createTodoPanel({ root, store }) {
 
   // 책갈피 탭 · 표지 버튼이 부르는 것들. 탭은 화면을 새로 만들지 않고 이미 있는 입구를 연다.
   document.addEventListener('app:close-compose', () => compose.close());
-  // 책갈피 '오늘' · '계획' — 떠 있던 추가 · 상세 화면은 걷고 그 면으로
+  // 책갈피 '하루' · '계획' — 떠 있던 추가 · 상세 화면은 걷고 그 면으로
   document.addEventListener('app:today', () => {
     planOpen = false;
     compose.close();
@@ -1097,7 +1097,7 @@ export function createTodoPanel({ root, store }) {
     plan.el.hidden = screen !== 'plan';
     detail.el.hidden = screen !== 'detail';
     // 뒤로 가는 단추는 돌아갈 면의 이름을 단다
-    const back = tab === 'plan' ? '‹ 계획' : '‹ 오늘';
+    const back = tab === 'plan' ? '‹ 계획' : '‹ 하루';
     detail.setBack(back);
     compose.setBack(back);
     // 계획 화면에서 주를 짜는 동안 달력이 그 주를 금박 테두리로 짚는다
