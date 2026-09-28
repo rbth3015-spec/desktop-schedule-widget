@@ -9,7 +9,12 @@
 
 Electron + 순수 ES 모듈. **빌드 스텝이 없다** — 코드를 고치고 앱을 다시 켜면 그대로 반영된다.
 
-![일정관리 비서 — 오늘](docs/screenshots/01-main.png)
+> **1.5.0 으로 마무리했다 (2026-09-28).** 더 이상 업데이트하지 않는다.
+> 설치 파일은 [최신 릴리스](https://github.com/rbth3015-spec/desktop-schedule-widget/releases/latest)에 있다.
+> 일정은 `%APPDATA%\schedule-widget` 에만 있고 날마다 `backups\` 에 한 벌씩 남는다 —
+> 다른 PC 로 옮길 때는 설정 › **내보내기 `.json`** 으로 꺼내 새 PC 에서 **가져오기 › 덮어쓰기**.
+
+![일정관리 비서 — 하루](docs/screenshots/01-main.png)
 
 ## 화면 구성
 
