@@ -81,7 +81,7 @@ export function whenSummary({ start, end, startTime, endTime, freq, dailyCheck }
   if (!freq && end && end > start) {
     const days = diffDays(start, end) + 1;
     const time = startTime ? ` · ${startTime} 시작` : '';
-    const check = dailyCheck ? ` · 매일 체크 (${days}칸)` : '';
+    const check = dailyCheck ? ' · 날마다 체크' : '';
     return `${pretty(start)} → ${pretty(end)} · ${days}일간${time}${check}`;
   }
 
@@ -341,12 +341,13 @@ export function createCompose({ store, onToggle }) {
   const lenRow = h('div', 'cmp-len');
   lenRow.append(lenChips.el, h('span', 'cmp-len__rule'), summary);
 
-  // 장기 계획을 한 번에 끝낼지, 하루하루 체크할지.
+  // 장기 계획을 언제 체크하나 — 다 끝났을 때 한 번, 아니면 날마다.
   // '이사 준비'는 끝나면 한 번 체크하면 되지만 '기출 5개년 정리'는 오늘 했는지가
   // 매일 궁금하다. 하루짜리 일정에는 물을 것이 없으므로 그때는 줄째 감춘다.
+  // '체크 ▸ 끝나면 한 번 / 날마다' 로 읽히게 짓는다 — '한 번에' 는 무엇을 한 번에인지 읽히지 않았다.
   const checkChips = chipGroup(
-    [['once', '한 번에', '기간이 끝나면 한 번 체크한다'],
-     ['daily', '매일 체크', '기간의 하루하루를 따로 체크한다']],
+    [['once', '끝나면 한 번', '다 끝났을 때 한 번만 체크한다'],
+     ['daily', '날마다', '기간 동안 하루하루 따로 체크한다']],
     'once',
     () => syncWhen(),
     'scr-chip--when',

@@ -92,6 +92,9 @@ window.api = {
   window: {
     minimize(): void,
     hide(): void,                              // 트레이로 숨김
+    toggleMaximize(): void,                    // 최대화 ↔ 이전 크기 (최대화된 동안은 끌어 옮기지 않는다)
+    isMaximized(): Promise<boolean>,
+    onState(cb: (s: {maximized: boolean}) => void): void,  // 최대화가 바뀔 때마다
     setAlwaysOnTop(on: boolean): void,
     setIgnoreMouseEvents(on: boolean): void,   // 클릭 통과(잠금 모드)
     catchMouse(on: boolean): void,             // 클릭 통과 중 자물쇠 위에 있는 동안만 마우스를 받는다
@@ -113,7 +116,7 @@ window.api = {
   // 받은함 — 바깥에서 들어온 일정. 메인이 파일을 읽어 모양만 보고 넘기면 해석은 렌더러가 한다.
   inbox: {
     ready(): void,                                  // 부팅 직후 한 번 — 쌓인 것을 받는다
-    onItems(cb: (p: {source, lines, tasks, goals}) => void): void,
+    onItems(cb: (p: {source, written, lines, tasks, goals}) => void): void,  // written: 파일을 쓴 날('@내일' 의 기준)
     open(): Promise<string>,                        // 받은함 폴더 열기
   },
 

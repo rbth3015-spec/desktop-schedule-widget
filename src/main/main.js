@@ -26,7 +26,10 @@ function getScreen() {
 // 개발 실행은 package.json 의 name('schedule-widget') 이 되어 서로 다른 폴더를 쓴다.
 // 그러면 설치 직후 기존 일정이 사라진 것처럼 보인다. 이름을 못박아 한 곳만 쓰게 한다.
 // app.setPath 는 ready 이전에 호출해야 한다.
-app.setPath('userData', path.join(app.getPath('appData'), 'schedule-widget'));
+// SCHEDULE_WIDGET_DIR 로 옮길 수 있다 — MCP 서버도 같은 이름을 읽는다(폴더를 옮긴 사람 · 빈 프로필로 시험할 때).
+app.setPath('userData', process.env.SCHEDULE_WIDGET_DIR
+  ? path.resolve(process.env.SCHEDULE_WIDGET_DIR)
+  : path.join(app.getPath('appData'), 'schedule-widget'));
 
 const storage = require('./storage');
 const windowState = require('./windowState');
@@ -43,13 +46,14 @@ const ICON_DATA_URL =
 
 /**
  * 크기 프리셋 (CONTRACT 의 snapPreset 키).
- * 시안의 '창 크기' 는 좁게 / 넓게 두 가지다. 넓게는 시안의 표지 폭(1312px)에
- * 창 가장자리의 투명 여백(리사이즈를 잡는 자리, 좌우 12px 씩)을 더한 값이고,
+ * 시안의 '창 크기' 는 좁게 / 넓게 두 가지다. 넓게는 처음 여는 크기와 같다 —
+ * 시안의 표지 폭(1312px)보다 한 뼘 넓게 잡아 달력 칸에 여유를 준다.
  * 높이는 여섯 주짜리 달까지 스크롤 없이 들어간다(화면이 작으면 작업 영역에 맞춘다).
  */
 const PRESETS = {
   narrow: { width: 1000, height: 900, label: '좁게 (1000×900)' },
-  wide: { width: 1336, height: 950, label: '넓게 (1336×950)' },
+  wide: { width: windowState.DEFAULT_WIDTH, height: windowState.DEFAULT_HEIGHT,
+          label: `넓게 (${windowState.DEFAULT_WIDTH}×${windowState.DEFAULT_HEIGHT})` },
 };
 /** 예전 프리셋 키 — 저장해 둔 값이나 오래된 호출이 와도 가까운 쪽으로 맞춘다 */
 const PRESET_ALIASES = { compact: 'narrow', normal: 'narrow', tall: 'narrow' };
@@ -122,6 +126,7 @@ function createWindow() {
   win.setMinimumSize(windowState.MIN_WIDTH, windowState.MIN_HEIGHT);
 
   windowState.manage(win);
+  watchMaximize(win);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
   const startHidden = process.argv.includes('--hidden');
@@ -239,6 +244,35 @@ function catchMouse(on) {
   if (!clickThrough || !win || win.isDestroyed()) return;
   if (on) win.setIgnoreMouseEvents(false);
   else win.setIgnoreMouseEvents(true, { forward: true });
+}
+
+/**
+ * 최대화 상태를 렌더러에 알린다 — 제목줄의 □ / ❐ 가 지금 어느 쪽인지 보이게.
+ *
+ * 투명 창의 최대화는 Electron 이 '작업 영역 크기로 늘리기' 로 흉내 낸다. 그래서 최대화된 창을
+ * 끌어 옮기면 최대화 표시만 소리 없이 풀리고 화면만 한 창이 남는다 — 최대화된 동안은 제자리에 둔다.
+ * 가장자리를 끌어 크기를 바꾸면 그때는 풀린 것이 맞다(resize 에서 다시 잰다).
+ */
+function watchMaximize(w) {
+  let last = null;
+  const send = () => {
+    if (w.isDestroyed()) return;
+    const maximized = w.isMaximized();
+    if (maximized === last) return;
+    last = maximized;
+    w.webContents.send('window:state', { maximized });
+  };
+  for (const ev of ['maximize', 'unmaximize', 'restore', 'resize']) w.on(ev, send);
+  // 렌더러를 새로 띄우면 처음부터 다시 알린다
+  w.webContents.on('did-finish-load', () => { last = null; send(); });
+  w.on('will-move', (e) => { if (w.isMaximized()) e.preventDefault(); });
+}
+
+/** 최대화 ↔ 이전 크기 */
+function toggleMaximize(w) {
+  if (!w || w.isDestroyed()) return;
+  if (w.isMaximized()) w.unmaximize();
+  else w.maximize();
 }
 
 /** 프로그램적 리사이즈 — 최소 크기 보장 + 화면 밖으로 나가지 않게 보정 */
@@ -520,6 +554,13 @@ function registerIpc() {
 
   ipcMain.on('window:hide', () => hideToTray());
 
+  // 최대화 ↔ 이전 크기 — 제목줄의 □ 하나가 오간다. 상태는 window:state 로 알린다.
+  ipcMain.on('window:toggleMaximize', (e) => toggleMaximize(windowFrom(e)));
+  ipcMain.handle('window:isMaximized', (e) => {
+    const w = windowFrom(e);
+    return !!(w && !w.isDestroyed() && w.isMaximized());
+  });
+
   ipcMain.on('window:setAlwaysOnTop', (_e, on) => setAlwaysOnTop(on));
 
   // window:setOpacity 는 두지 않는다. Windows 의 transparent 창에서
@@ -728,6 +769,62 @@ function takeArgv(argv) {
   return added;
 }
 
+// ---------------------------------------------------------------- 남의 앱 안에서 떴는가
+//
+// Microsoft Store 판(MSIX) 앱이 띄운 프로세스는 AppData 에 **새로 만드는 파일**이 그 앱의
+// 개인 보관소(%LOCALAPPDATA%\Packages\<앱>\LocalCache\Roaming)로 옮겨진다. 그 안에서 이 위젯을
+// 띄우면 저장이 전부 그쪽에 쌓이고, 평소처럼 연 위젯에서는 그동안의 일정이 통째로 안 보인다
+// (2026-09 에 Claude 데스크톱 안에서 띄운 창으로 2주치가 실제로 갈라졌다).
+// 시작할 때 표식 파일 하나로 어디에 쌓이는지 확인하고, 갈라질 자리면 먼저 묻는다.
+
+/** 저장이 옮겨지는 중이면 그 앱 이름('Claude'), 아니면 null */
+function hostPackage() {
+  if (process.platform !== 'win32' || !process.env.LOCALAPPDATA) return null;
+  const dir = app.getPath('userData');
+  const rel = path.relative(app.getPath('appData'), dir);
+  // AppData(Roaming) 밖으로 옮긴 폴더는 가상화되지 않는다
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+
+  const mark = `.where-${process.pid}-${Date.now()}`;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, mark), '');
+  } catch {
+    return null;
+  }
+  let host = null;
+  try {
+    const pkgs = path.join(process.env.LOCALAPPDATA, 'Packages');
+    for (const name of fs.readdirSync(pkgs)) {
+      if (fs.existsSync(path.join(pkgs, name, 'LocalCache', 'Roaming', rel, mark))) {
+        host = name.split('_')[0] || name;
+        break;
+      }
+    }
+  } catch { /* Packages 를 못 읽으면 판단하지 않는다 */ }
+  try { fs.unlinkSync(path.join(dir, mark)); } catch { /* 무시 */ }
+  return host;
+}
+
+/** 갈라질 자리에서 떴으면 묻는다. 계속 열면 true */
+function confirmHost() {
+  const host = hostPackage();
+  if (!host) return true;
+  const choice = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: '일정관리 비서',
+    message: `${host} 안에서 열렸습니다`,
+    detail: `이렇게 열면 일정이 평소 저장 자리가 아니라 ${host} 의 보관소에 따로 쌓입니다.\n`
+      + '평소처럼 연 위젯에서는 여기서 고친 일정이 보이지 않습니다.\n\n'
+      + '시작 메뉴나 바탕화면의 \'일정관리 비서\' 로 다시 열어 주세요.',
+    buttons: ['닫기', '그래도 열기'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return choice === 1;
+}
+
 // ---------------------------------------------------------------- 앱 수명주기
 
 // 두 번 실행하면 기존 창을 띄운다 (트레이 앱이므로 중복 실행 방지 필수)
@@ -743,6 +840,11 @@ if (!gotLock) {
   app.setAppUserModelId('com.dongik.schedule-widget');
 
   app.whenReady().then(() => {
+    if (!confirmHost()) {
+      isQuitting = true;
+      app.quit();
+      return;
+    }
     trayIcon = nativeImage.createFromDataURL(ICON_DATA_URL);
 
     registerIpc();

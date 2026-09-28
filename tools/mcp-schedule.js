@@ -5,16 +5,18 @@
 //   "일정비서에 내일 3시 치과 넣어놔"  →  add_task("치과 @내일 15:00")
 //
 // 어떻게 들어가나
-//   앱의 **받은함 폴더**에 파일 한 장을 쓰는 것이 전부다(src/main/inbox.js).
-//   앱이 켜져 있으면 1초 안에 들어가고, 꺼져 있으면 다음에 켤 때 들어간다.
+//   앱의 **받은함 폴더**(%USERPROFILE%\.schedule-widget\inbox)에 파일 한 장을 쓰는 것이 전부다
+//   (src/main/inbox.js). 앱이 켜져 있으면 1초 안에 들어가고, 꺼져 있으면 다음에 켤 때 들어간다.
 //   포트도 토큰도 없고, 이 서버는 앱을 실행하지도 조작하지도 않는다.
+//
+//   받은함이 AppData 밖에 있는 이유: Microsoft Store 판 Claude 데스크톱이 띄운 이 서버가
+//   AppData 에 새 파일을 만들면 Windows 가 Claude 의 개인 보관소로 옮겨 버려 앱이 보지 못한다.
 //
 // 읽기는 저장 파일(schedule-data.json)을 그대로 읽는다 — 읽기만 하고 쓰지 않는다.
 //
-// 설치 (Claude Code)
-//   claude mcp add schedule -- node "C:\\dev\\schedule-widget\\tools\\mcp-schedule.js"
-// 설치 (Claude Desktop — claude_desktop_config.json)
-//   "schedule": { "command": "node", "args": ["C:\\dev\\schedule-widget\\tools\\mcp-schedule.js"] }
+// 설치 — docs/MCP.md 에 차근차근 적어 두었다.
+//   Claude Code     claude mcp add --scope user schedule -- node "<이 파일 경로>"
+//   Claude 데스크톱  claude_desktop_config.json 의 mcpServers 에 "schedule" 한 덩어리
 //
 // 의존성 없음. stdio 로 줄 단위 JSON-RPC 를 주고받는다(MCP stdio 전송).
 
@@ -23,7 +25,7 @@ const os = require('os');
 const path = require('path');
 
 const NAME = 'schedule-widget';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PROTOCOL = '2024-11-05';
 
 // ---------------------------------------------------------------- 자리
@@ -39,7 +41,10 @@ function userDataDir() {
   return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'schedule-widget');
 }
 
-const inboxDir = () => path.join(userDataDir(), 'inbox');
+// 받은함 — 앱과 같은 규칙. 데이터 폴더를 옮겼으면 그 안, 아니면 사용자 폴더(AppData 밖)
+const inboxDir = () => (process.env.SCHEDULE_WIDGET_DIR
+  ? path.join(process.env.SCHEDULE_WIDGET_DIR, 'inbox')
+  : path.join(os.homedir(), '.schedule-widget', 'inbox'));
 const dataFile = () => path.join(userDataDir(), 'schedule-data.json');
 
 // ---------------------------------------------------------------- 날짜 (앱과 같은 규칙: 로컬 'YYYY-MM-DD')
@@ -176,11 +181,11 @@ const TOOLS = [
   {
     name: 'add_task',
     description: [
-      '일정관리 비서에 일정을 넣는다. 여러 건이면 줄바꿈으로 나눠 한 번에 보낸다.',
+      '일정관리 비서(일정비서)에 일정을 넣는다. 여러 건이면 줄바꿈으로 나눠 한 번에 보낸다.',
       '한 줄 문법: 제목 @시작일 ~종료일 15:00 또는 15:00~16:30 #태그 ! 또는 !! *색',
       '  @오늘 @내일 @모레 @금 @8/15 @2026-08-15  ~3d(시작일+3일) ~8/20',
       '  ! 중요 · !! 긴급 · *파랑 *초록 *노랑 *빨강 *보라 *회색',
-      '날짜를 적지 않으면 오늘로 들어간다.',
+      '날짜를 적지 않으면 오늘로 들어간다. @내일 같은 말은 지금(보낸 날) 기준으로 풀린다.',
       '예) "치과 @내일 15:00 #건강 !" · "기획서 마감 @8/15 ~3d *빨강 !!"',
     ].join('\n'),
     inputSchema: {

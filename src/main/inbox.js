@@ -10,10 +10,20 @@
 //   .json       { "tasks": [ {title, start, ...} ] } | { "lines": ["치과 @내일 15:00"] }
 //               | { "goals": [ {scope:'week'|'month', title} ] } | 위 셋을 섞어 하나로
 //
+// 어디에 있나 — %USERPROFILE%\.schedule-widget\inbox (AppData 밖)
+//   Microsoft Store 판 앱(Claude 데스크톱 등)이 띄운 프로그램이 AppData 에 **새 파일**을 만들면
+//   Windows 가 그 파일을 그 앱의 개인 보관소로 옮겨 버려, 이 앱은 영영 보지 못한다.
+//   받은함은 바깥 프로그램이 파일을 새로 만드는 자리라 거기 두면 안 된다(1.4 까지는 거기 있었다).
+//   사용자 폴더는 옮겨지지 않는다. 예전 자리(userData/inbox)도 계속 훑는다 — 예전 스크립트용.
+//
 // 앱은 이 파일을 **해석만** 한다. 실행하지 않고, 경로도 명령도 받지 않는다.
 // 읽은 파일은 inbox/done/ 으로 옮겨 최근 50장만 남긴다 — 무엇이 들어왔는지 되짚을 수 있게.
+//
+// '@내일' 같은 말은 **파일을 쓴 날** 기준으로 푼다. 앱이 꺼져 있다가 다음 날 읽어도
+// 내일이 모레가 되지 않게 — 그래서 넘길 때 쓴 날(written)을 붙인다.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { app } = require('electron');
 
@@ -50,8 +60,23 @@ let timer = null;
 let deliver = null;          // (payload) => boolean  — 렌더러에 넘긴다. 못 넘기면 false.
 const pending = [];          // 렌더러가 아직 준비되지 않았을 때 쌓아 둔다
 
+/** 받은함 자리. 데이터 폴더를 SCHEDULE_WIDGET_DIR 로 옮겼으면 그 안, 아니면 사용자 폴더 */
+function inboxRoot() {
+  if (process.env.SCHEDULE_WIDGET_DIR) return path.join(app.getPath('userData'), 'inbox');
+  return path.join(os.homedir(), '.schedule-widget', 'inbox');
+}
+
+/** 1.4 까지의 자리 — 거기 떨어뜨리는 예전 스크립트가 있어도 집는다 */
+const legacyDir = () => path.join(app.getPath('userData'), 'inbox');
+
+/** 파일을 쓴 날(로컬) 'YYYY-MM-DD' */
+function dayOf(date) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
 function ensureDirs() {
-  dir = path.join(app.getPath('userData'), 'inbox');
+  dir = inboxRoot();
   doneDir = path.join(dir, 'done');
   fs.mkdirSync(doneDir, { recursive: true });
   const readme = path.join(dir, '읽어보기.txt');
@@ -80,10 +105,12 @@ function readLines(text) {
  */
 function parseFile(file) {
   let text;
+  let written;
   try {
     const stat = fs.statSync(file);
     if (!stat.isFile() || stat.size > MAX_BYTES) return null;
     text = fs.readFileSync(file, 'utf8');
+    written = dayOf(stat.mtime);
   } catch {
     return null;
   }
@@ -107,11 +134,11 @@ function parseFile(file) {
       ? data.goals.filter((g) => g && typeof g === 'object').slice(0, MAX_ITEMS)
       : [];
     if (!tasks.length && !lines.length && !goals.length) return null;
-    return { source, tasks, lines, goals };
+    return { source, written, tasks, lines, goals };
   }
 
   const lines = readLines(text);
-  return lines.length ? { source, tasks: [], lines, goals: [] } : null;
+  return lines.length ? { source, written, tasks: [], lines, goals: [] } : null;
 }
 
 /** 읽은 파일을 done/ 으로 옮기고 오래된 것은 지운다 */
@@ -131,17 +158,23 @@ function retire(file) {
   } catch { /* 무시 */ }
 }
 
-/** 받은함을 한 번 훑는다 */
+/** 받은함을 한 번 훑는다 — 지금 자리, 그리고 예전 자리 */
 function sweep() {
+  sweepDir(dir);
+  const old = legacyDir();
+  if (old !== dir) sweepDir(old);
+}
+
+function sweepDir(from) {
   let names = [];
   try {
-    names = fs.readdirSync(dir).filter(isInput).sort();
+    names = fs.readdirSync(from).filter(isInput).sort();
   } catch {
     return;
   }
 
   for (const name of names) {
-    const file = path.join(dir, name);
+    const file = path.join(from, name);
     const payload = parseFile(file);
     // 모양이 아닌 파일은 조용히 done 으로 보낸다 — 계속 다시 읽으며 맴돌지 않게
     if (!payload) { retire(file); continue; }

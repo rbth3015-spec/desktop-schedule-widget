@@ -159,6 +159,10 @@ html, body {
   cursor: default;
 }
 
+/* 최대화 — 화면을 다 쓰는 동안에는 가장자리를 잡을 일이 없다. 투명 여백과 둥근 모서리를 걷는다 */
+:root.is-max, :root.is-max body { padding: 0; }
+:root.is-max .widget { border-radius: 0; }
+
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 input, textarea, select { font: inherit; color: inherit; user-select: text; }
 
@@ -305,7 +309,7 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   gap: 3px;
   -webkit-app-region: no-drag;
 }
-/* 설정과 닫기 사이의 가는 세로선 */
+/* 앱의 단추(브리핑 · 검색 · 알림 · 자물쇠)와 창 단추(최소화 · 최대화 · 닫기) 사이의 가는 세로선 */
 .titlebar__sep {
   flex: none;
   width: 1px;

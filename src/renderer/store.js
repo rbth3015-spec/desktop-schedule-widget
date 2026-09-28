@@ -1162,7 +1162,7 @@ export function setDailyCheck(id, on) {
   if (!t || t.repeat || !t.start || !t.end || t.end <= t.start) return;
   if (!!t.dailyCheck === !!on) return;
 
-  pushUndo(on ? '매일 체크로' : '한 번에 체크로');
+  pushUndo(on ? '날마다 체크로' : '끝나면 한 번 체크로');
   if (on) {
     // '끝냈다'고 표시해 둔 계획이라면 모든 날을 체크된 것으로 옮긴다
     if (t.done) {
