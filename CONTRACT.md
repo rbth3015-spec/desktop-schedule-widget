@@ -114,6 +114,7 @@ window.api = {
     setSummary(s: {
       today: number,      // 오늘 남은 건수
       overdue: number,    // 밀린 건수
+      todos: number,      // 오늘 남은 할 일(트레이 툴팁 · 메뉴 '할 일 N개 남음' → 'todos' 액션)
       items: {id: string, title: string, time: string, done: boolean}[],  // 최대 5줄
     }): void,
   },
@@ -159,6 +160,8 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
     `store.journalBetween(from, to)`, `store.retroOn(scope)`,
     `store.todosOn(key)` (그날의 할 일 + doneHere · age), `store.todoSummary(key)`,
     `store.lastDoneDay(key)` ('어제 한 일'), `store.todoTask(todo)` (묶인 일정),
+    `store.searchTodos(text)` (검색이 일정과 함께 보여 준다),
+    `store.pickNow(key)` 는 할 일도 고른다 — `{kind: 'todo', task: {id: 'todo:…', title, todoId, age}}`,
     `store.tagSummary()`, `store.matchesTag(task)` (테마 — 달력은 걷어내는 대신 흐리게),
     `store.COLORS`, `store.PRIORITY_LABELS`
   - 쓰기: `store.addTask()`, `store.updateTask()`, `store.toggleDone()`, `store.removeTask()`,
@@ -171,6 +174,7 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
     (묶인 일정도 같이 끝낸다 — 반대로 `toggleDone` 도 묶인 할 일을 지운다), `store.updateTodo()`,
     `store.removeTodo()`, `store.deferTodo(id, key)` (내일로), `store.moveTodo(id, beforeId)`,
     `store.linkTodo(id, taskId)` (되돌리기를 따로 쌓지 않는다 — 바로 앞의 '일정 추가' 가 함께 되돌린다),
+    `store.taskToTodo(id, day)` (언젠가 → 할 일, 메모 · 링크 · 태그가 있으면 null),
     `store.setWeather(data)` (셸만 부른다),
     `store.selectDate()`, `store.setAnchorMonth()`,
     `store.setFilter()`, `store.setEditing()`, `store.setSetting()`

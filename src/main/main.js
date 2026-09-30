@@ -371,6 +371,7 @@ function trayTooltip() {
   const parts = [];
   if (traySummary.today) parts.push(`오늘 ${traySummary.today}건`);
   if (traySummary.overdue) parts.push(`밀린 일 ${traySummary.overdue}건`);
+  if (traySummary.todos) parts.push(`할 일 ${traySummary.todos}개`);
   return parts.length ? `일정관리 비서 — ${parts.join(' · ')}` : '일정관리 비서 — 오늘 일정 없음';
 }
 
@@ -388,6 +389,12 @@ function todayMenuItems() {
     out.push({
       label: `밀린 일 ${traySummary.overdue}건 — 오늘로 당기기`,
       click: () => sendMenuAction('roll-overdue'),
+    });
+  }
+  if (traySummary.todos) {
+    out.push({
+      label: `할 일 ${traySummary.todos}개 남음`,
+      click: () => sendMenuAction('todos'),
     });
   }
 

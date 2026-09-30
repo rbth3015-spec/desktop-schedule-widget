@@ -307,9 +307,20 @@ export function createPlan({ store, onOpenDay, onDetail, notify }) {
     const next = view === 'week'
       ? store.weekScope(addDays(weekGrid(st.selectedDate)[0], 7))
       : `m:${nextMonth(scope.slice(2))}`;
+    // 이미 오늘 목록에 있으면 두 번 적지 않는다 — 메뉴 이름이 그렇다고 말한다
+    const name = String(t.title || '').replace(/\s+/g, ' ').trim();
+    const listed = store.todosOn(todayKey()).some((x) => !x.doneHere && x.text === name);
     showContextMenu(x, y, [
       { label: t.done ? '완료 취소' : '완료로 표시', onSelect: () => store.toggleDone(t.id) },
       { label: '자세히', onSelect: () => onDetail(t.id) },
+      {
+        // 큰 목표를 오늘 손댈 한 조각으로 — 할 일 목록에 그 이름으로 적는다(목표는 그대로 둔다)
+        label: listed ? '오늘 할 일에 있음' : '오늘 할 일로',
+        disabled: !!t.done || listed,
+        onSelect: () => {
+          if (store.addTodo(t.title, todayKey())) notify(`'${t.title}' 을(를) 오늘 할 일에 적었습니다`);
+        },
+      },
       { separator: true },
       {
         label: view === 'week' ? '다음 주로' : '다음 달로',

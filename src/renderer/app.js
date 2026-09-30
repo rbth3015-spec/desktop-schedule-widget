@@ -332,8 +332,13 @@ function wireDimming() {
  * 오늘 몫은 창 제목이 말한다 — 작업 표시줄 미리보기와 Alt+Tab 에서 보인다.
  */
 function updateTitle(state) {
-  const total = state.tasks.filter((t) => !t.done && t.start === todayKey()).length;
-  document.title = total > 0 ? `일정관리 비서 · 오늘 ${total}건` : '일정관리 비서';
+  const today = todayKey();
+  const total = state.tasks.filter((t) => !t.done && t.start === today).length;
+  const todos = store.todoSummary(today).open;
+  const parts = [];
+  if (total) parts.push(`오늘 ${total}건`);
+  if (todos) parts.push(`할 일 ${todos}개`);
+  document.title = parts.length ? `일정관리 비서 · ${parts.join(' · ')}` : '일정관리 비서';
   syncBellDot(state);
 }
 
@@ -677,8 +682,20 @@ function msUntilNextMidnight() {
   return Math.max(1000, next - now);
 }
 
+// '지금' 이 들어간 글(시간표의 지금 선 · 다음 일정까지 · 비서의 한 줄)은 분이 바뀌면 낡는다.
+// 창이 보이는 동안만 1분에 한 번 다시 그린다(움직이는 그림이 아니라 글자 몇 개를 고치는 일이다).
+function scheduleMinuteTick() {
+  const now = new Date();
+  const wait = (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 50;
+  setTimeout(() => {
+    if (!document.hidden) store.touch();
+    scheduleMinuteTick();
+  }, wait);
+}
+
 function wireDayWatch() {
   scheduleDayTick();
+  scheduleMinuteTick();
   // 절전에서 깨면 setTimeout 이 한참 늦게 온다. 창을 다시 볼 때도 확인한다.
   window.addEventListener('focus', checkDayChange);
   document.addEventListener('visibilitychange', () => {
@@ -790,8 +807,8 @@ const KO_COUNT = ['', '한', '두', '세', '네', '다섯', '여섯', '일곱', 
 const KO_HOUR = ['열두', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열', '열한'];
 
 /** 3 → '세 건', 12 → '12건' */
-function countKo(n) {
-  return n >= 1 && n <= 10 ? `${KO_COUNT[n]} 건` : `${n}건`;
+function countKo(n, unit = '건') {
+  return n >= 1 && n <= 10 ? `${KO_COUNT[n]} ${unit}` : `${n}${unit}`;
 }
 
 /** '15:00' → '오후 세 시', '09:30' → '오전 아홉 시 반' */
@@ -876,6 +893,17 @@ function briefLead({ today, todays, overdue }) {
   } else {
     parts.push('오늘 잡힌 일은 없습니다.');
   }
+
+  // 할 일 — 달력 밖에 적어 둔 오늘 몫도 같은 입으로 말한다
+  const left = store.todosOn(today).filter((t) => !t.doneHere);
+  if (left.length) {
+    const carried = left.filter((t) => t.age >= 2).length;
+    const n = countKo(left.length, '개');
+    if (!carried) parts.push(`할 일은 ${n}입니다.`);
+    else if (carried < left.length) parts.push(`할 일은 ${n}, 그중 ${countKo(carried, '개')}는 전날부터 이어졌습니다.`);
+    else if (left.length === 1) parts.push('전날부터 이어진 할 일이 한 개 있습니다.');
+    else parts.push(`할 일은 ${n}, 모두 전날부터 이어졌습니다.`);
+  }
   return parts.join(' ');
 }
 
@@ -943,7 +971,10 @@ function showBrief() {
       goTab('todos');
     };
     for (const t of todoLeft.slice(0, 3)) {
-      block.append(modalItem(t.age >= 2 ? `${t.age}일째` : '', t.text, openTodos));
+      // 시간을 잡아 둔 할 일은 그 시각, 이어진 것은 묵은 날수
+      const task = store.todoTask(t);
+      const at = task?.startTime || (t.age >= 2 ? `${t.age}일째` : '');
+      block.append(modalItem(at, t.text, openTodos));
     }
     if (todoLeft.length > 3) block.append(modalItem('', `외 ${todoLeft.length - 3}개`, openTodos));
     blocks.append(block);
@@ -1420,6 +1451,10 @@ function wireMenuActions() {
     if (action === 'lock') store.setSetting('clickThroughLocked', true);
 
     if (action === 'brief') showBrief();
+    if (action === 'todos') {
+      store.selectDate(todayKey());
+      goTab('todos');
+    }
 
     if (action === 'roll-overdue') {
       const ids = store.overdueTasks(todayKey(), { filtered: false }).map((t) => t.id);
@@ -1459,6 +1494,8 @@ function reportToTray() {
     summary = {
       today: undone.length,
       overdue: store.overdueTasks(today, { filtered: false }).length,
+      // 할 일도 트레이가 말한다 — 창을 열지 않아도 오늘 몫이 한 번에 보이게
+      todos: store.todoSummary(today).open,
       // tasksOnDate 가 이미 시각순으로 정렬해 준다 — 앞의 다섯 줄이 곧 하루의 앞부분
       items: onToday.slice(0, 5).map((t) => ({
         id: t.id,

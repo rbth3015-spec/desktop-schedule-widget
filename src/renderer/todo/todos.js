@@ -1,14 +1,16 @@
 // 할 일 — 달력과 따로 가는 그날그날의 체크리스트 (오른쪽 면의 책갈피 '할 일').
 //
-// 일정은 '언제' 가 먼저지만 할 일은 '무엇' 이 먼저다. 쭉 적어 두고 하나씩 지워 나간다.
+// 일정은 '언제' 가 먼저지만 할 일은 '무엇' 이 먼저다. 쭉 적어 두고 하나씩 끝내 나간다.
 //   · 목록 끝 한 줄에 적고 Enter — 칸은 그대로 남아 이어서 적는다(여러 줄을 붙여 넣으면 줄마다 하나).
-//   · 줄을 누르면 줄이 그어진다. 다시 누르면 되살아난다. 이름을 두 번 누르면 고친다.
+//   · 줄을 누르면 완료(줄이 그어진다), 다시 누르면 완료 취소. 이름을 두 번 누르면 고친다. ↑↓ 로 줄을 옮겨 다닌다.
 //   · 다 못 한 것은 다음 날 목록으로 그대로 이어진다 — 묵은 날수('3일째')가 붙는다.
-//   · 오른쪽 클릭 — 시간 잡기(일정으로 만들어 묶는다) · 내일로 · 빼기. 끌어서 순서를 바꾼다.
+//   · 오른쪽 클릭은 일정과 같은 말을 쓴다 — 완료 · 이름 고치기 · 시간 잡기 · 내일로 미루기 · 삭제.
+//     (앱 안에서 같은 일을 두 가지 말로 부르면 두 기능이 따로 노는 것처럼 보인다)
+//   · 머리 아래 한 줄은 비서가 말한다 — 다음 일정까지 남은 시간. 하루 화면의 그 목소리다.
 //
 // 어느 날인지는 왼쪽 달력이 정한다(계획과 같은 약속). 이 화면에 날짜를 넘기는 단추를 따로 두지 않는다.
 
-import { todayKey, fromKey, addDays } from '../lib/date.js';
+import { todayKey, fromKey, addDays, timeMinutes } from '../lib/date.js';
 import { showContextMenu } from '../lib/menu.js';
 import { icon } from '../lib/icons.js';
 import { h, monthDay } from './ui.js';
@@ -28,11 +30,29 @@ function subOf(key) {
   return `${monthDay(key)} (${WEEK[fromKey(key).getDay()]})`;
 }
 
+/** 분 → 'HH:MM' */
+function clock(m) {
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/** 분 → '1시간 20분' */
+function spanText(m) {
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  if (!hh) return `${mm}분`;
+  return mm ? `${hh}시간 ${mm}분` : `${hh}시간`;
+}
+
+function nowMinutes() {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 /**
  * @param {{store: object, notify: (text:string)=>void, onDetail: (taskId:string)=>void,
- *          onSchedule: (todo:object, key:string)=>void}} deps
+ *          onSchedule: (todo:object, key:string)=>void, onOpenDay: (key:string)=>void}} deps
  */
-export function createTodos({ store, notify, onDetail, onSchedule }) {
+export function createTodos({ store, notify, onDetail, onSchedule, onOpenDay }) {
   const el = h('section', 'tds scr');
   el.hidden = true;
   el.setAttribute('aria-label', '할 일');
@@ -47,6 +67,14 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
   // 머리 밑 먹선이 지운 만큼 금박으로 바뀐다 — 숫자를 읽지 않아도 얼마나 왔는지 보인다
   const meter = h('span', 'tds-head__meter');
   head.append(headDate, countEl, meter);
+
+  // 비서의 한 줄 — 할 일을 하는 동안 다음 일정까지 얼마나 남았는지(하루 화면과 같은 목소리).
+  // 누르면 그날의 하루 화면으로. 오늘이 아니거나 남은 시각 일정이 없으면 걷는다.
+  const aide = h('button', 'tds-aide');
+  aide.type = 'button';
+  aide.title = '하루 화면에서 보기';
+  aide.hidden = true;
+  aide.addEventListener('click', () => onOpenDay?.(key));
 
   // ---------------------------------------------------------------- 목록 · 적는 줄
   const list = h('ul', 'tds-list');
@@ -71,13 +99,19 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
   past.append(pastHead, pastList);
   past.hidden = true;
 
-  el.append(head, list, add, past);
+  el.append(head, aide, list, add, past);
 
   let key = todayKey();
 
   // ---------------------------------------------------------------- 적기
   addIn.addEventListener('keydown', (e) => {
     if (e.isComposing || e.keyCode === 229) return;
+    // 비어 있을 때 ↑ — 목록 끝 줄로 올라간다
+    if (e.key === 'ArrowUp' && !addIn.value) {
+      const last = list.lastElementChild;
+      if (last) { e.preventDefault(); last.focus(); }
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       if (store.addTodo(addIn.value, key)) addIn.value = '';   // 칸은 그대로 — 이어서 적는다
@@ -139,12 +173,12 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
       li.append(age);
     }
 
-    // 누르면 지운다(되살린다). 두 번 누르면 이름을 고친다 — 한 번 누름은 잠깐 기다렸다 처리한다.
+    // 누르면 완료(다시 누르면 취소). 두 번 누르면 이름을 고친다 — 한 번 누름은 잠깐 기다렸다 처리한다.
     li.addEventListener('click', (e) => {
       if (e.target.closest('.tds-item__input, .tds-item__when')) return;
       if (e.detail > 1) return;
       clearTimeout(li._clickTimer);
-      li._clickTimer = setTimeout(() => store.toggleTodo(t.id, key), 180);
+      li._clickTimer = setTimeout(() => toggle(t), 180);
     });
     li.addEventListener('dblclick', (e) => {
       if (!e.target.closest('.tds-item__text')) return;
@@ -153,9 +187,11 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
     });
     li.addEventListener('keydown', (e) => {
       if (e.target !== li) return;
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); store.toggleTodo(t.id, key); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(t); }
       else if (e.key === 'F2') { e.preventDefault(); rename(li, text, t); }
       else if (e.key === 'Delete') { e.preventDefault(); remove(t); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); (li.nextElementSibling || addIn).focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); li.previousElementSibling?.focus(); }
     });
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -234,22 +270,65 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
 
   function remove(t) {
     store.removeTodo(t.id);
-    notify(`'${t.text}' 을(를) 뺐습니다`);
+    notify(`'${t.text}' 을(를) 삭제했습니다`);
   }
 
+  /**
+   * 완료 ↔ 완료 취소. 오늘 목록을 다 끝낸 순간에는 비서가 한마디 한다
+   * (되돌릴 거리가 아니라 인사라서 되돌리기 단추를 달지 않는다 — Ctrl+Z 는 그대로 된다).
+   */
+  function toggle(t) {
+    const before = store.todoSummary(key);
+    store.toggleTodo(t.id, key);
+    const after = store.todoSummary(key);
+    if (key === todayKey() && before.open > 0 && after.open === 0 && after.total > 0) {
+      document.dispatchEvent(new CustomEvent('app:toast', {
+        detail: { text: `오늘 할 일 ${after.total}개를 다 끝냈습니다`, undo: false },
+      }));
+    }
+  }
+
+  // 우클릭 — 일정 목록의 메뉴와 같은 말을 쓴다(완료 · 내일로 미루기 · 삭제)
   function menu(x, y, li, text, t) {
     const task = store.todoTask(t);
     showContextMenu(x, y, [
-      { label: t.doneHere ? '되살리기' : '지우기', onSelect: () => store.toggleTodo(t.id, key) },
-      { label: '고치기', onSelect: () => rename(li, text, t) },
+      { label: t.doneHere ? '완료 취소' : '완료로 표시', onSelect: () => toggle(t) },
+      { label: '이름 고치기', onSelect: () => rename(li, text, t) },
       { separator: true },
       task
         ? { label: '일정 열기', onSelect: () => onDetail(task.id) }
         : { label: '시간 잡기', onSelect: () => onSchedule(t, key), disabled: t.doneHere },
-      { label: '내일로', onSelect: () => store.deferTodo(t.id, key), disabled: t.doneHere },
+      { label: '내일로 미루기', onSelect: () => store.deferTodo(t.id, key), disabled: t.doneHere },
       { separator: true },
-      { label: '빼기', danger: true, onSelect: () => remove(t) },
+      { label: '삭제', danger: true, onSelect: () => remove(t) },
     ]);
+  }
+
+  /** 다음 일정까지 — 지금 진행 중이면 그 일정이 언제 끝나는지 */
+  function renderAide() {
+    if (key !== todayKey()) { aide.hidden = true; return; }
+    const now = nowMinutes();
+    const timed = [...store.tasksOnDate(key, { filtered: false }), ...store.routinesOn(key, { filtered: false })]
+      .filter((t) => !t.done && t.startTime)
+      .map((t) => {
+        const s = timeMinutes(t.startTime);
+        const e = timeMinutes(t.endTime);
+        return { t, s, e: e != null && e > s ? e : s + 60 };
+      })
+      .sort((a, b) => a.s - b.s);
+    const running = timed.find((x) => x.s <= now && now < x.e);
+    const next = timed.find((x) => x.s > now);
+    const num = (v) => h('span', 'tds-aide__num num', v);
+    const parts = [];
+    if (running) {
+      parts.push('지금은 ', h('span', 'tds-aide__what', running.t.title || '일정'),
+        ' 시간 · ', num(clock(running.e)), '까지');
+    } else if (next) {
+      parts.push('다음 일정까지 ', num(spanText(next.s - now)), ' · ', num(clock(next.s)), ' ',
+        h('span', 'tds-aide__what', next.t.title || '일정'));
+    }
+    aide.hidden = !parts.length;
+    aide.replaceChildren(...parts);
   }
 
   // ---------------------------------------------------------------- 그리기
@@ -265,6 +344,7 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
     meter.style.width = items.length ? `${((done / items.length) * 100).toFixed(1)}%` : '0%';
 
     renderPast();
+    renderAide();
 
     // 고치던 줄이 있으면 그 줄은 그대로 둔다 — 다시 그리면 적던 글자가 날아간다
     const editing = list.querySelector('.tds-item__input');
@@ -296,6 +376,14 @@ export function createTodos({ store, notify, onDetail, onSchedule }) {
     el,
     update,
     focusAdd() { addIn.focus(); },
+    /** 그 줄로 — 「지금 할 일」 이 고른 할 일을 짚어 준다(금박이 잠깐 머문다) */
+    focusTodo(id) {
+      const li = list.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (!li) return;
+      li.focus();
+      li.classList.add('is-flash');
+      setTimeout(() => li.classList.remove('is-flash'), 1400);
+    },
     /** 목록이 비었으면 적는 줄로 — 책갈피를 눌러 들어왔을 때 */
     focusIfEmpty() {
       if (!store.todosOn(store.getState().selectedDate).length) addIn.focus();

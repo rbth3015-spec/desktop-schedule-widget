@@ -138,6 +138,7 @@ const api = {
     setSummary: (summary) => ipcRenderer.send('tray:summary', {
       today: Number(summary?.today) || 0,
       overdue: Number(summary?.overdue) || 0,
+      todos: Number(summary?.todos) || 0,
       items: Array.isArray(summary?.items)
         ? summary.items.slice(0, 5).map((it) => ({
             id: String(it?.id ?? ''),
@@ -150,7 +151,7 @@ const api = {
   },
 
   // ------------------------------------------------------------ 트레이 메뉴 -> 렌더러
-  // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue'
+  // 'today' | 'settings' | 'toggle-completed' | 'brief' | 'roll-overdue' | 'todos'
   // | 'open-task:<id>' (+ 클릭 통과를 메인에서 바꿨을 때 'lock' · 'unlock')
   onMenuAction: (cb) => {
     if (typeof cb !== 'function') return;

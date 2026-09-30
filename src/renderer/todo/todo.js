@@ -303,7 +303,23 @@ export function createTodoPanel({ root, store }) {
 
   // ---------------------------------------------------------------- 화면 조립
   const compose = createCompose({ store, onToggle: () => scheduleRender() });
-  const detail = createDetail({ store, onPlan: planFor, notify });
+  const detail = createDetail({
+    store,
+    onPlan: planFor,
+    notify,
+    // 할 일에서 시간을 잡은 일정이면 상세에 그 할 일이 한 줄로 보이고, 누르면 할 일 면의 그 줄로
+    onOpenTodo: (td) => openTodo(td),
+  });
+
+  /** 할 일 하나를 짚어 연다 — 그 할 일이 보이는 날(끝냈으면 끝낸 날)로 가서 그 줄에 금박 */
+  function openTodo(td) {
+    const today = todayKey();
+    const day = td.done ? td.doneOn : (td.day <= today ? today : td.day);
+    store.setEditing(null);
+    store.selectDate(day);
+    pendingTodoFocus = td.id;
+    openPane('todos');
+  }
 
   // 책갈피가 고른 면 — 'main'(하루) · 'todos'(할 일) · 'plan'(계획)
   let pane = 'main';
@@ -325,7 +341,14 @@ export function createTodoPanel({ root, store }) {
     notify,
     onDetail: (id) => store.setEditing(id),
     onSchedule: (td, key) => scheduleTodo(td, key),
+    // 할 일 면의 비서 한 줄을 누르면 그날의 하루 화면으로
+    onOpenDay: (key) => {
+      store.selectDate(key);
+      openPane('main');
+    },
   });
+  // 「지금 할 일」 이 할 일을 골랐으면 할 일 면을 연 뒤 그 줄을 짚는다(그린 다음에야 줄이 있다)
+  let pendingTodoFocus = null;
 
   /**
    * 할 일에 시간을 잡는다 — 추가 화면을 그 이름 · 그날로 채워 열고, 만들어지면 할 일과 묶는다.
@@ -364,7 +387,39 @@ export function createTodoPanel({ root, store }) {
     store.moveTask(id, store.getState().selectedDate);
   });
 
-  body.append(sections.search.el, sections.overdue.el, timetable.el, sections.inbox.el, jrn.el);
+  // 검색 결과 아래의 할 일 — 같은 돋보기가 두 면을 함께 찾는다. 누르면 할 일 면의 그 줄로.
+  const searchTodos = h('section', 'todo-section todo-section--searchtodos');
+  const stHead = h('div', 'todo-section__head');
+  const stName = h('span', 'todo-section__name');
+  const stCount = h('span', 'todo-section__count num');
+  stName.append(h('span', 'todo-section__title', '할 일'), stCount);
+  stHead.append(stName, h('span', 'todo-section__rule'));
+  const stList = h('div', 'todo-searchtodos');
+  searchTodos.append(stHead, stList);
+  searchTodos.hidden = true;
+
+  function renderSearchTodos(text) {
+    const found = text ? store.searchTodos(text) : [];
+    searchTodos.hidden = !found.length;
+    stCount.textContent = String(found.length);
+    stList.replaceChildren(...found.map((td) => {
+      const row = h('button', 'todo-searchtodo');
+      row.type = 'button';
+      row.classList.toggle('is-done', !!td.done);
+      row.append(
+        h('span', 'todo-searchtodo__mark', td.done ? '✓' : '□'),
+        h('span', 'todo-searchtodo__text', td.text),
+        h('span', 'todo-searchtodo__when num', shortDate(td.done ? td.doneOn : td.day)),
+      );
+      row.addEventListener('click', () => {
+        closeSearch();
+        openTodo(td);
+      });
+      return row;
+    }));
+  }
+
+  body.append(sections.search.el, searchTodos, sections.overdue.el, timetable.el, sections.inbox.el, jrn.el);
   main.append(head, searchRow, tagBar, aide, pick, hint, body);
   el.append(main, todos.el, plan.el, compose.el, detail.el);
   root.append(el);
@@ -827,6 +882,15 @@ export function createTodoPanel({ root, store }) {
             label: '이번 주 목표로',
             onSelect: () => store.moveGoals([task.id], store.weekScope(todayKey())),
           },
+          {
+            // 날짜를 정할 일이 아니라 오늘 해치울 일이면 할 일로 — 메모 · 링크 · 태그가 있으면 잃지 않게 흐리게
+            label: '오늘 할 일로',
+            disabled: !!(task.notes || task.link || task.tags?.length),
+            onSelect: () => {
+              const td = store.taskToTodo(task.id, todayKey());
+              if (td) notify(`'${td.text}' 을(를) 오늘 할 일로 옮겼습니다`);
+            },
+          },
         ]);
       });
       meta.append(pick);
@@ -869,7 +933,8 @@ export function createTodoPanel({ root, store }) {
   }
 
   function buildSearchEmpty() {
-    return h('div', 'todo-empty', '없습니다');
+    // 일정은 없어도 할 일에서 찾았으면 '없습니다' 라고 하지 않는다
+    return h('div', 'todo-empty', store.searchTodos(store.getState().filter.text).length ? '일정은 없습니다' : '없습니다');
   }
 
   // ---------------------------------------------------------- 머리 · 비서의 한 줄
@@ -885,12 +950,21 @@ export function createTodoPanel({ root, store }) {
   const seal = (text) => h('span', 'todo-aide__seal', text);
   const num = (text) => h('span', 'num', text);
 
+  /** '할 일 4개' — 누르면 할 일 면으로. 비서의 한 줄이 두 면을 잇는 자리다. */
+  function todoLink(n) {
+    const b = h('button', 'todo-aide__link', `할 일 ${n}개`);
+    b.type = 'button';
+    b.title = '할 일 보기';
+    b.addEventListener('click', () => openPane('todos'));
+    return b;
+  }
+
   /**
    * 비서의 한 줄. 시안: '밀린 일 2건부터 치우시면 오늘 5건은 넉넉합니다.
    * 다음 일정은 15:00 클라이언트 미팅.'
    *
    * 넉넉한지는 어림으로 잰다 — 지금부터 밤 10시까지 비어 있는 시간이
-   * 시각 없는 일 하나에 30분씩 잡아 모자라지 않으면 넉넉하다.
+   * 시각 없는 일과 할 일 하나에 30분씩 잡아 모자라지 않으면 넉넉하다.
    */
   function renderAide(st, overdue) {
     const key = st.selectedDate;
@@ -898,11 +972,13 @@ export function createTodoPanel({ root, store }) {
     const onDate = [...store.tasksOnDate(key), ...store.routinesOn(key)];
     const undone = onDate.filter((t) => !t.done);
     const parts = [];
+    const todoSum = store.todoSummary(key);
 
     if (key === today) {
       const now = nowMinutes();
       const A = overdue.length;
       const M = undone.length;
+      const T = todoSum.open;
 
       // 남은 시각 일정이 차지하는 시간과, 시각 없는 일에 들 시간
       const timed = undone
@@ -915,17 +991,26 @@ export function createTodoPanel({ root, store }) {
         .sort((a, b) => a.s - b.s);
       const busy = timed.reduce((sum, x) => sum + Math.max(0, x.e - Math.max(x.s, now)), 0);
       const free = Math.max(0, 22 * 60 - now) - busy;
-      const need = (undone.filter((t) => !t.startTime).length + A) * 30;
+      // 할 일도 한 개에 30분으로 어림한다 — 시각 없는 일과 같은 셈이다
+      const need = (undone.filter((t) => !t.startTime).length + A + T) * 30;
       const roomy = free >= need;
 
-      if (A > 0 && M > 0) {
-        if (roomy) parts.push('밀린 일 ', seal(`${A}건`), `부터 치우시면 오늘 ${M}건은 넉넉합니다.`);
-        else parts.push('밀린 일 ', seal(`${A}건`), `이 남아 있어 오늘 ${M}건은 빠듯합니다.`);
+      // '오늘 7건' · '할 일 4개' · '오늘 7건과 할 일 4개' — 할 일 쪽은 누르면 할 일 면으로
+      const load = [];
+      if (M > 0) load.push(`오늘 ${M}건`);
+      if (M > 0 && T > 0) load.push('과 ');
+      if (T > 0) load.push(todoLink(T));
+      const topic = T > 0 ? '는' : '은';   // '4개는' · '7건은'
+      const subj = T > 0 ? '가' : '이';    // '4개가' · '7건이'
+
+      if (A > 0 && load.length) {
+        if (roomy) parts.push('밀린 일 ', seal(`${A}건`), '부터 치우시면 ', ...load, `${topic} 넉넉합니다.`);
+        else parts.push('밀린 일 ', seal(`${A}건`), '이 남아 있어 ', ...load, `${topic} 빠듯합니다.`);
       } else if (A > 0) {
         parts.push('오늘 몫은 없고, 밀린 일 ', seal(`${A}건`), '이 남아 있습니다.');
-      } else if (M > 0) {
-        parts.push(`오늘 ${M}건이 남았습니다.`);
-      } else if (onDate.length) {
+      } else if (load.length) {
+        parts.push(...load, `${subj} 남았습니다.`);
+      } else if (onDate.length || todoSum.total) {
         parts.push('오늘 몫은 다 하셨습니다.');
       } else {
         parts.push('오늘은 잡힌 일이 없습니다.');
@@ -952,6 +1037,9 @@ export function createTodoPanel({ root, store }) {
     } else if (onDate.length) {
       const done = onDate.length - undone.length;
       parts.push(`${monthDayKo(key)}에는 ${onDate.length}건 중 ${done}건을 끝냈습니다.`);
+      if (todoSum.done) parts.push(' ', todoLink(todoSum.done), '도 끝냈습니다.');
+    } else if (todoSum.done) {
+      parts.push(`${monthDayKo(key)}에는 `, todoLink(todoSum.done), '를 끝냈습니다.');
     } else {
       parts.push(`${monthDayKo(key)}에는 잡힌 일이 없었습니다.`);
     }
@@ -968,6 +1056,7 @@ export function createTodoPanel({ root, store }) {
       return `${days}일째 밀림`;
     }
     if (kind === 'check') return '오늘 체크 전';
+    if (kind === 'todo') return task.age >= 2 ? `할 일 · ${task.age}일째` : '할 일';
     if (task.priority >= 2) return '긴급';
     if (task.deferCount >= 3) return `${task.deferCount}번 미룸`;
     return '';
@@ -1002,6 +1091,12 @@ export function createTodoPanel({ root, store }) {
     const cur = pickList[pickIdx];
     if (!cur) return;
     pickOpen = false;
+    // 할 일이면 할 일 면으로 가서 그 줄을 짚는다 — 일정이면 상세를 연다
+    if (cur.kind === 'todo') {
+      pendingTodoFocus = cur.task.todoId;
+      openPane('todos');
+      return;
+    }
     store.setEditing(cur.task.id);
   });
 
@@ -1171,7 +1266,10 @@ export function createTodoPanel({ root, store }) {
     syncScreen(editingTask);
     if (editingTask) detail.update(editingTask);
     if (!plan.el.hidden) plan.update();
-    if (!todos.el.hidden) todos.update();
+    if (!todos.el.hidden) {
+      todos.update();
+      if (pendingTodoFocus) { todos.focusTodo(pendingTodoFocus); pendingTodoFocus = null; }
+    }
 
     renderHead(st);
     renderTagBar(st);
@@ -1231,6 +1329,7 @@ export function createTodoPanel({ root, store }) {
     }
 
     renderSection(sections.search, searchResults, searching ? buildSearchEmpty : null);
+    renderSearchTodos(searching ? st.filter.text : '');
     renderSection(sections.overdue, searching ? [] : overdue, null);
     renderSection(sections.inbox, searching ? [] : inboxTasks, null);
 
