@@ -857,7 +857,16 @@ export function pickNow(key = todayKey()) {
     add(t, 'overdue', t.start);
   }
 
-  // 3) 오늘 몫 — 시각이 지난 것부터, 그다음 급한 것부터
+  // 3) 할 일 — 오늘 하려고 손수 적어 둔 몫이라 밀린 일 바로 다음에 권한다. 오래 이어진 것부터.
+  //    시간을 잡아 일정과 묶인 것은 그 일정이 이미 위에서 나왔으니 건너뛴다.
+  //    task 모양으로 감싸 둔다 — 고른 뒤에는 할 일 면으로 가서 그 줄을 짚는다(todoId).
+  for (const td of todosOn(key)
+    .filter((x) => !x.doneHere && !(x.taskId && state.tasks.some((t) => t.id === x.taskId)))
+    .sort((a, b) => b.age - a.age || a.order - b.order)) {
+    add({ id: `todo:${td.id}`, title: td.text, done: false, priority: 0, todoId: td.id, age: td.age }, 'todo', null);
+  }
+
+  // 4) 오늘 몫 — 시각이 지난 것부터, 그다음 급한 것부터
   for (const t of today
     .slice()
     .sort((a, b) => {
@@ -868,7 +877,7 @@ export function pickNow(key = todayKey()) {
     add(t, 'today', t.startTime);
   }
 
-  // 4) 오늘 체크할 것 — 루틴은 짧게 끝나서 '지금 5분' 에 딱 맞는다
+  // 5) 오늘 체크할 것 — 루틴은 짧게 끝나서 '지금 5분' 에 딱 맞는다
   for (const t of routinesOn(key).filter((t) => !t.done)) add(t, 'check', null);
 
   return { list, freeMinutes };
@@ -1684,14 +1693,14 @@ export function addTodos(texts, day = todayKey(), label) {
 }
 
 /**
- * 지우기 ↔ 되살리기. key — 보고 있는 날(그날 지운 것으로 적는다).
+ * 완료 ↔ 완료 취소. key — 보고 있는 날(그날 끝낸 것으로 적는다).
  * 시간을 잡아 만든 일정도 같이 끝낸다 — 둘이 따로 놀면 한쪽은 거짓말이 된다.
  */
 export function toggleTodo(id, key = todayKey()) {
   const t = state.todos.find((x) => x.id === id);
   if (!t) return;
   const nowDone = !(t.done && t.doneOn === key);
-  pushUndo(nowDone ? '할 일 지움' : '할 일 되살림');
+  pushUndo(nowDone ? '할 일 완료' : '할 일 완료 취소');
   t.done = nowDone;
   t.doneOn = nowDone ? key : null;
   const task = t.taskId ? state.tasks.find((x) => x.id === t.taskId) : null;
@@ -1706,14 +1715,14 @@ export function updateTodo(id, text) {
   const t = state.todos.find((x) => x.id === id);
   const clean = cleanTodoText(text);
   if (!t || !clean || clean === t.text) return;
-  pushUndo('할 일 고침', `todo:${id}`);
+  pushUndo('할 일 이름 고치기', `todo:${id}`);
   t.text = clean;
   commit();
 }
 
 export function removeTodo(id) {
   if (!state.todos.some((x) => x.id === id)) return;
-  pushUndo('할 일 빼기');
+  pushUndo('할 일 삭제');
   state.todos = state.todos.filter((x) => x.id !== id);
   commit();
 }
@@ -1722,7 +1731,7 @@ export function removeTodo(id) {
 export function deferTodo(id, key = todayKey()) {
   const t = state.todos.find((x) => x.id === id);
   if (!t || t.done) return;
-  pushUndo('할 일 내일로');
+  pushUndo('할 일 내일로 미루기');
   t.day = addDays(key, 1);
   commit();
 }
@@ -1766,6 +1775,37 @@ export function lastDoneDay(key) {
     .filter((t) => t.done && t.doneOn === day)
     .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
   return { day, items };
+}
+
+/** 할 일 찾기 — 검색이 일정과 함께 보여 준다(가까운 날부터, 스무 개까지) */
+export function searchTodos(text) {
+  const q = String(text || '').trim().toLowerCase();
+  if (!q) return [];
+  const when = (t) => (t.done ? t.doneOn : t.day) || '';
+  return state.todos
+    .filter((t) => t.text.toLowerCase().includes(q))
+    .sort((a, b) => (when(a) < when(b) ? 1 : -1))
+    .slice(0, 20);
+}
+
+/**
+ * 날짜 없는 일(언젠가)을 그날 할 일로 옮긴다 — 일정은 빼고 같은 이름으로 할 일에 적는다(되돌리기 한 번).
+ * 메모 · 링크 · 태그가 붙은 것은 옮기면 그 정보가 사라지므로 받지 않는다(null).
+ */
+export function taskToTodo(id, day = todayKey()) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t || t.repeat || t.start || t.notes || t.link || (t.tags && t.tags.length)) return null;
+  const text = cleanTodoText(t.title);
+  if (!text) return null;
+  pushUndo('할 일로 옮기기');
+  state.tasks = state.tasks.filter((x) => x.id !== id);
+  const todo = {
+    id: cryptoId(), text, day, done: false, doneOn: null,
+    taskId: null, createdAt: Date.now(), order: nextTodoOrder(),
+  };
+  state.todos.push(todo);
+  commit();
+  return todo;
 }
 
 /** 묶인 일정(지워졌으면 null) */

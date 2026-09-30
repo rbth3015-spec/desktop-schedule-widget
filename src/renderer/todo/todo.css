@@ -373,6 +373,47 @@
   background: var(--paper-2);
 }
 .todo-aide[hidden] { display: none; }
+/* 비서의 한 줄 안의 '할 일 4개' — 누르면 할 일 면으로(두 면을 잇는 자리) */
+.todo-aide__link {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted var(--gold);
+  background: transparent;
+  font: inherit;
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+.todo-aide__link:hover { border-bottom-style: solid; }
+
+/* 검색 결과 아래의 할 일 — 체크 · 이름 …… 날짜. 누르면 할 일 면의 그 줄로 */
+.todo-section--searchtodos[hidden] { display: none; }
+.todo-searchtodos { display: flex; flex-direction: column; }
+.todo-searchtodo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.todo-searchtodo:hover { background: var(--paper-2); }
+.todo-searchtodo__mark { flex: none; width: 12px; font-size: 11px; color: var(--gold-deep); text-align: center; }
+.todo-searchtodo__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.todo-searchtodo.is-done .todo-searchtodo__text { color: var(--ink-faint); text-decoration: line-through; }
+.todo-searchtodo__when { flex: none; font-size: 11px; color: var(--ink-faint); }
+
 .todo-aide__text {
   font-family: var(--serif);
   font-weight: 400;

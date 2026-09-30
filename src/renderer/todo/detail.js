@@ -60,7 +60,7 @@ function clock(m) {
   return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
 }
 
-export function createDetail({ store, onPlan, notify }) {
+export function createDetail({ store, onPlan, notify, onOpenTodo }) {
   const el = h('section', 'dt scr');
   el.hidden = true;
   el.setAttribute('aria-label', '항목 상세');
@@ -324,6 +324,13 @@ export function createDetail({ store, onPlan, notify }) {
   });
   linkRow.hint.replaceWith(linkOpen);
 
+  // 할 일에서 시간을 잡아 만든 일정이면 그 할 일 — 누르면 할 일 면의 그 줄로.
+  // 두 면이 묶여 있다는 게 여기서도 보여야 한쪽만 고치고 다른 쪽을 잊지 않는다.
+  let linkedTodo = null;
+  const todoRow = valueRow('할 일', () => { if (linkedTodo) onOpenTodo?.(linkedTodo); });
+  todoRow.val.querySelector('.dt-row__more')?.replaceChildren(icon('chevronRight', 10, 1.4));
+  todoRow.row.hidden = true;
+
   /** 값 칸을 잠깐 입력칸으로 바꾼다. Enter · 바깥 누름이면 저장, Esc 면 취소. */
   function startInline(row, initial, placeholder, onSave) {
     if (row.value.querySelector('input')) return;
@@ -451,6 +458,13 @@ export function createDetail({ store, onPlan, notify }) {
           dailyCheck: !!task.dailyCheck,
         })
       : planLabel(task.plan);
+
+    linkedTodo = store.getState().todos.find((x) => x.taskId === task.id) || null;
+    todoRow.row.hidden = !linkedTodo;
+    if (linkedTodo) {
+      paintValue(todoRow, `${linkedTodo.done ? '✓ ' : ''}${linkedTodo.text}`,
+        linkedTodo.done ? 'var(--ink-faint)' : 'var(--ink)');
+    }
 
     const colorKey = store.COLORS[task.color] ? task.color : 'blue';
     paintValue(colorRow, store.COLOR_LABELS[colorKey], store.COLORS[colorKey]);
