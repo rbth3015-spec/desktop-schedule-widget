@@ -25,7 +25,7 @@ const os = require('os');
 const path = require('path');
 
 const NAME = 'schedule-widget';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const PROTOCOL = '2024-11-05';
 
 // ---------------------------------------------------------------- 자리
@@ -83,7 +83,7 @@ const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 function drop(name, text) {
   const dir = inboxDir();
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${name}-${Date.now()}.${name === 'mcp-goal' ? 'json' : 'txt'}`);
+  const file = path.join(dir, `${name}-${Date.now()}.${name === 'mcp-goal' || name === 'mcp-todo' ? 'json' : 'txt'}`);
   fs.writeFileSync(file, text, 'utf8');
   return file;
 }
@@ -96,10 +96,27 @@ function readData() {
     return {
       tasks: Array.isArray(parsed?.tasks) ? parsed.tasks : [],
       journal: parsed?.journal && typeof parsed.journal === 'object' ? parsed.journal : {},
+      todos: Array.isArray(parsed?.todos) ? parsed.todos : [],
     };
   } catch {
-    return { tasks: [], journal: {} };
+    return { tasks: [], journal: {}, todos: [] };
   }
+}
+
+/**
+ * 그날 보이는 할 일 — 앱(store.todosOn)과 같은 규칙.
+ * 그날까지 적었고, 아직 안 끝났거나 그날 이후에 끝낸 것. 다 못 한 것은 다음 날로 이어진다.
+ */
+function todosOn(key) {
+  const { todos } = readData();
+  return todos
+    .filter((t) => t && t.day && t.text && t.day <= key && (!t.done || (t.doneOn || t.day) >= key))
+    .sort((a, b) => (a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0))
+    .map((t) => {
+      const doneHere = !!t.done && t.doneOn === key;
+      const age = Math.round((fromKey(key) - fromKey(t.day)) / 86400000) + 1;
+      return `${doneHere ? '✓' : '□'}  ${t.text}${!doneHere && age >= 2 ? `  (${age}일째)` : ''}`;
+    });
 }
 
 /**
@@ -185,7 +202,9 @@ const TOOLS = [
       '한 줄 문법: 제목 @시작일 ~종료일 15:00 또는 15:00~16:30 #태그 ! 또는 !! *색',
       '  @오늘 @내일 @모레 @금 @8/15 @2026-08-15  ~3d(시작일+3일) ~8/20',
       '  ! 중요 · !! 긴급 · *파랑 *초록 *노랑 *빨강 *보라 *회색',
+      '  길이: 시작 시각 뒤에 1시간 · 30분 · 1시간반 · 90분 (예: 15:00 1시간 → 15:00–16:00)',
       '날짜를 적지 않으면 오늘로 들어간다. @내일 같은 말은 지금(보낸 날) 기준으로 풀린다.',
+      '시각이 정해지지 않은 "해야 할 일" 은 이 도구가 아니라 add_todo 로 넣는다.',
       '예) "치과 @내일 15:00 #건강 !" · "기획서 마감 @8/15 ~3d *빨강 !!"',
     ].join('\n'),
     inputSchema: {
@@ -207,6 +226,26 @@ const TOOLS = [
       },
       required: ['title'],
     },
+  },
+  {
+    name: 'add_todo',
+    description: [
+      '일정관리 비서의 "할 일" 목록(달력과 따로 가는 그날그날의 체크리스트)에 넣는다.',
+      '시각 없이 오늘 해치울 일 — "할 일에 넣어줘", "투두에 추가해줘" 같은 말이면 이 도구다.',
+      '여러 개면 줄바꿈으로 나눠 한 번에 보낸다. 날짜 · 시각 문법은 읽지 않는다(글 그대로 적힌다).',
+    ].join('\n'),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '할 일. 줄바꿈으로 여러 개' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'list_todos',
+    description: '오늘 할 일 목록을 읽는다(✓ 지운 것 · □ 남은 것 · 며칠째 이어진 것). 읽기 전용.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'list_today',
@@ -242,6 +281,24 @@ function callTool(name, args) {
     const scope = String(args?.scope) === 'month' ? 'month' : 'week';
     drop('mcp-goal', JSON.stringify({ goals: [{ scope, title }] }));
     return `${scope === 'month' ? '이번 달' : '이번 주'} 목표로 넣었습니다 — ${title}`;
+  }
+
+  if (name === 'add_todo') {
+    const items = String(args?.text ?? '').split(/\r?\n/)
+      .map((l) => l.replace(/^\s*(?:[-*•·]|\d+[.)]|\[[ xX]?\])\s*/, '').trim()).filter(Boolean);
+    if (!items.length) return '넣을 할 일이 비어 있습니다.';
+    drop('mcp-todo', JSON.stringify({ todos: items }));
+    return `할 일 ${items.length}개를 받은함에 넣었습니다 — 앱이 켜져 있으면 곧바로 오늘 목록에 들어갑니다.\n`
+      + items.map((l) => `  □ ${l}`).join('\n');
+  }
+
+  if (name === 'list_todos') {
+    const key = todayKey();
+    const list = todosOn(key);
+    const head = `${key} (${WEEKDAY[fromKey(key).getDay()]}) 할 일`;
+    if (!list.length) return `${head} — 적어 둔 것이 없습니다.`;
+    const done = list.filter((l) => l.startsWith('✓')).length;
+    return [`${head} — ${done}/${list.length}`, '', ...list.map((l) => `  ${l}`)].join('\n');
   }
 
   if (name === 'list_today') {

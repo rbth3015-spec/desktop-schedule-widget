@@ -87,8 +87,19 @@ export function whenSummary({ start, end, startTime, endTime, freq, dailyCheck }
 
   // 하루짜리
   if (!startTime) return `${repeatPart}${pretty(start)} · 하루 종일`;
-  if (endTime) return `${repeatPart}${pretty(start)} · ${startTime}–${endTime}`;
+  if (endTime) {
+    const len = timeMinutes(endTime) - timeMinutes(startTime);
+    return `${repeatPart}${pretty(start)} · ${startTime}–${endTime}${len > 0 ? ` · ${lenText(len)}` : ''}`;
+  }
   return `${repeatPart}${pretty(start)} · ${startTime}`;
+}
+
+/** 분 → '1시간 30분' */
+function lenText(m) {
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  if (!hh) return `${mm}분`;
+  return mm ? `${hh}시간 ${mm}분` : `${hh}시간`;
 }
 
 /** 다가오는 토요일 (오늘이 토요일이면 오늘) */
@@ -160,6 +171,8 @@ export function createCompose({ store, onToggle }) {
 
   let routineMode = false;
   let somedayMode = false;
+  // 할 일에서 '시간 잡기' 로 열었으면 그 할 일 — 만들어진 일정과 묶는다
+  let linkTodoId = null;
 
   const head = screenHead('일정 추가', () => close());
 
@@ -191,7 +204,8 @@ export function createCompose({ store, onToggle }) {
   function consumeTokens() {
     const raw = titleIn.value;
     if (!/\s$/.test(raw)) return;          // 띄어쓰기로 끝날 때만 = 토큰이 확정된 순간
-    const parsed = parseQuickInput(raw, todayKey());
+    const parsed = parseQuickInput(raw, todayKey(),
+      routineMode ? {} : { startTime: startTime.get() || undefined });
 
     // 제목에 남은 낱말을 빼면 걷어낸 토큰이 남는다 — 칩에 원문 그대로 적는다
     const left = parsed.title.split(/\s+/).filter(Boolean);
@@ -219,6 +233,10 @@ export function createCompose({ store, onToggle }) {
         startTime.set(parsed.startTime);
         if (parsed.endTime) endTime.set(parsed.endTime);
       }
+      moved = true;
+    } else if (parsed.endTime && !routineMode) {
+      // '1시간' 만 쳤다 — 이미 들어 있는 시작 시각에서 그만큼
+      endTime.set(parsed.endTime);
       moved = true;
     }
     if (parsed.priority > 0 && !routineMode) { prio.set(String(parsed.priority)); moved = true; }
@@ -303,7 +321,7 @@ export function createCompose({ store, onToggle }) {
     },
   });
   startField.setLabel('시작 날짜');
-  const startTime = timeField({ label: '시작 시각 (비우면 종일)', onCommit: () => syncWhen() });
+  const startTime = timeField({ label: '시작 시각 (비우면 종일)', onCommit: (v) => { keepLength(v); syncWhen(); } });
   const endField = dateField({
     onPick: (v) => {
       if (!v) return;
@@ -324,6 +342,40 @@ export function createCompose({ store, onToggle }) {
   const whenGrid = h('div', 'scr-when');
   whenGrid.append(whenBox('시작', startField, startTime), whenBox('종료', endField, endTime));
 
+  // 시작 시각을 옮기면 종료 시각이 같은 길이를 지킨 채 따라온다(날짜의 기간과 같은 규칙).
+  // 14:00–15:30 을 16:00 으로 옮기면 16:00–17:30. 안 그러면 종료가 시작보다 앞서 지워져 버린다.
+  let lastStartTime = '';
+  function keepLength(next) {
+    const before = timeMinutes(lastStartTime);
+    const now = timeMinutes(next);
+    const end = timeMinutes(endTime.get());
+    if (before == null || now == null || end == null) return;
+    if (endField.get() !== startField.get()) return;   // 여러 날 일정의 종료 시각은 그대로 둔다
+    const len = end - before;
+    if (len > 0) endTime.set(hhmm(now + len));
+  }
+
+  // 종료 시각을 30분 · 1시간씩 뒤로 — 누를 때마다 더해진다(1시간 30분이면 '+1시간' '+30분').
+  // 종료가 비어 있으면 시작에서 센다. 시각 칸을 일일이 치지 않아도 된다.
+  const timeSteps = h('span', 'cmp-len__steps');
+  const stepBtns = [[30, '+30분'], [60, '+1시간']].map(([m, label]) => {
+    const b = h('button', 'scr-chip scr-chip--len num', label);
+    b.type = 'button';
+    b.title = '끝나는 시각을 그만큼 뒤로';
+    b.addEventListener('click', () => bumpEnd(m));
+    timeSteps.append(b);
+    return b;
+  });
+  function bumpEnd(m) {
+    const st = timeMinutes(startTime.get());
+    if (st == null) return;
+    const cur = timeMinutes(endTime.get());
+    const sameDay = endField.get() === startField.get();
+    const base = cur != null && (!sameDay || cur > st) ? cur : st;
+    endTime.set(hhmm(base + m));
+    syncWhen();
+  }
+
   // 종료를 시작에서 며칠 뒤로 미는 버튼. '기간 일정'이라는 말을 안 써도
   // 눌러 보면 종료 칸이 따라 바뀌는 게 보이므로 설명이 필요 없다.
   const lenChips = chipGroup(
@@ -339,7 +391,7 @@ export function createCompose({ store, onToggle }) {
   const summary = h('span', 'cmp-len__summary');
   summary.setAttribute('aria-live', 'polite');
   const lenRow = h('div', 'cmp-len');
-  lenRow.append(lenChips.el, h('span', 'cmp-len__rule'), summary);
+  lenRow.append(timeSteps, h('span', 'cmp-len__sep'), lenChips.el, h('span', 'cmp-len__rule'), summary);
 
   // 장기 계획을 언제 체크하나 — 다 끝났을 때 한 번, 아니면 날마다.
   // '이사 준비'는 끝나면 한 번 체크하면 되지만 '기출 5개년 정리'는 오늘 했는지가
@@ -412,6 +464,8 @@ export function createCompose({ store, onToggle }) {
     const st = startTime.get();
     if (!st) endTime.set('');
     endTime.setDisabled(!st);
+    for (const b of stepBtns) b.disabled = !st;
+    lastStartTime = st || '';
 
     // 하루짜리인데 종료 시각이 시작보다 빠르면 비운다 (store 와 같은 규칙)
     if (st && endTime.get() && end === start && endTime.get() <= st) endTime.set('');
@@ -840,6 +894,7 @@ export function createCompose({ store, onToggle }) {
 
     routineMode = !!preset?.routine;
     somedayMode = !!preset?.someday && !routineMode;
+    linkTodoId = preset?.todoId || null;
 
     titleIn.value = preset?.title || '';
     tokenList.replaceChildren();
@@ -915,10 +970,11 @@ export function createCompose({ store, onToggle }) {
     const tags = tagEditor.get();
 
     if (somedayMode) {
-      store.addTask({
+      const task = store.addTask({
         title, start: null, end: null, link, color: pickedColor,
         priority: Number(prio.get()) || 0, tags,
       });
+      if (linkTodoId && task) store.linkTodo(linkTodoId, task.id);
       close();
       return;
     }
@@ -952,7 +1008,7 @@ export function createCompose({ store, onToggle }) {
     const freq = repeat.get();
     const end = freq ? start : (endField.get() || start);
 
-    store.addTask({
+    const task = store.addTask({
       title,
       start,
       end,
@@ -970,6 +1026,7 @@ export function createCompose({ store, onToggle }) {
         : null,
       tags,
     });
+    if (linkTodoId && task) store.linkTodo(linkTodoId, task.id);
 
     // 다른 날짜로 만들었으면 그 날로 따라간다.
     // 안 그러면 방금 만든 일정이 목록에 없어서 '사라졌다'고 느낀다.

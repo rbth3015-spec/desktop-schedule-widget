@@ -4,8 +4,10 @@
 // 3시에 회의가 있다는 걸 읽어도, 그 앞이 비었는지 붙어 있는지는 머리로 계산해야 했다.
 //
 // 두 시안을 모두 두고 사용자가 고른다(핸드오프의 핵심 결정):
-//   - 스트립(기본) : 오전·오후 두 띠에 **글자 없는 네모**. 위치와 길이가 곧 하루의 모양이다.
-//                    이름은 아래 체크 목록이 맡는다. 하나에 두 가지를 시키지 않는다.
+//   - 스트립(기본) : **한 줄짜리 띠**에 글자 없는 네모. 위치와 길이가 곧 하루의 모양이다.
+//                    이름은 바로 아래 목록이 맡는다(시작 · 이름 · 길이). 하나에 두 가지를 시키지 않는다.
+//                    오전 · 오후 두 띠로 크게 그렸더니 일정이 몇 개 없는 날에도 띠가 면의 절반을 먹고
+//                    이름 목록이 화면 밖으로 밀렸다 — '한눈에 안 보인다' 는 지적을 받고 한 줄로 줄였다.
 //   - 압축         : 일정이 있는 시간대만 펼치고 빈 시간은 '3시간 비어 있음' 한 줄로 접는다.
 //
 // 00:00–23:59 를 통째로 세로로 늘어놓던 초기안은 스크롤이 과해 폐기됐다(핸드오프 기록).
@@ -259,14 +261,20 @@ export function createTimetable({ store, onDetail }) {
     return b;
   }
 
-  /** 종일 칩. 시각 없는 일정이 시간 표현 위 같은 틀에 들어온다. */
+  /**
+   * 종일 — 시각 없는 일정이 시간 표현 위 같은 틀에 들어온다.
+   * 한 줄에 하나씩 세운다(체크 · 이름 …… 오른쪽 끝에 기간 · 루틴 정보). 점선 상자를 늘어놓으면
+   * 길이가 제각각이라 눈이 줄을 따라가지 못했다.
+   */
   function renderAllDay(items) {
     allDayBox.replaceChildren();
     for (const item of items) {
       const chip = h('span', 'tt-allday__chip');
       chip.style.setProperty('--item', item.color);
       chip.classList.toggle('is-done', !!item.done);
-      chip.append(checkbox(item), h('span', 'tt-allday__title', item.title || '(제목 없음)'));
+      chip.append(checkbox(item), h('span', 'tt-allday__cap'),
+                  h('span', 'tt-allday__title', item.title || '(제목 없음)'));
+      if (item.priority >= 1) chip.append(h('span', 'tt-allday__bang num', item.priority >= 2 ? '!!' : '!'));
       if (item.meta) chip.append(h('span', 'tt-allday__meta num', item.meta));
       chip.title = item.tip || item.title;
       chip.addEventListener('click', () => onDetail?.(item.id, item.occDate));
@@ -278,82 +286,78 @@ export function createTimetable({ store, onDetail }) {
   }
 
   /**
-   * 스트립 — 오전·오후 두 띠.
+   * 스트립 — 하루를 한 줄 띠로, 그 아래에 이름 목록.
    *
-   * 핸드오프의 기본 띠는 08:00–14:00 / 14:00–21:30 이지만, 그 밖의 시각에 일정이 있으면
-   * 그 일정이 화면에서 통째로 사라진다. 기본 모양은 지키되 **자료가 넘치면 띠를 넓힌다**.
+   * 띠는 08:00–22:00 이 기본이고, 그 밖의 시각에 일정이 있으면 **자료에 맞춰 넓힌다**
+   * (안 그러면 그 일정이 화면에서 통째로 사라진다). 목록은 시작 시각 · 이름 · 길이를 한 줄에 둔다.
    */
   function renderStrip(items, now) {
     const first = items.length ? Math.min(...items.map((t) => t.start)) : 480;
-    const last = items.length ? Math.max(...items.map((t) => t.end)) : 1290;
-    const lanes = [
-      { name: '오전', s: Math.min(480, first - (first % 60)), e: 840 },
-      { name: '오후', s: 840, e: Math.max(1290, last + (60 - (last % 60)) % 60) },
-    ];
+    const last = items.length ? Math.max(...items.map((t) => t.end)) : 1320;
+    const from = Math.min(480, first - (first % 60));
+    const to = Math.max(1320, last + ((60 - (last % 60)) % 60));
+    const span = to - from;
+    const pct = (m) => (((m - from) / span) * 100).toFixed(2);
 
     const wrap = h('div', 'tt-strip');
-    for (const lane of lanes) {
-      const span = lane.e - lane.s;
-      const pct = (m) => (((m - lane.s) / span) * 100).toFixed(2);
+    const band = h('div', 'tt-strip__band');
+    band.append(h('span', 'tt__key'));
 
-      const row = h('div', 'tt-strip__lane');
-      row.append(h('span', 'tt__key', lane.name));
+    const canvas = h('span', 'tt-strip__canvas');
+    // 눈금은 두 시간마다 — 띠가 넓어져 빽빽해지면 네 시간마다
+    const step = span > 16 * 60 ? 240 : 120;
+    for (let m = from; m < to; m += step) {
+      const tick = h('span', 'tt-strip__tick');
+      tick.style.left = `${pct(m)}%`;
+      const label = h('span', 'tt-strip__ticklabel num', fmt(m));
+      label.style.left = `${pct(m)}%`;
+      canvas.append(tick, label);
+    }
+    canvas.append(h('span', 'tt-strip__base'));
 
-      const canvas = h('span', 'tt-strip__canvas');
-      for (let m = lane.s; m <= lane.e - 60; m += 120) {
-        const tick = h('span', 'tt-strip__tick');
-        tick.style.left = `${pct(m)}%`;
-        const label = h('span', 'tt-strip__ticklabel num', fmt(m));
-        label.style.left = `${pct(m)}%`;
-        canvas.append(tick, label);
-      }
-      canvas.append(h('span', 'tt-strip__base'));
-
-      for (const item of items) {
-        if (item.start >= lane.e || item.end <= lane.s) continue;
-        const from = Math.max(item.start, lane.s);
-        const to = Math.min(item.end, lane.e);
-        const bar = h('span', 'tt-strip__bar');
-        bar.style.left = `${pct(from)}%`;
-        bar.style.width = `${(((to - from) / span) * 100).toFixed(2)}%`;
-        bar.style.setProperty('--item', item.color);
-        bar.classList.toggle('is-past', item.end <= now);
-        // 글자가 없으므로 툴팁이 이름을 맡는다
-        bar.title = `${item.title} · ${fmt(item.start)}–${fmt(item.end)}`;
-        bar.addEventListener('click', () => openPeek(item));
-        canvas.append(bar);
-      }
-
-      if (now >= lane.s && now < lane.e) {
-        const mark = h('span', 'tt-strip__now');
-        mark.style.left = `${pct(now)}%`;
-        // 띠 끝 가까이에서는 라벨을 선의 왼쪽으로 — 오른쪽으로 두면 면 밖으로 잘린다
-        mark.classList.toggle('is-end', (now - lane.s) / span > 0.8);
-        mark.append(h('span', 'tt-strip__nowdot'),
-                    h('span', 'tt-strip__nowlabel num', `지금 ${fmt(now)}`));
-        canvas.append(mark);
-      }
-
-      row.append(canvas);
-      wrap.append(row);
+    for (const item of items) {
+      const bar = h('span', 'tt-strip__bar');
+      bar.style.left = `${pct(item.start)}%`;
+      bar.style.width = `${(((item.end - item.start) / span) * 100).toFixed(2)}%`;
+      bar.style.setProperty('--item', item.color);
+      bar.classList.toggle('is-past', item.end <= now);
+      // 글자가 없으므로 툴팁이 이름을 맡는다
+      bar.title = `${item.title} · ${fmt(item.start)}–${fmt(item.end)}`;
+      bar.addEventListener('click', () => openPeek(item));
+      canvas.append(bar);
     }
 
-    // 이름은 이 목록이 맡는다
+    if (now >= from && now < to) {
+      const mark = h('span', 'tt-strip__now');
+      mark.style.left = `${pct(now)}%`;
+      // 띠 끝 가까이에서는 라벨을 선의 왼쪽으로 — 오른쪽으로 두면 면 밖으로 잘린다
+      mark.classList.toggle('is-end', (now - from) / span > 0.8);
+      mark.append(h('span', 'tt-strip__nowdot'),
+                  h('span', 'tt-strip__nowlabel num', `지금 ${fmt(now)}`));
+      canvas.append(mark);
+    }
+    band.append(canvas);
+    wrap.append(band);
+
+    // 이름은 이 목록이 맡는다 — 시작 시각은 왼쪽 칸('종일' 과 같은 자리), 길이는 오른쪽 끝
     const list = h('div', 'tt-strip__list');
     for (const item of items) {
-      const line = h('span', 'tt-strip__item');
+      const line = h('div', 'tt-strip__item');
       line.classList.toggle('is-past', item.end <= now);
-      line.append(
-        checkbox(item),
-        h('span', 'tt-strip__at num', fmt(item.start)),
-        capOf(item),
-        h('span', 'tt-strip__name', item.title || '(제목 없음)'),
-      );
+      line.classList.toggle('is-done', !!item.done);
+      const body = h('span', 'tt-strip__line');
+      body.append(checkbox(item), capOf(item), h('span', 'tt-strip__name', item.title || '(제목 없음)'));
+      if (item.priority >= 1) body.append(h('span', 'tt-strip__bang num', item.priority >= 2 ? '!!' : '!'));
       if (item.routine) {
         const r = h('span', 'tt-strip__routine', '↻');
         r.title = '루틴';
-        line.append(r);
+        body.append(r);
       }
+      const len = h('span', 'tt-strip__len num', dur(item.end - item.start));
+      len.title = `${fmt(item.start)}–${fmt(item.end)}`;
+      body.append(len);
+      line.append(h('span', 'tt-strip__at num', fmt(item.start)), body);
+      line.title = `${item.title || '(제목 없음)'} · ${fmt(item.start)}–${fmt(item.end)}`;
       line.addEventListener('click', () => openPeek(item));
       dragSource(line, item);
       list.append(line);

@@ -14,6 +14,7 @@
   --cal-bar-h: 19px;
   --cal-bar-gap: 2px;
   --cal-dots-h: 14px;    /* 아래 색점 줄이 차지하는 높이 */
+  --cal-item-h: 15px;    /* 하루짜리 일정 이름 한 줄의 높이 */
   --cal-on-color: var(--on-color);
 
   container-type: inline-size;
@@ -510,6 +511,51 @@
   outline-offset: -1px;
 }
 
+/* 하루짜리 일정 — 막대 아래 남는 자리에 한 줄씩. 점 · (시각) · 이름. 상자를 두르지 않아
+   기간 막대와 한눈에 갈린다. 항목 색은 --item 으로 받는다(점에만 칠한다). */
+.cal-item {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 2px;
+  border-radius: 1px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.cal-item:hover { color: var(--ink); background: color-mix(in srgb, var(--item) 10%, transparent); }
+.cal-item__dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--item);
+}
+.cal-item__at {
+  flex: none;
+  font-family: var(--num);
+  font-size: 9.5px;
+  letter-spacing: .01em;
+  color: var(--ink-faint);
+  font-feature-settings: 'tnum';
+}
+.cal-item__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cal-item--done { color: var(--ink-faint); }
+.cal-item--done .cal-item__t { text-decoration: line-through; }
+.cal-item--done .cal-item__dot { opacity: .5; }
+/* 걸어 둔 테마 밖이면 막대와 같이 한 걸음 물러난다 */
+.cal-item--off { opacity: .22; }
+.cal-item--editing { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* 칸을 끌어 기간을 잡거나 목록을 끌어 놓는 동안에는 이름 줄이 마우스를 가리지 않는다 */
+.cal-grid--ranging .cal-item,
+.cal-grid--dnd .cal-item { pointer-events: none; }
+
 .cal-more {
   position: absolute;
   display: flex;
@@ -590,6 +636,7 @@
   --cal-bar-h: 16px;
   --cal-bar-gap: 2px;
   --cal-dots-h: 8px;
+  --cal-item-h: 14px;
 }
 .cal-grid--compact .cal-day { padding-top: 6px; }
 .cal-grid--compact .cal-day__num { font-size: 16px; }

@@ -40,6 +40,7 @@ const els = {
   btnClose: $('#btn-close'),
   year: document.getElementById('titlebar-year'),
   tabMain: document.getElementById('tab-main'),
+  tabTodos: document.getElementById('tab-todos'),
   tabPlan: document.getElementById('tab-plan'),
   tabSettings: document.getElementById('tab-settings'),
 };
@@ -473,12 +474,14 @@ const HELP = [
     ['목표를 요일 · 날짜 칸으로 끌기', '그날로 잡기'],
     ['일정을 D-Day 칸으로 끌기', 'D-Day 고정'],
     ['제목 더블클릭', '이름만 고치기'],
+    ['할 일 줄 누르기 · 끌기', '지우기(줄 긋기) · 순서 바꾸기'],
+    ['여러 줄 붙여 넣기(할 일)', '줄마다 하나씩'],
     ['우클릭', '그 자리에서 할 수 있는 일'],
     ['제본선 두 번 누르기', '오른쪽 면 원래 폭'],
     ['두 손가락 좌우', '달 넘기기'],
   ]],
   ['단축키', [
-    ['N', '새 일정 · 계획에서는 새 목표'],
+    ['N', '새 일정 · 할 일에서는 적는 줄 · 계획에서는 새 목표'],
     ['Ctrl + Z / Ctrl + Shift + Z', '되돌리기 / 다시 실행'],
     ['Ctrl + ,', '설정'],
     ['← → / ↑ ↓', '하루 / 일주일'],
@@ -495,6 +498,7 @@ const HELP = [
     ['~3d  ~8/20', '종료일'],
     ['15:00  14시  오후3시', '시각'],
     ['15:00~18:00', '시작 · 종료 시각'],
+    ['15:00 1시간  오후2시 30분', '시작 시각 + 길이'],
     ['*파랑 *초록 *노랑 *빨강 *보라 *회색', '색'],
   ]],
 ];
@@ -608,7 +612,13 @@ function takeInbox(payload) {
     if (store.addGoal(scope, { title })) goals++;
   }
 
-  const n = added + goals;
+  // 할 일 — {"todos":["견적서 검토", ...]}. 쓴 날의 목록에 들어간다.
+  const todoTexts = (payload.todos || []).map((x) => String(x ?? '').trim()).filter(Boolean);
+  const todos = todoTexts.length
+    ? store.addTodos(todoTexts, base, `받은함 할 일 ${todoTexts.length}개`)
+    : 0;
+
+  const n = added + goals + todos;
   if (n) showToast(`밖에서 ${n}건이 들어왔습니다`, { undo: true });
 }
 
@@ -718,25 +728,26 @@ function checkDayChange() {
 
 // ---------------------------------------------------------------- 책갈피 탭
 //
-// 오른쪽 면 바깥에 붙어 면을 갈아 끼운다(시안) — 하루 · 계획 · 설정.
-// 이름은 그 면이 하는 일이다: '하루' 는 고른 날의 시간표와 할 일(오늘만이 아니다),
-// '계획' 은 주 · 달 단위로 짜고 돌아보는 자리.
+// 오른쪽 면 바깥에 붙어 면을 갈아 끼운다(시안) — 하루 · 할 일 · 계획 · 설정.
+// 이름은 그 면이 하는 일이다: '하루' 는 고른 날의 시간표(오늘만이 아니다),
+// '할 일' 은 달력과 따로 적고 지워 나가는 체크리스트, '계획' 은 주 · 달 단위로 짜고 돌아보는 자리.
 // 탭 하나가 면 하나다. 같은 면을 여는 단추를 다른 곳에 또 두지 않는다
 // (설정 톱니 · 루틴 탭 · 브리핑 탭은 걷었다. 브리핑은 표지의 해돋이가 연다).
 // 상세 · 추가 화면은 그 면 안의 한 장이라 탭은 그 면을 켠 채로 둔다.
 
-let tabNow = 'main';   // 'main' | 'plan' — 오른쪽 면이 알려 준다(app:screen)
+let tabNow = 'main';   // 'main' | 'todos' | 'plan' — 오른쪽 면이 알려 준다(app:screen)
 
 function paintTabs() {
   const settingsOpen = !els.settings.hidden;
   els.tabMain?.classList.toggle('is-on', !settingsOpen && tabNow === 'main');
+  els.tabTodos?.classList.toggle('is-on', !settingsOpen && tabNow === 'todos');
   els.tabPlan?.classList.toggle('is-on', !settingsOpen && tabNow === 'plan');
   els.tabSettings?.classList.toggle('is-on', settingsOpen);
 }
 
 function goTab(name) {
   if (!els.settings.hidden) toggleSettings();
-  document.dispatchEvent(new CustomEvent(name === 'plan' ? 'app:plan' : 'app:today'));
+  document.dispatchEvent(new CustomEvent({ plan: 'app:plan', todos: 'app:todos' }[name] || 'app:today'));
 }
 
 function wireTabs() {
@@ -746,6 +757,7 @@ function wireTabs() {
   });
 
   els.tabMain?.addEventListener('click', () => goTab('main'));
+  els.tabTodos?.addEventListener('click', () => goTab('todos'));
   els.tabPlan?.addEventListener('click', () => goTab('plan'));
   els.tabSettings?.addEventListener('click', () => {
     if (els.settings.hidden) toggleSettings();
@@ -918,6 +930,22 @@ function showBrief() {
       block.append(modalItem(t.startTime || '종일', t.title || '(제목 없음)', openTask(t)));
     }
     if (todays.length > 4) block.append(modalItem('', `외 ${todays.length - 4}건`));
+    blocks.append(block);
+  }
+
+  // --- 할 일 — 오늘 목록에 남은 것(전날에서 이어진 것엔 '2일째'). 누르면 할 일 면으로.
+  const todoLeft = store.todosOn(today).filter((t) => !t.doneHere);
+  if (todoLeft.length) {
+    const block = modalBlock('할 일', todoLeft.length);
+    const openTodos = () => {
+      store.selectDate(today);
+      closeBrief();
+      goTab('todos');
+    };
+    for (const t of todoLeft.slice(0, 3)) {
+      block.append(modalItem(t.age >= 2 ? `${t.age}일째` : '', t.text, openTodos));
+    }
+    if (todoLeft.length > 3) block.append(modalItem('', `외 ${todoLeft.length - 3}개`, openTodos));
     blocks.append(block);
   }
 
@@ -1481,7 +1509,7 @@ function wireShortcuts() {
         document.dispatchEvent(new CustomEvent('app:close-compose'));
         return;
       }
-      if (tabNow === 'plan') { goTab('main'); return; }
+      if (tabNow === 'plan' || tabNow === 'todos') { goTab('main'); return; }
     }
     if (e.ctrlKey && e.key === ',') { toggleSettings(); e.preventDefault(); }
     if (e.key === '?' || (e.key === '/' && e.shiftKey)) { toggleHelp(); e.preventDefault(); return; }

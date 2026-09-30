@@ -135,6 +135,7 @@ function loadData() {
     reminderLog: Array.isArray(parsed.reminderLog) ? parsed.reminderLog : [],
     journal: parsed.journal && typeof parsed.journal === 'object' ? parsed.journal : {},
     retro: parsed.retro && typeof parsed.retro === 'object' ? parsed.retro : {},
+    todos: Array.isArray(parsed.todos) ? parsed.todos : [],
     settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
   };
 }
@@ -166,6 +167,7 @@ function saveData(data) {
     reminderLog: Array.isArray(data.reminderLog) ? data.reminderLog : [],
     journal: data.journal && typeof data.journal === 'object' ? data.journal : {},
     retro: data.retro && typeof data.retro === 'object' ? data.retro : {},
+    todos: Array.isArray(data.todos) ? data.todos : [],
     settings: data.settings || {},
   };
 

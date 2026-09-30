@@ -42,7 +42,12 @@ Electron 데스크톱 위젯. **빌드 스텝 없음.** 렌더러는 순수 ES �
 디스크 저장 형태:
 `{ "version": 1, "tasks": Task[], "launcher": [...], "reminderLog": [...],
    "journal": { "YYYY-MM-DD": "한 줄" },
-   "retro": { "w:YYYY-MM-DD" | "m:YYYY-MM": "한 문단" }, "settings": {...} }`
+   "retro": { "w:YYYY-MM-DD" | "m:YYYY-MM": "한 문단" },
+   "todos": [{ id, text, day, done, doneOn, taskId, createdAt, order }], "settings": {...} }`
+
+할 일(`todos`) — 달력과 따로 가는 그날그날의 체크리스트. `day` 는 적은 날(그날부터 보인다),
+`doneOn` 은 지운 날, `taskId` 는 '시간 잡기' 로 만든 일정. 그날 보이는 것은
+`day ≤ 그날 && (!done || doneOn ≥ 그날)` — 다 못 한 것은 다음 날로 그대로 이어진다.
 
 > ⚠️ `storage.saveData` 는 렌더러가 보낸 객체를 그대로 쓰지 않고 **필드를 골라 다시 조립**합니다.
 > store 에 새 영속 필드를 더하면 `src/main/storage.js` 의 `payload` 와 `loadData` 반환값에도
@@ -116,7 +121,7 @@ window.api = {
   // 받은함 — 바깥에서 들어온 일정. 메인이 파일을 읽어 모양만 보고 넘기면 해석은 렌더러가 한다.
   inbox: {
     ready(): void,                                  // 부팅 직후 한 번 — 쌓인 것을 받는다
-    onItems(cb: (p: {source, written, lines, tasks, goals}) => void): void,  // written: 파일을 쓴 날('@내일' 의 기준)
+    onItems(cb: (p: {source, written, lines, tasks, goals, todos}) => void): void,  // written: 파일을 쓴 날('@내일' 의 기준)
     open(): Promise<string>,                        // 받은함 폴더 열기
   },
 
@@ -152,6 +157,8 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
     `store.planGoals(scope)`, `store.weekScope(key)`, `store.monthScope(key)`,
     `store.monthReport(ym)`, `store.journalOn(key)`, `store.recentJournal(before, limit)`,
     `store.journalBetween(from, to)`, `store.retroOn(scope)`,
+    `store.todosOn(key)` (그날의 할 일 + doneHere · age), `store.todoSummary(key)`,
+    `store.lastDoneDay(key)` ('어제 한 일'), `store.todoTask(todo)` (묶인 일정),
     `store.tagSummary()`, `store.matchesTag(task)` (테마 — 달력은 걷어내는 대신 흐리게),
     `store.COLORS`, `store.PRIORITY_LABELS`
   - 쓰기: `store.addTask()`, `store.updateTask()`, `store.toggleDone()`, `store.removeTask()`,
@@ -160,6 +167,10 @@ export function createTodoPanel({ root, store }) { return { destroy() {} }; }
     `store.addGoal(scope, patch)`, `store.moveGoals(ids, scope, label)` (주 · 달 목표),
     `store.setJournal(key, text)` (하루 한 줄), `store.setRetro(scope, text)` (돌아보기),
     `store.addTasks(patches, label)` (받은함 등 — 되돌리기 한 번),
+    `store.addTodo(text, day)`, `store.addTodos(texts, day, label)`, `store.toggleTodo(id, key)`
+    (묶인 일정도 같이 끝낸다 — 반대로 `toggleDone` 도 묶인 할 일을 지운다), `store.updateTodo()`,
+    `store.removeTodo()`, `store.deferTodo(id, key)` (내일로), `store.moveTodo(id, beforeId)`,
+    `store.linkTodo(id, taskId)` (되돌리기를 따로 쌓지 않는다 — 바로 앞의 '일정 추가' 가 함께 되돌린다),
     `store.setWeather(data)` (셸만 부른다),
     `store.selectDate()`, `store.setAnchorMonth()`,
     `store.setFilter()`, `store.setEditing()`, `store.setSetting()`

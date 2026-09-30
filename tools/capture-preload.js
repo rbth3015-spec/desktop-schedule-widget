@@ -81,6 +81,19 @@ const SAMPLE = {
   retro: {
     [`w:${weekDay(-1)}`]: '몰아치던 한 주. 보고서는 끝냈고 운동은 두 번 빠졌다. 다음 주엔 오전에 하자.',
   },
+  // 할 일 — 달력과 따로 가는 체크리스트. 하나는 사흘째 이어지고, 하나는 시간을 잡아 일정(디자인 리뷰)과
+  // 묶였고, 둘은 오늘 지웠다. 어제 지운 셋은 '어제 한 일' 에 모인다.
+  todos: [
+    { id: 'd1', text: '견적서 검토 후 회신', day: day(-2), done: false, order: 1 },
+    { id: 'd2', text: '팀장님 메일 회신', day: day(0), done: true, doneOn: day(0), order: 2 },
+    { id: 'd3', text: '디자인 리뷰 자료 준비', day: day(0), done: false, taskId: 't2', order: 3 },
+    { id: 'd4', text: '출장비 정산', day: day(0), done: true, doneOn: day(0), order: 4 },
+    { id: 'd5', text: '계약서 스캔해서 올리기', day: day(-1), done: false, order: 5 },
+    { id: 'd6', text: '노트북 업데이트', day: day(0), done: false, order: 6 },
+    { id: 'y1', text: '주간 보고서 초안', day: day(-1), done: true, doneOn: day(-1), order: 7 },
+    { id: 'y2', text: '거래처 미팅 준비', day: day(-2), done: true, doneOn: day(-1), order: 8 },
+    { id: 'y3', text: '예산안 숫자 맞추기', day: day(-1), done: true, doneOn: day(-1), order: 9 },
+  ],
   reminderLog: [
     { id: 'r1', taskId: 't1', title: '아침 스탠드업 회의', at: Date.now() - 42 * 60000 },
     { id: 'r2', taskId: 's4', title: '월간 보고서 마감', at: Date.now() - 5 * 3600000 },
@@ -134,6 +147,7 @@ const SAMPLE = {
 // --empty 로 '방금 설치한 상태'(일정 0건)를 찍을 수 있다
 if (process.env.CAPTURE_EMPTY === '1') {
   SAMPLE.tasks = [];
+  SAMPLE.todos = [];
   SAMPLE.reminderLog = [];
 }
 
