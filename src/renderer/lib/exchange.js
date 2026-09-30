@@ -17,6 +17,7 @@ export function toBackupJSON(state) {
     launcher: state.launcher,
     journal: state.journal,
     retro: state.retro,
+    todos: state.todos,
     settings: state.settings,
   }, null, 2);
 }

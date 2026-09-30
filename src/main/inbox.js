@@ -8,7 +8,8 @@
 // 무엇이 들어오나
 //   .txt / .md  한 줄에 하나. 앱의 한 줄 문법 그대로 — '치과 @내일 15:00 #건강 !'
 //   .json       { "tasks": [ {title, start, ...} ] } | { "lines": ["치과 @내일 15:00"] }
-//               | { "goals": [ {scope:'week'|'month', title} ] } | 위 셋을 섞어 하나로
+//               | { "goals": [ {scope:'week'|'month', title} ] } | { "todos": ["보고서 초안"] }
+//               | 위 넷을 섞어 하나로
 //
 // 어디에 있나 — %USERPROFILE%\.schedule-widget\inbox (AppData 밖)
 //   Microsoft Store 판 앱(Claude 데스크톱 등)이 띄운 프로그램이 AppData 에 **새 파일**을 만들면
@@ -47,6 +48,7 @@ const README = [
   '  일정.json     { "tasks": [ { "title": "치과", "start": "2026-09-24", "startTime": "15:00" } ] }',
   '                { "lines": [ "치과 @내일 15:00" ] }',
   '                { "goals": [ { "scope": "week", "title": "보고서 초안" } ] }',
+  '                { "todos": [ "견적서 검토", "메일 회신" ] }        ← 할 일 목록에',
   '',
   '읽은 파일은 done/ 으로 옮깁니다. 앱이 꺼져 있으면 다음에 켤 때 들어옵니다.',
   '',
@@ -133,12 +135,17 @@ function parseFile(file) {
     const goals = Array.isArray(data.goals)
       ? data.goals.filter((g) => g && typeof g === 'object').slice(0, MAX_ITEMS)
       : [];
-    if (!tasks.length && !lines.length && !goals.length) return null;
-    return { source, written, tasks, lines, goals };
+    // 할 일 — 글 한 줄씩(또는 {text})
+    const todos = Array.isArray(data.todos)
+      ? data.todos.map((x) => (typeof x === 'string' ? x : x?.text)).filter((x) => typeof x === 'string' && x.trim())
+        .map((x) => x.trim()).slice(0, MAX_ITEMS)
+      : [];
+    if (!tasks.length && !lines.length && !goals.length && !todos.length) return null;
+    return { source, written, tasks, lines, goals, todos };
   }
 
   const lines = readLines(text);
-  return lines.length ? { source, written, tasks: [], lines, goals: [] } : null;
+  return lines.length ? { source, written, tasks: [], lines, goals: [], todos: [] } : null;
 }
 
 /** 읽은 파일을 done/ 으로 옮기고 오래된 것은 지운다 */

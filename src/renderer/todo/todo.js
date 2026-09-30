@@ -4,6 +4,7 @@
 //
 // 오른쪽 면은 시안(핸드오프)의 화면을 갈아 끼운다 — 한 번에 하나만 보인다.
 //   하루      날짜 머리 · 비서의 한 줄 · 지난 일 · 시간표(종일 띠 + 스트립/압축) · 언젠가 · 한 줄 기록
+//   할 일     todos.js — 그날그날 적고 지워 나가는 체크리스트 (책갈피 '할 일')
 //   계획      plan.js — 주 · 달 목표 (책갈피 '계획')
 //   일정 추가  compose.js (일정 · 루틴)
 //   항목 상세  detail.js
@@ -23,6 +24,7 @@ import { createCompose } from './compose.js';
 import { createTimetable } from './timetable.js';
 import { createDetail } from './detail.js';
 import { createPlan } from './plan.js';
+import { createTodos } from './todos.js';
 import { showContextMenu } from '../lib/menu.js';
 import { h, setValueSafe, shortDate, openLink, linkLabel } from './ui.js';
 
@@ -303,17 +305,41 @@ export function createTodoPanel({ root, store }) {
   const compose = createCompose({ store, onToggle: () => scheduleRender() });
   const detail = createDetail({ store, onPlan: planFor, notify });
 
+  // 책갈피가 고른 면 — 'main'(하루) · 'todos'(할 일) · 'plan'(계획)
+  let pane = 'main';
+
   // 계획 — 주 · 달 목표. 요일 줄을 누르면 그날의 하루 화면으로 내려간다.
-  let planOpen = false;
   const plan = createPlan({
     store,
     notify,
     onDetail: (id) => store.setEditing(id),
     onOpenDay: (key) => {
-      planOpen = false;
+      pane = 'main';
       store.selectDate(key);
     },
   });
+
+  // 할 일 — 달력과 따로 가는 그날그날의 체크리스트. 시간을 잡으면 일정이 되어 서로 묶인다.
+  const todos = createTodos({
+    store,
+    notify,
+    onDetail: (id) => store.setEditing(id),
+    onSchedule: (td, key) => scheduleTodo(td, key),
+  });
+
+  /**
+   * 할 일에 시간을 잡는다 — 추가 화면을 그 이름 · 그날로 채워 열고, 만들어지면 할 일과 묶는다.
+   * 오늘이면 다음 30분 칸부터, 다른 날이면 9시부터 한 시간을 미리 잡아 둔다(추가 화면에서 바꾼다).
+   */
+  function scheduleTodo(td, key) {
+    let startTime = '09:00';
+    if (key === todayKey()) {
+      const next = Math.ceil((nowMinutes() + 1) / 30) * 30;
+      startTime = next <= 22 * 60 ? hhmm(next) : '';
+    }
+    store.setEditing(null);
+    compose.open({ title: td.text, start: key, startTime: startTime || undefined, todoId: td.id });
+  }
 
   // 오늘 시간표 — 하루의 '모양' 을 맡는다.
   // 목록은 무엇이 있는지는 알려 줘도, 그 앞이 비었는지 붙어 있는지는 말해 주지 않았다.
@@ -340,7 +366,7 @@ export function createTodoPanel({ root, store }) {
 
   body.append(sections.search.el, sections.overdue.el, timetable.el, sections.inbox.el, jrn.el);
   main.append(head, searchRow, tagBar, aide, pick, hint, body);
-  el.append(main, plan.el, compose.el, detail.el);
+  el.append(main, todos.el, plan.el, compose.el, detail.el);
   root.append(el);
 
   addBtn.addEventListener('click', () => {
@@ -354,21 +380,18 @@ export function createTodoPanel({ root, store }) {
 
   // 책갈피 탭 · 표지 버튼이 부르는 것들. 탭은 화면을 새로 만들지 않고 이미 있는 입구를 연다.
   document.addEventListener('app:close-compose', () => compose.close());
-  // 책갈피 '하루' · '계획' — 떠 있던 추가 · 상세 화면은 걷고 그 면으로
-  document.addEventListener('app:today', () => {
-    planOpen = false;
+  // 책갈피 '하루' · '할 일' · '계획' — 떠 있던 추가 · 상세 화면은 걷고 그 면으로
+  const openPane = (name) => {
+    pane = name;
     compose.close();
     store.setEditing(null);
     scheduleRender();
-  });
-  document.addEventListener('app:plan', () => {
-    planOpen = true;
-    compose.close();
-    store.setEditing(null);
-    scheduleRender();
-  });
+  };
+  document.addEventListener('app:today', () => openPane('main'));
+  document.addEventListener('app:todos', () => openPane('todos'));
+  document.addEventListener('app:plan', () => openPane('plan'));
   document.addEventListener('app:search', () => {
-    planOpen = false;
+    pane = 'main';
     compose.close();
     store.setEditing(null);
     if (searchRow.hidden) openSearch();
@@ -382,6 +405,7 @@ export function createTodoPanel({ root, store }) {
     if (root.classList.contains('is-settings')) return;
     if (document.querySelector('.modal-scrim, .tt-peek:not([hidden])')) return;
     if (!plan.el.hidden) { e.preventDefault(); plan.focusAdd(); return; }
+    if (!todos.el.hidden) { e.preventDefault(); todos.focusAdd(); return; }
     if (main.hidden) return;
     e.preventDefault();
     compose.open();
@@ -1088,16 +1112,17 @@ export function createTodoPanel({ root, store }) {
    * 책갈피 탭이 따라가도록 바뀔 때마다 알린다.
    */
   function syncScreen(editingTask) {
-    let screen = planOpen ? 'plan' : 'main';
+    let screen = pane;
     if (compose.isOpen()) screen = compose.mode();
     else if (editingTask) screen = 'detail';
-    const tab = planOpen ? 'plan' : 'main';
+    const tab = pane;
 
     main.hidden = screen !== 'main';
+    todos.el.hidden = screen !== 'todos';
     plan.el.hidden = screen !== 'plan';
     detail.el.hidden = screen !== 'detail';
     // 뒤로 가는 단추는 돌아갈 면의 이름을 단다
-    const back = tab === 'plan' ? '‹ 계획' : '‹ 하루';
+    const back = { plan: '‹ 계획', todos: '‹ 할 일' }[tab] || '‹ 하루';
     detail.setBack(back);
     compose.setBack(back);
     // 계획 화면에서 주를 짜는 동안 달력이 그 주를 금박 테두리로 짚는다
@@ -1109,6 +1134,8 @@ export function createTodoPanel({ root, store }) {
       el.scrollTop = 0;
       if (lastScreen.startsWith('detail')) detail.flush();
       if (lastScreen.startsWith('plan')) plan.flush();
+      // 할 일 면에 들어왔는데 목록이 비었으면 바로 적을 수 있게
+      if (screen === 'todos') requestAnimationFrame(() => todos.focusIfEmpty());
       lastScreen = sig;
       document.dispatchEvent(new CustomEvent('app:screen', { detail: { screen, tab } }));
     }
@@ -1144,6 +1171,7 @@ export function createTodoPanel({ root, store }) {
     syncScreen(editingTask);
     if (editingTask) detail.update(editingTask);
     if (!plan.el.hidden) plan.update();
+    if (!todos.el.hidden) todos.update();
 
     renderHead(st);
     renderTagBar(st);

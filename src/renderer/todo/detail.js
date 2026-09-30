@@ -7,7 +7,7 @@
 // 값 줄은 '보이는 값' 이 전부다. 누르면 그 자리에서 고른다(메뉴 · 칩 · 입력칸).
 // 같은 값을 두 번 두지 않는다 — 보이는 그 글자를 바로 고친다.
 
-import { addDays, fromKey, weekGrid } from '../lib/date.js';
+import { addDays, fromKey, weekGrid, timeMinutes } from '../lib/date.js';
 import { remindLabel } from '../reminders.js';
 import { showContextMenu } from '../lib/menu.js';
 import { icon } from '../lib/icons.js';
@@ -54,6 +54,12 @@ const REPEAT_CHOICES = [
  * @param {{store: object, onPlan: (task:object)=>void, notify: (text:string)=>void}} deps
  * @returns {{el: HTMLElement, update: (task:object)=>void, flush: ()=>void}}
  */
+/** 분 → 'HH:MM' (자정을 넘기면 23:59 에서 멈춘다 — 끝이 시작보다 앞서면 안 된다) */
+function clock(m) {
+  const v = Math.min(Math.max(0, m), 23 * 60 + 59);
+  return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+}
+
 export function createDetail({ store, onPlan, notify }) {
   const el = h('section', 'dt scr');
   el.hidden = true;
@@ -99,9 +105,21 @@ export function createDetail({ store, onPlan, notify }) {
     },
   });
   startDate.setLabel('시작 날짜');
+  // 시작 시각을 옮기면 끝이 같은 길이로 따라온다(추가 화면과 같은 규칙) — 14:00–15:30 → 16:00–17:30
   const startTime = timeField({
     label: '시작 시각 (비우면 종일)',
-    onCommit: (v) => task && store.updateTask(id(), { startTime: v || null }),
+    onCommit: (v) => {
+      if (!task) return;
+      const patch = { startTime: v || null };
+      const before = timeMinutes(task.startTime);
+      const now = timeMinutes(v);
+      const end = timeMinutes(task.endTime);
+      const oneDay = (task.end || task.start) === task.start;
+      if (before != null && now != null && end != null && oneDay && end > before) {
+        patch.endTime = clock(now + (end - before));
+      }
+      store.updateTask(id(), patch);
+    },
   });
   const endDate = dateField({
     onPick: (v) => {
@@ -125,6 +143,24 @@ export function createDetail({ store, onPlan, notify }) {
   }
   const whenGrid = h('div', 'scr-when');
   whenGrid.append(whenBox('시작', startDate, startTime), whenBox('종료', endDate, endTime));
+
+  // 끝나는 시각을 30분 · 1시간씩 뒤로 — 누를 때마다 더해진다(추가 화면과 같은 단추)
+  const steps = h('div', 'dt-steps');
+  const stepBtns = [[30, '+30분'], [60, '+1시간']].map(([m, label]) => {
+    const b = h('button', 'scr-chip scr-chip--len num', label);
+    b.type = 'button';
+    b.title = '끝나는 시각을 그만큼 뒤로';
+    b.addEventListener('click', () => {
+      const st = timeMinutes(task?.startTime);
+      if (st == null) return;
+      const cur = timeMinutes(task.endTime);
+      const oneDay = (task.end || task.start) === task.start;
+      const base = cur != null && (!oneDay || cur > st) ? cur : st;
+      store.updateTask(id(), { endTime: clock(base + m) });
+    });
+    steps.append(b);
+    return b;
+  });
 
   // 무엇으로 저장돼 있는지 한 줄로 되읽어 준다 — 추가 폼과 같은 문구
   const summary = h('div', 'scr-summary');
@@ -378,7 +414,7 @@ export function createDetail({ store, onPlan, notify }) {
     store.removeSeries(taskId);
   });
 
-  body.append(titleBox, whenGrid, summary, rows, notesBox, acts);
+  body.append(titleBox, whenGrid, steps, summary, rows, notesBox, acts);
   el.append(head.el, body);
 
   // ---------------------------------------------------------------- 그리기
@@ -403,6 +439,7 @@ export function createDetail({ store, onPlan, notify }) {
     endTime.set(task.endTime || '');
     startTime.setDisabled(!task.start);
     endTime.setDisabled(!task.start || !task.startTime);
+    for (const b of stepBtns) b.disabled = !task.start || !task.startTime;
 
     summary.textContent = task.start
       ? whenSummary({

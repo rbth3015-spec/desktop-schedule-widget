@@ -127,6 +127,8 @@ const state = {
   journal: /** @type {Record<string,string>} */ ({}),
   // 주 · 달을 돌아보며 적은 글 — { 'w:YYYY-MM-DD' | 'm:YYYY-MM': '한 문단' }
   retro: /** @type {Record<string,string>} */ ({}),
+  // 할 일 — 달력과 따로 가는 그날그날의 체크리스트(아래 '할 일' 절)
+  todos: /** @type {Todo[]} */ ([]),
   settings: { ...DEFAULT_SETTINGS },
   // --- UI 상태(영속화 안 함) ---
   selectedDate: todayKey(),
@@ -167,6 +169,7 @@ function persistPayload() {
     reminderLog: state.reminderLog,
     journal: state.journal,
     retro: state.retro,
+    todos: state.todos,
     settings: state.settings,
   };
 }
@@ -241,6 +244,7 @@ function snapshot() {
     launcher: structuredClone(state.launcher),
     journal: { ...state.journal },
     retro: { ...state.retro },
+    todos: structuredClone(state.todos),
   };
 }
 
@@ -249,6 +253,7 @@ function restore(snap) {
   state.launcher = snap.launcher;
   if (snap.journal) state.journal = snap.journal;
   if (snap.retro) state.retro = snap.retro;
+  if (snap.todos) state.todos = snap.todos;
 }
 
 // 연속 편집 묶기.
@@ -325,6 +330,7 @@ export async function init() {
   state.reminderLog = Array.isArray(data?.reminderLog) ? data.reminderLog.slice(0, LOG_MAX) : [];
   state.journal = normalizeJournal(data?.journal);
   state.retro = normalizeRetro(data?.retro);
+  state.todos = Array.isArray(data?.todos) ? data.todos.map(normalizeTodo).filter(Boolean) : [];
   state.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
   migrate();
   state.ready = true;
@@ -1202,6 +1208,12 @@ export function toggleDone(id, occDate) {
   pushUndo(t.done ? '완료 취소' : '완료 처리');
   t.done = !t.done;
   t.doneAt = t.done ? Date.now() : null;
+  // 할 일에서 시간을 잡아 만든 일정이면 그 할 일도 같이 지운다(또는 되살린다)
+  for (const td of state.todos) {
+    if (td.taskId !== id) continue;
+    td.done = t.done;
+    td.doneOn = t.done ? todayKey() : null;
+  }
   commit();
 }
 
@@ -1473,13 +1485,22 @@ export function importData(data, mode = 'merge') {
   const journal = normalizeJournal(data.journal);
   const retro = normalizeRetro(data.retro);
 
+  const todos = Array.isArray(data.todos) ? data.todos.map(normalizeTodo).filter(Boolean) : null;
+
   if (mode === 'replace') {
     state.tasks = incoming;
     if (Array.isArray(data.launcher)) state.launcher = data.launcher.map(normalizeLauncher);
     if (data.journal) state.journal = journal;
     if (data.retro) state.retro = retro;
+    if (todos) state.todos = todos;
     commit();
     return { added: incoming.length, total: incoming.length };
+  }
+
+  // 할 일도 없는 것만 더한다
+  if (todos) {
+    const knownT = new Set(state.todos.map((x) => x.id));
+    for (const td of todos) if (!knownT.has(td.id)) state.todos.push(td);
   }
 
   // 합치기 — 이미 적어 둔 한 줄 · 돌아보기는 건드리지 않는다
@@ -1565,6 +1586,191 @@ export function journalBetween(from, to) {
     .filter((k) => k >= from && k <= to)
     .sort((a, b) => (a < b ? 1 : -1))
     .map((key) => ({ key, text: state.journal[key] }));
+}
+
+// ---------------------------------------------------------------- 할 일
+//
+// 달력과 따로 가는 그날그날의 체크리스트. 일정은 '언제' 가 먼저지만 할 일은 '무엇' 이 먼저다 —
+// 쭉 적어 두고 하나씩 지워 나간다.
+//
+//   · 다 못 한 것은 다음 날 목록에 그대로 이어진다(옮기는 손이 필요 없다). '3일째' 처럼 묵은 날수가 붙는다.
+//   · 그날 지운 것은 그날 목록에 줄 그어진 채 남고, 다음 날부터는 보이지 않는다.
+//   · 지난날을 고르면 그날의 모습 그대로다 — 그 뒤에 끝낸 것은 그날엔 아직 남아 있던 것이다.
+//   · 시간을 잡으면 일정이 하나 생기고 서로 묶인다. 어느 쪽에서 지워도 둘 다 지워진다.
+//
+// @typedef {{id:string, text:string, day:string, done:boolean, doneOn:string|null,
+//            taskId:string|null, createdAt:number, order:number}} Todo
+//   day — 적은 날(그날부터 보인다) · doneOn — 지운 날 · taskId — 시간을 잡아 만든 일정
+
+const TODO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TODO_MAX = 200;
+
+function cleanTodoText(v) {
+  return String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, TODO_MAX);
+}
+
+function normalizeTodo(raw) {
+  const text = cleanTodoText(raw?.text);
+  const day = TODO_DAY_RE.test(String(raw?.day)) ? raw.day : null;
+  if (!text || !day) return null;
+  const done = !!raw.done;
+  return {
+    id: String(raw.id || cryptoId()),
+    text,
+    day,
+    done,
+    doneOn: done ? (TODO_DAY_RE.test(String(raw.doneOn)) ? raw.doneOn : day) : null,
+    taskId: raw.taskId ? String(raw.taskId) : null,
+    createdAt: Number(raw.createdAt) || Date.now(),
+    order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 0,
+  };
+}
+
+function nextTodoOrder() {
+  return state.todos.reduce((m, t) => Math.max(m, t.order), 0) + 1;
+}
+
+/**
+ * 그날 보이는 할 일 — 그날까지 적었고, 아직 안 끝났거나 그날 이후에 끝낸 것.
+ * @returns {(Todo & {doneHere:boolean, age:number})[]}
+ *   doneHere — 그날 지운 것 · age — 적은 날부터 며칠째(1 이면 그날 적은 것)
+ */
+export function todosOn(key) {
+  return state.todos
+    .filter((t) => t.day <= key && (!t.done || t.doneOn >= key))
+    .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
+    .map((t) => ({ ...t, doneHere: t.done && t.doneOn === key, age: diffDays(t.day, key) + 1 }));
+}
+
+/** {total, done, open, carried} — carried: 전날부터 이어진 것 */
+export function todoSummary(key) {
+  const list = todosOn(key);
+  const done = list.filter((t) => t.doneHere).length;
+  return {
+    total: list.length,
+    done,
+    open: list.length - done,
+    carried: list.filter((t) => !t.doneHere && t.day < key).length,
+  };
+}
+
+export function addTodo(text, day = todayKey()) {
+  const clean = cleanTodoText(text);
+  if (!clean || !TODO_DAY_RE.test(String(day))) return null;
+  pushUndo('할 일 추가');
+  const todo = {
+    id: cryptoId(), text: clean, day, done: false, doneOn: null,
+    taskId: null, createdAt: Date.now(), order: nextTodoOrder(),
+  };
+  state.todos.push(todo);
+  commit();
+  return todo;
+}
+
+/** 여러 개를 한 번에(받은함 · MCP) — 되돌리기는 한 번 */
+export function addTodos(texts, day = todayKey(), label) {
+  const list = (Array.isArray(texts) ? texts : []).map(cleanTodoText).filter(Boolean).slice(0, 200);
+  if (!list.length || !TODO_DAY_RE.test(String(day))) return 0;
+  pushUndo(label || `할 일 ${list.length}개 추가`);
+  let order = nextTodoOrder();
+  for (const text of list) {
+    state.todos.push({
+      id: cryptoId(), text, day, done: false, doneOn: null,
+      taskId: null, createdAt: Date.now(), order: order++,
+    });
+  }
+  commit();
+  return list.length;
+}
+
+/**
+ * 지우기 ↔ 되살리기. key — 보고 있는 날(그날 지운 것으로 적는다).
+ * 시간을 잡아 만든 일정도 같이 끝낸다 — 둘이 따로 놀면 한쪽은 거짓말이 된다.
+ */
+export function toggleTodo(id, key = todayKey()) {
+  const t = state.todos.find((x) => x.id === id);
+  if (!t) return;
+  const nowDone = !(t.done && t.doneOn === key);
+  pushUndo(nowDone ? '할 일 지움' : '할 일 되살림');
+  t.done = nowDone;
+  t.doneOn = nowDone ? key : null;
+  const task = t.taskId ? state.tasks.find((x) => x.id === t.taskId) : null;
+  if (task && !task.repeat && !isDailyCheck(task)) {
+    task.done = nowDone;
+    task.doneAt = nowDone ? Date.now() : null;
+  }
+  commit();
+}
+
+export function updateTodo(id, text) {
+  const t = state.todos.find((x) => x.id === id);
+  const clean = cleanTodoText(text);
+  if (!t || !clean || clean === t.text) return;
+  pushUndo('할 일 고침', `todo:${id}`);
+  t.text = clean;
+  commit();
+}
+
+export function removeTodo(id) {
+  if (!state.todos.some((x) => x.id === id)) return;
+  pushUndo('할 일 빼기');
+  state.todos = state.todos.filter((x) => x.id !== id);
+  commit();
+}
+
+/** 내일로 — 다음 날부터 보이게 옮긴다(보고 있는 날 목록에서는 빠진다) */
+export function deferTodo(id, key = todayKey()) {
+  const t = state.todos.find((x) => x.id === id);
+  if (!t || t.done) return;
+  pushUndo('할 일 내일로');
+  t.day = addDays(key, 1);
+  commit();
+}
+
+/** 끌어서 순서 바꾸기 — beforeId 앞에 놓는다(null 이면 맨 끝) */
+export function moveTodo(id, beforeId) {
+  if (id === beforeId) return;
+  const list = [...state.todos].sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  const from = list.findIndex((x) => x.id === id);
+  if (from < 0) return;
+  const [item] = list.splice(from, 1);
+  const at = beforeId ? list.findIndex((x) => x.id === beforeId) : -1;
+  list.splice(at < 0 ? list.length : at, 0, item);
+  pushUndo('할 일 순서');
+  list.forEach((x, i) => { x.order = i + 1; });
+  commit();
+}
+
+/**
+ * 시간을 잡아 일정으로 만든 할 일을 그 일정과 묶는다.
+ * 되돌리기는 따로 쌓지 않는다 — 방금 쌓은 '일정 추가' 한 번이 묶음까지 함께 되돌린다.
+ */
+export function linkTodo(id, taskId) {
+  const t = state.todos.find((x) => x.id === id);
+  if (!t) return;
+  t.taskId = taskId || null;
+  commit();
+}
+
+/**
+ * key 보다 앞선 날 중 할 일을 끝낸 가장 가까운 날과 그날 끝낸 것들 — '어제 한 일'.
+ * 주말을 건너뛰고 월요일에 보면 금요일이 나온다. 없으면 null.
+ */
+export function lastDoneDay(key) {
+  let day = null;
+  for (const t of state.todos) {
+    if (t.done && t.doneOn < key && (!day || t.doneOn > day)) day = t.doneOn;
+  }
+  if (!day) return null;
+  const items = state.todos
+    .filter((t) => t.done && t.doneOn === day)
+    .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+  return { day, items };
+}
+
+/** 묶인 일정(지워졌으면 null) */
+export function todoTask(todo) {
+  return todo?.taskId ? state.tasks.find((x) => x.id === todo.taskId) || null : null;
 }
 
 // ---------------------------------------------------------------- 날씨 (메인이 받아 온다)

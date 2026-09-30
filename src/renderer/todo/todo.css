@@ -820,6 +820,11 @@
 .cmp-len .scr-chips { gap: 7px; }
 .cmp-len .scr-chips.is-disabled { opacity: .45; }
 .cmp-len__rule { flex: 1; height: 1px; background: var(--rule-soft); }
+/* 시각 길이(+30분 · +1시간)와 날짜 길이(+1일 · +3일 · +1주) 사이의 가는 세로선 */
+.cmp-len__steps { display: flex; gap: 7px; }
+.cmp-len__sep { width: 1px; height: 14px; background: var(--rule); }
+/* 항목 상세 — 끝나는 시각 단추(시작 · 종료 칸 바로 아래) */
+.dt-steps { display: flex; gap: 7px; margin-top: -4px; }
 .cmp-len__summary {
   font-family: var(--serif);
   font-weight: 400;

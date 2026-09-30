@@ -13,11 +13,11 @@ const OUT = path.join(ROOT, 'docs', 'screenshots');
 const ELECTRON = require('electron');
 
 // [파일명, 설명, 추가 인자]
-// 창 크기는 시안의 표지 폭(1312px + 창 여백)에 맞춘다 — 오른쪽 면이 452px 고정이라
-// 좁게 찍으면 달력만 눌려 시안과 다른 비율이 된다.
-const SIZE = ['--w', '1332', '--h', '900'];   // 캡처 창은 안쪽 폭이 4px 넓게 잡힌다 → 표지 1312px
+// 창 크기는 앱이 처음 여는 크기(1480×950)에 맞춘다 — 오른쪽 면이 452px 고정이라
+// 좁게 찍으면 달력만 눌려 실제와 다른 비율이 된다.
+const SIZE = ['--w', '1480', '--h', '950'];
 const SHOTS = [
-  ['01-main', '오늘', [...SIZE]],
+  ['01-main', '하루', [...SIZE]],
   ['02-compose', '일정 추가', [...SIZE, '--exec', 'tools/shots/compose.js']],
   ['03-detail', '항목 상세', [...SIZE, '--exec', 'tools/shots/detail.js']],
   ['04-brief', '아침 브리핑', [...SIZE, '--set', '{"lastBriefDate":""}']],
@@ -28,6 +28,7 @@ const SHOTS = [
   ['09-plan-month', '계획 — 월간', [...SIZE, '--exec', 'tools/shots/plan-month.js']],
   ['10-theme', '테마', [...SIZE, '--exec', 'tools/shots/theme.js']],
   ['11-retro', '돌아보기', [...SIZE, '--exec', 'tools/shots/retro.js']],
+  ['12-todos', '할 일', [...SIZE, '--exec', 'tools/shots/todos.js']],
 ];
 
 let failed = 0;

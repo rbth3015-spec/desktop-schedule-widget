@@ -81,6 +81,10 @@ export function createCalendar({ root, store }) {
         !weekView && keys.slice(w * 7, w * 7 + 7).includes(selected));
     }
 
+    // 하루짜리 일정 — 칸에 이름 줄로 적는다. 막대를 다 놓은 뒤 남는 자리를 알아야 해서
+    // 여기서는 모아만 두고, 그리는 건 renderBars 가 막대와 함께 한다.
+    const singlesByKey = new Map();
+
     for (let i = 0; i < 42; i++) {
       const cell = els.cells[i];
       if (i >= keys.length) { cell.hidden = true; continue; }
@@ -114,11 +118,13 @@ export function createCalendar({ root, store }) {
       // 그 테마가 한 달 어디에 놓였는지 '흐름 위에서' 보인다(걷어내면 지면이 텅 빈다).
       const onDate = store.tasksOnDate(key, { ignoreTag: true });
 
-      // 시안: 칸 오른쪽 위에 그날 남은 건수(--num 12px), 아래에 하루짜리 일정의 색점.
-      // 달력은 '흐름' 을 맡는다 — 이름은 날짜를 누르면 오른쪽 면이 보여 준다.
+      // 시안: 칸 오른쪽 위에 그날 남은 건수(--num 12px).
+      // 하루짜리 일정은 예전엔 색점뿐이라 '무슨 일인지' 는 날짜를 눌러 봐야 알았다 —
+      // 기간은 막대에 이름이 있는데 하루짜리만 말이 없었다. 이제 막대 아래 남는 자리에 이름을 한 줄씩 적는다.
       const left = onDate.filter((t) => !t.done && store.matchesTag(t)).length;
       cell.refs.count.textContent = left ? String(left) : '';
-      renderDots(cell.refs.dots, onDate, store);
+      cell.refs.dots.replaceChildren();
+      singlesByKey.set(key, singlesOf(onDate));
       // 테마를 걸었으면 그 테마가 없는 날은 숫자도 한 걸음 물러난다
       cell.classList.toggle('cal-day--off', !!st.filter.tag && left === 0);
     }
@@ -128,7 +134,7 @@ export function createCalendar({ root, store }) {
     // --- 기간 막대 ---
     // 시안대로 **여러 날에 걸친 일정만** 막대로 긋는다. 하루짜리는 색점과 건수가 맡는다 —
     // 하루짜리까지 막대로 그리면 기간 막대가 레인에서 밀려 '+N' 으로 접혀 버린다.
-    renderBars(els, keys, visibleSpans(store, keys), st, store, weekCount);
+    renderBars(els, keys, visibleSpans(store, keys), st, store, weekCount, singlesByKey);
 
     renderWeather(els, st);
 
@@ -183,6 +189,14 @@ export function createCalendar({ root, store }) {
         store.setEditing(task.id);
         if (task.start) store.selectDate(task.start);
       }
+      els.root.focus({ preventScroll: true });
+      return;
+    }
+
+    const item = t.closest('.cal-item');
+    if (item) {
+      store.selectDate(item.dataset.key);
+      store.setEditing(item.dataset.taskId);
       els.root.focus({ preventScroll: true });
       return;
     }
@@ -829,7 +843,7 @@ function laneFree(occupied, lane, seg) {
   return true;
 }
 
-function renderBars(els, keys, tasks, st, store, weekCount = 6) {
+function renderBars(els, keys, tasks, st, store, weekCount = 6, singlesByKey = new Map()) {
   // 달력은 스크롤하지 않는다 — 여섯 주가 면의 남은 세로를 똑같이 나눠 갖는다.
   // 행 높이는 **모두 같다**. 바쁜 주만 늘리면 칸이 제각각이 되어 시안이 무너진다.
   // 레인이 모자라는 주는 시안대로 오른쪽 위 개수와 '+N' 이 대신 말한다.
@@ -887,20 +901,108 @@ function renderBars(els, keys, tasks, st, store, weekCount = 6) {
       layer.appendChild(makeBar(seg, m, st, store));
     }
 
-    for (let c = 0; c < 7; c++) {
-      if (!hidden[c]) continue;
-      const more = document.createElement('div');
-      more.className = 'cal-more';
-      more.dataset.key = keys[w * 7 + c];
-      more.textContent = `+${hidden[c]}`;
-      more.title = `${hidden[c]}개 더 있음`;
-      more.style.left = `calc(${pct(c)}% + 2px)`;
-      more.style.width = `calc(${pct(1)}% - 4px)`;
-      more.style.top = `${m.top + visibleLanes * (m.barH + m.gap)}px`;
-      more.style.height = `${m.barH}px`;
-      layer.appendChild(more);
-    }
+    renderSingles(els, keys, w, segs, visibleLanes, hidden, m, st, store, singlesByKey, layer);
   }
+
+  // 막대가 하나도 없는 주도 하루짜리 이름은 적는다
+  for (let w = 0; w < weekCount; w++) {
+    if (weeks[w].length) continue;
+    renderSingles(els, keys, w, [], 0, new Array(7).fill(0), m, st, store, singlesByKey, els.barLayers[w]);
+  }
+}
+
+/**
+ * 하루짜리 일정 — 그 칸에서 막대가 다 쓰고 남은 자리에 이름을 한 줄씩(점 · 시각 · 이름).
+ * 모자라면 마지막 한 줄을 '+N' 에 양보한다(숨은 막대와 합쳐 하나). 줄이 하나도 안 들어가는
+ * 좁은 칸만 예전처럼 색점으로 물러난다.
+ */
+function renderSingles(els, keys, w, segs, visibleLanes, hidden, m, st, store, singlesByKey, layer) {
+  const rowH = els.weekRows[w].clientHeight || 0;
+  for (let c = 0; c < 7; c++) {
+    const key = keys[w * 7 + c];
+    if (!key) continue;
+    const singles = singlesByKey.get(key) || [];
+
+    // 이 칸을 지나는 막대가 쓰는 레인
+    let lanesHere = 0;
+    for (const seg of segs) {
+      if (seg.lane < visibleLanes && seg.col <= c && c < seg.col + seg.len) {
+        lanesHere = Math.max(lanesHere, seg.lane + 1);
+      }
+    }
+    const top = m.top + lanesHere * (m.barH + m.gap) + (lanesHere ? 1 : 0);
+    const slots = rowH > 0 ? Math.floor((rowH - top - 3) / m.item) : 0;
+
+    if (slots < 1) {
+      // 줄이 안 들어간다 — 하루짜리는 색점, 숨은 막대는 '+N' (예전 모양)
+      renderDots(els.cells[w * 7 + c].refs.dots, singles, store);
+      if (hidden[c]) layer.appendChild(moreBox(key, hidden[c], c, m.top + visibleLanes * (m.barH + m.gap), m.barH));
+      continue;
+    }
+
+    const extra = hidden[c];
+    let show = singles.length;
+    if (show + (extra ? 1 : 0) > slots) show = Math.max(0, slots - 1);
+    for (let i = 0; i < show; i++) {
+      layer.appendChild(makeItem(singles[i], key, c, top + i * m.item, m.item, st, store));
+    }
+    const rest = singles.length - show + extra;
+    if (rest > 0) layer.appendChild(moreBox(key, rest, c, top + show * m.item, m.item));
+  }
+}
+
+function moreBox(key, n, col, top, height) {
+  const more = document.createElement('div');
+  more.className = 'cal-more';
+  more.dataset.key = key;
+  more.textContent = `+${n}`;
+  more.title = `${n}개 더 있음`;
+  more.style.left = `calc(${pct(col)}% + 2px)`;
+  more.style.width = `calc(${pct(1)}% - 4px)`;
+  more.style.top = `${top}px`;
+  more.style.height = `${height}px`;
+  return more;
+}
+
+/** 하루짜리 일정 한 줄 — 색점 · (시각) · 이름. 상자를 두르지 않는다(막대와 한눈에 갈리게). */
+function makeItem(t, key, col, top, height, st, store) {
+  const row = document.createElement('div');
+  let cls = 'cal-item';
+  if (t.done) cls += ' cal-item--done';
+  if (!store.matchesTag(t)) cls += ' cal-item--off';
+  if (st.editingTaskId === t.id) cls += ' cal-item--editing';
+  row.className = cls;
+  row.dataset.taskId = t.id;
+  row.dataset.key = key;
+  row.style.setProperty('--item', store.COLORS[t.color] || store.COLORS.blue);
+  row.style.left = `calc(${pct(col)}% + 4px)`;
+  row.style.width = `calc(${pct(1)}% - 8px)`;
+  row.style.top = `${top}px`;
+  row.style.height = `${height}px`;
+  row.title = `${t.startTime ? `${t.startTime} ` : ''}${t.title || '(제목 없음)'}`;
+
+  const dot = document.createElement('i');
+  dot.className = 'cal-item__dot';
+  row.append(dot);
+  if (t.startTime) {
+    const at = document.createElement('span');
+    at.className = 'cal-item__at';
+    at.textContent = t.startTime;
+    row.append(at);
+  }
+  const label = document.createElement('span');
+  label.className = 'cal-item__t';
+  label.textContent = t.title || '(제목 없음)';   // XSS 방지: 항상 textContent
+  row.append(label);
+  return row;
+}
+
+/** 그날의 하루짜리 일정 — 시각 없는 것 먼저, 그다음 시각 순, 끝낸 것은 뒤로 */
+function singlesOf(onDate) {
+  const at = (t) => (t.startTime ? date.timeMinutes(t.startTime) ?? 0 : -1);
+  return onDate
+    .filter((t) => !t.end || t.end === t.start || t.repeat)
+    .sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || at(a) - at(b));
 }
 
 function makeBar(seg, m, st, store) {
@@ -948,10 +1050,9 @@ function makeBar(seg, m, st, store) {
 
 // ================================================================== 점 / 미터
 
-function renderDots(container, onDate, store) {
+function renderDots(container, singles, store) {
   container.replaceChildren();
-  // 하루짜리만 점으로 — 기간 일정은 막대가 이미 말한다
-  const singles = onDate.filter((t) => !t.end || t.end === t.start || t.repeat);
+  // 이름 줄이 하나도 안 들어가는 좁은 칸에서만 — 하루짜리 일정을 색점으로
   if (!singles.length) return;
 
   const shown = Math.min(MAX_DOTS, singles.length);
@@ -1104,6 +1205,7 @@ function readMetrics(gridEl) {
     barH: num('--cal-bar-h', 14),
     gap: num('--cal-bar-gap', 2),
     dots: num('--cal-dots-h', 11),
+    item: num('--cal-item-h', 14),
   };
 }
 

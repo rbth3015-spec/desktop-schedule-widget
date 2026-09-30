@@ -17,6 +17,8 @@ import { todayKey, fromKey, addDays } from '../lib/date.js';
 //   @날짜          시작일   (오늘/내일/모레/글피/요일/8/15/2026-08-15/15일)
 //   ~종료          종료일   (3d, 3일 = 시작일 +N일 / 8/20 / 2026-08-20)
 //   *색            파랑 초록 노랑 빨강 보라 회색
+//   15:00 1시간    길이     (30분 · 1시간 · 1시간반 · 1시간30분 · 90분 · 1.5h · +30분)
+//                           시작 시각이 있을 때만 길이로 읽는다 — '운동 40분' 처럼 시각 없이 쓰면 이름이다.
 //
 // 예시 입출력 (baseKey = '2026-08-10' 월요일 기준)
 //
@@ -160,6 +162,28 @@ function resolveTimeWord(w) {
   return `${pad2(hour)}:${pad2(min)}`;
 }
 
+/**
+ * 길이 말 → 분. '30분' '1시간' '1시간반' '1시간30분' '90분' '1.5h' '45m' (앞에 '+' 를 붙여도 된다)
+ * 아니면 null.
+ */
+function resolveDuration(w) {
+  const v = String(w || '').replace(/^\+/, '');
+  let m = /^(\d{1,2})시간(?:(\d{1,2})분|(반))?$/.exec(v);
+  let min = null;
+  if (m) min = Number(m[1]) * 60 + (m[2] ? Number(m[2]) : (m[3] ? 30 : 0));
+  else if ((m = /^(\d{1,3})분$/.exec(v))) min = Number(m[1]);
+  else if ((m = /^(\d{1,2}(?:\.\d)?)h$/i.exec(v))) min = Math.round(Number(m[1]) * 60);
+  else if ((m = /^(\d{1,3})m(?:in)?$/i.exec(v))) min = Number(m[1]);
+  return min && min > 0 && min <= 24 * 60 ? min : null;
+}
+
+/** 'HH:MM' + 분 → 'HH:MM' (자정을 넘기면 23:59 에서 멈춘다) */
+function addMinutes(time, min) {
+  const [hh, mm] = String(time).split(':').map(Number);
+  const total = Math.min(hh * 60 + mm + min, 23 * 60 + 59);
+  return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+}
+
 /** '15:00~16:30' / '15:00-16:30' → 시작·종료 시각. 아니면 null */
 function resolveTimeRange(w) {
   const parts = String(w || '').split(/[~-]/);
@@ -174,11 +198,13 @@ function resolveTimeRange(w) {
  * 빠른 입력 문자열을 태스크 조각으로 파싱한다. 순수 함수.
  * @param {string} text
  * @param {string} [baseKey] 상대 날짜 기준일 (기본: 오늘)
+ * @param {{startTime?: string}} [opts] 글에 시각이 없을 때 길이의 기준이 될 시작 시각
+ *   (추가 화면은 이미 걷어낸 시각을 칸에 들고 있다 — '15:00 ' 을 친 뒤 '1시간 ' 을 쳐도 알아듣게)
  * @returns {{title:string, start:string|null, end:string|null, endDays:number|null,
  *            startTime:string|null, endTime:string|null,
  *            tags:string[], priority:number, color:string|null, unknown:string[]}}
  */
-export function parseQuickInput(text, baseKey = todayKey()) {
+export function parseQuickInput(text, baseKey = todayKey(), opts = {}) {
   const out = {
     title: '',
     start: null,
@@ -254,6 +280,13 @@ export function parseQuickInput(text, baseKey = todayKey()) {
       return;
     }
 
+    // 길이 — 시작 시각이 있는지는 끝까지 읽어 봐야 안다. 자리만 잡아 두고 아래에서 정한다.
+    const len = resolveDuration(token);
+    if (len) {
+      words.push({ len, raw: token });
+      return;
+    }
+
     // 붙여 쓴 '!!긴급' (첫 토큰) / '장보기!!' (마지막 토큰)
     let word = token;
     if (i === 0) {
@@ -273,7 +306,15 @@ export function parseQuickInput(text, baseKey = todayKey()) {
     if (word) words.push(word);
   });
 
-  out.title = words.join(' ').trim();
+  // 길이는 시작 시각이 있을 때만 — 없으면 이름의 일부다('운동 40분')
+  const base = out.startTime || opts.startTime || null;
+  const title = [];
+  for (const w of words) {
+    if (typeof w === 'string') { title.push(w); continue; }
+    if (base && !out.endTime) { out.endTime = addMinutes(base, w.len); continue; }
+    title.push(w.raw);
+  }
+  out.title = title.join(' ').trim();
   return out;
 }
 
