@@ -247,6 +247,37 @@ onStatus(cb): void   // {jobId, state:'running'|'done'|'error', output?, error?,
 만들지 마세요. 지원 확장자는 `.py .pyw .ps1 .bat .cmd .js .exe` 이며 그 외에는 메인이 거부하고
 `{ok:false, error}` 를 돌려줍니다. 이 에러 문구를 사용자에게 그대로 보여주면 됩니다.
 
+## 휴대폰 동기화 (docs/SYNC.md)
+
+| 소유 | 파일 |
+|---|---|
+| 동기화 | `src/renderer/sync/crdt.js`, `src/renderer/sync/sync.js`, `src/main/sync.js`, `tests/sync-*.test.mjs` |
+
+받은함과 같은 결 — **메인은 파일만 읽고 쓰고, 합치기는 렌더러가 한다.** 파일 모양과 합치는 규칙은 `docs/SYNC.md` 가 기준이다
+(안드로이드 앱과 공유하는 계약이라 바꾸면 `version` 을 올린다).
+
+추가된 store API:
+
+- `store.replaceSynced({tasks, todos, journal, retro})` — 다른 기기에서 받은 변경을 정규화해서 갈아 끼운다.
+  **되돌리기 이력을 비운다**(스냅샷 되돌리기가 받은 변경까지 되돌려 다시 퍼뜨리지 않게). `sync.js` 만 부른다.
+
+추가된 IPC — `window.api.sync`:
+
+```ts
+status(): Promise<{enabled, folder, deviceId, deviceName, app,
+                   peers: {id, name, app, savedAt}[], lastPublishAt, lastError}>
+pickFolder(): Promise<{ok:true, status} | {ok:false, error?:string, canceled?:true}>  // 폴더 고르기 창
+disable(): Promise<status>
+openFolder(): Promise<string|null>
+loadState(): Promise<{snapshot, known: string[]} | null>   // 지난번 레플리카
+publish({snapshot, known}): Promise<{ok:boolean, error?:string}>  // 사용자 데이터 폴더 + 동기화 폴더에 원자적 쓰기
+ready(): void                    // 받을 준비가 됐다 — 메인이 다른 기기 파일을 전부 다시 넘긴다
+onRemote(cb: (list: {deviceId, file, snapshot}[]) => void): void
+```
+
+- 파일 이름의 기기ID 는 메인 설정(`sync.json`)이 정한다. 렌더러가 보낸 스냅샷의 기기ID 를 믿지 않는다.
+- 다른 기기 파일은 바뀐 것(mtime · 크기)만 넘긴다. 깨진 JSON(쓰는 중)은 표시하지 않고 다음 훑기에 다시 읽는다.
+
 ## 디자인 시스템 (딥리서치 반영)
 
 글래스모피즘 + 벤토 그리드. 새로 추가된 CSS 변수:
