@@ -101,6 +101,30 @@ const api = {
     open: () => ipcRenderer.invoke('inbox:open'),
   },
 
+  // ------------------------------------------------------------ 휴대폰 동기화
+  // 메인은 고른 폴더의 파일만 읽고 쓴다. 합치기는 렌더러(src/renderer/sync)가 한다.
+  sync: {
+    status: () => ipcRenderer.invoke('sync:status'),
+    /** 폴더 고르기 창 → {ok, status} | {ok:false, error} | {ok:false, canceled:true} */
+    pickFolder: () => ipcRenderer.invoke('sync:pickFolder'),
+    disable: () => ipcRenderer.invoke('sync:disable'),
+    openFolder: () => ipcRenderer.invoke('sync:openFolder'),
+    /** 지난번 레플리카 {snapshot, known} 또는 null */
+    loadState: () => ipcRenderer.invoke('sync:loadState'),
+    /** 내 상태 발행 {snapshot, known} → {ok, error?} */
+    publish: (payload) => ipcRenderer.invoke('sync:publish', {
+      snapshot: payload?.snapshot,
+      known: Array.isArray(payload?.known) ? payload.known.map(String) : [],
+    }),
+    /** 받을 준비가 됐다 — 메인이 다른 기기 파일을 전부 다시 넘긴다 */
+    ready: () => ipcRenderer.send('sync:ready'),
+    /** [{deviceId, file, snapshot}] */
+    onRemote: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('sync:remote', (_event, list) => cb(list));
+    },
+  },
+
   // ------------------------------------------------------------ 날씨
   // 도시 이름만 넘긴다. 좌표표와 네트워크는 메인이 갖고 있다.
   weather: {

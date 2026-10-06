@@ -1540,6 +1540,26 @@ export function importData(data, mode = 'merge') {
   return { added, total: state.tasks.length };
 }
 
+// ---------------------------------------------------------------- 동기화 (다른 기기에서 받은 변경)
+
+/**
+ * 다른 기기에서 받은 변경을 반영한다 — src/renderer/sync 만 부른다.
+ * 합치기는 sync 가 끝내서 넘기므로 여기서는 정규화해서 갈아 끼우기만 한다.
+ *
+ * 되돌리기 이력은 비운다. 되돌리기는 스냅샷을 통째로 되살리는 방식이라 남겨 두면
+ * Ctrl+Z 한 번에 다른 기기의 변경까지 되돌아가고, 그 되돌림이 다시 모든 기기로 퍼진다.
+ */
+export function replaceSynced({ tasks, todos, journal, retro } = {}) {
+  if (Array.isArray(tasks)) state.tasks = tasks.map(normalize);
+  if (Array.isArray(todos)) state.todos = todos.map(normalizeTodo).filter(Boolean);
+  if (journal && typeof journal === 'object') state.journal = normalizeJournal(journal);
+  if (retro && typeof retro === 'object') state.retro = normalizeRetro(retro);
+  undoStack.length = 0;
+  redoStack.length = 0;
+  breakCoalesce();
+  commit();
+}
+
 // ---------------------------------------------------------------- 한 줄 기록
 //
 // 하루에 한 줄. 일정은 '할 일' 을 적지만, 지나고 나서 남는 건 그날이 어땠는지다.

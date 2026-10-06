@@ -37,6 +37,10 @@ const runner = require('./runner');
 const holidays = require('./holidays');
 const weather = require('./weather');
 const inbox = require('./inbox');
+const { createSyncHost } = require('./sync');
+
+// 휴대폰 동기화 — 고른 폴더에 기기마다 파일 한 장(src/main/sync.js). 사용자 데이터 폴더가 정해진 뒤에 만든다.
+const syncHost = createSyncHost({ userDataDir: app.getPath('userData'), appVersion: app.getVersion() });
 
 // ---------------------------------------------------------------- 상수
 
@@ -74,6 +78,7 @@ let isQuitting = false;          // 트레이 '종료' 를 눌렀을 때만 true
 let alwaysOnTop = false;         // 항상 위 상태(메인이 진실의 원천)
 let clickThrough = false;        // 클릭 통과(잠금) 상태
 let rendererReady = false;       // 렌더러가 받은함을 받을 준비가 됐는가
+let syncReady = false;           // 렌더러가 다른 기기 파일을 받을 준비가 됐는가
 let registeredAccelerator = null; // 실제로 등록에 성공한 전역 단축키
 
 // ---------------------------------------------------------------- 창
@@ -667,6 +672,30 @@ function registerIpc() {
     return dir;
   });
 
+  // 휴대폰 동기화 — 폴더 고르기와 파일 읽기/쓰기만 여기서 한다. 합치기는 렌더러가 한다.
+  ipcMain.handle('sync:status', () => syncHost.status());
+  ipcMain.handle('sync:pickFolder', async () => {
+    const w = win && !win.isDestroyed() ? win : undefined;
+    const result = await dialog.showOpenDialog(w, {
+      title: '동기화 폴더 고르기 — 폰 앱에서도 같은 폴더를 고릅니다',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
+    return syncHost.setFolder(result.filePaths[0]);
+  });
+  ipcMain.handle('sync:disable', () => syncHost.disable());
+  ipcMain.handle('sync:openFolder', () => {
+    const dir = syncHost.status().folder;
+    if (dir) shell.openPath(dir);
+    return dir;
+  });
+  ipcMain.handle('sync:loadState', () => syncHost.loadState());
+  ipcMain.handle('sync:publish', (_e, payload) => syncHost.publish(payload));
+  ipcMain.on('sync:ready', () => {
+    syncReady = true;
+    syncHost.flush();
+  });
+
   ipcMain.handle('data:openBackups', () => {
     const dir = storage.backupDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* 무시 */ }
@@ -868,6 +897,13 @@ if (!gotLock) {
     // 명령줄로 들어온 일정 — 받은함에 한 줄 쓰고 같은 길로 들여보낸다
     takeArgv(process.argv);
 
+    // 동기화 폴더를 지켜본다. 렌더러가 준비되기 전에 바뀐 파일은 sync:ready 때 한꺼번에 넘어간다.
+    syncHost.start((list) => {
+      if (!syncReady || !win || win.isDestroyed()) return false;
+      win.webContents.send('sync:remote', list);
+      return true;
+    });
+
     app.on('activate', () => showWidget()); // macOS 도크 클릭 대응
   });
 
@@ -897,6 +933,7 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     inbox.stop();
+    syncHost.stop();
     globalShortcut.unregisterAll();
     if (tray && !tray.isDestroyed()) {
       tray.destroy();
