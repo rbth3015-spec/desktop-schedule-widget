@@ -1,6 +1,6 @@
 {
   "name": "schedule-widget",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "바탕화면 상주형 일정관리 비서 — 캘린더(장기 계획) + 할 일 목록 + 밀린 일·브리핑",
   "main": "src/main/main.js",
   "scripts": {
