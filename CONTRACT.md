@@ -251,10 +251,13 @@ onStatus(cb): void   // {jobId, state:'running'|'done'|'error', output?, error?,
 
 | 소유 | 파일 |
 |---|---|
-| 동기화 | `src/renderer/sync/crdt.js`, `src/renderer/sync/sync.js`, `src/main/sync.js`, `tests/sync-*.test.mjs` |
+| 동기화 | `src/renderer/sync/crdt.js`, `src/renderer/sync/sync.js`, `src/main/sync.js`, `src/main/sync-transports.js`, `src/main/google-auth.js`, `tests/sync-*.test.mjs` |
 
 받은함과 같은 결 — **메인은 파일만 읽고 쓰고, 합치기는 렌더러가 한다.** 파일 모양과 합치는 규칙은 `docs/SYNC.md` 가 기준이다
 (안드로이드 앱과 공유하는 계약이라 바꾸면 `version` 을 올린다).
+
+구글 길은 선택 기능이다 — `src/main/google-client.json`(저장소에 올리지 않는다)이 없으면 '구글로 연결' 이 숨는다.
+electron 외 의존성 없이 node 내장 모듈(`http` · `crypto` · `fs` · `path`)과 `fetch` 만 쓴다.
 
 추가된 store API:
 
@@ -264,9 +267,10 @@ onStatus(cb): void   // {jobId, state:'running'|'done'|'error', output?, error?,
 추가된 IPC — `window.api.sync`:
 
 ```ts
-status(): Promise<{enabled, folder, deviceId, deviceName, app,
-                   peers: {id, name, app, savedAt}[], lastPublishAt, lastError}>
+status(): Promise<{enabled, kind: 'folder'|'google'|null, folder, account, googleAvailable,
+                   deviceId, deviceName, app, peers: {id, name, app, savedAt}[], lastPublishAt, lastError}>
 pickFolder(): Promise<{ok:true, status} | {ok:false, error?:string, canceled?:true}>  // 폴더 고르기 창
+connectGoogle(): Promise<{ok:true, status} | {ok:false, error:string}>  // 브라우저에서 로그인(5분 안)
 disable(): Promise<status>
 openFolder(): Promise<string|null>
 loadState(): Promise<{snapshot, known: string[]} | null>   // 지난번 레플리카
