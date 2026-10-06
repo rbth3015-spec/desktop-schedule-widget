@@ -1,7 +1,7 @@
 // 렌더러 전역 상태 저장소. 단일 소스 오브 트루스.
 // 뷰 모듈(calendar / todo)은 store 를 직접 mutate 하지 않고 액션 함수만 호출한다.
 
-import { todayKey, addDays, diffDays, isTimeKey, timeMinutes, fromKeyTime, weekGrid } from './lib/date.js';
+import { toKey, todayKey, addDays, diffDays, isTimeKey, timeMinutes, fromKeyTime, weekGrid } from './lib/date.js';
 
 const listeners = new Set();
 
@@ -604,22 +604,6 @@ function occurrenceOf(t, key) {
     done: t.doneDates.includes(key),
     doneAt: null,
   };
-}
-
-/** 오늘 이전(포함)의 가장 가까운 회차. 반복 일정의 알림 기준일. */
-function lastOccurrenceOnOrBefore(t, key) {
-  if (!t.repeat || !t.start) return null;
-  if (key < t.start) return null;
-  // 하루씩 되짚는다. 최대 400일까지만 — 그보다 오래 지난 알림은 어차피 의미가 없다.
-  let cur = key;
-  for (let i = 0; i < 400; i++) {
-    if (occursOn(t, cur)) return cur;
-    if (cur <= t.start) return null;
-    const d = fromKeyLocal(cur);
-    d.setDate(d.getDate() - 1);
-    cur = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-  return null;
 }
 
 /** 예전 버전이 남긴 값을 정리한다. 사용자가 직접 고른 값은 건드리지 않는다. */
@@ -1372,26 +1356,52 @@ export function parseRemind(remind) {
 }
 
 /**
- * 이 태스크의 알림 예정 시각(epoch ms). 알림이 없거나 날짜가 없으면 null.
- * 시작일에서 offsetDays 만큼 앞당긴 날의 지정 시각.
+ * 이 태스크의 알림 — 어느 날짜(date, 'YYYY-MM-DD')의 일정을 언제(at, epoch ms) 알리는가.
+ * 알림이 없거나 날짜가 없으면 null.
+ * 한 번짜리 일정은 시작일에서 offsetDays 만큼 앞당긴 날의 지정 시각.
+ *
+ * 반복 일정은 회차마다 알림이 하나씩 있다 — 그중 시각이 now 이하인 가장 최근 것
+ * (아직 하나도 오지 않았으면 null). 이 값이 회차마다 앞으로 밀리므로
+ * dueReminders 가 remindedAt 과 견주어 회차마다 한 번씩 울린다. date 는 그 회차의 날짜다.
+ * 이미 체크한 회차는 건너뛴다 — 한 번짜리 일정도 끝내면 안 울린다(폰 앱과 같은 규칙).
  */
-export function remindTime(t) {
+export function remindOccurrence(t, now = Date.now()) {
   const r = parseRemind(t.remind);
   if (!r || !t.start) return null;
-  // 반복 일정은 '오늘 이전의 가장 가까운 회차'를 기준으로 삼는다.
-  // 기준일이 회차마다 앞으로 밀리므로 매번 새로 알림이 나간다.
-  const base = t.repeat ? lastOccurrenceOnOrBefore(t, todayKey()) : t.start;
-  if (!base) return null;
+  // '몇 분 전'은 시작 시각이 있어야 기준점이 생긴다. 종일 일정에는 뜻이 없다.
+  if (r.kind === 'rel' && !t.startTime) return null;
+  if (!t.repeat) return { date: t.start, at: remindAt(r, t.start, t.startTime) };
 
+  // 예전에는 '오늘 이전의 가장 가까운 회차' 하나를 기준으로 잡았다. 그러면 '하루 전'처럼
+  // 앞당긴 알림은 다음 회차 전날이 돼도 기준이 아직 지난 회차라 지나쳤고, 회차 날 0시에
+  // 기준이 넘어오면 이미 6시간 넘게 지난 알림이 돼 조용히 넘어갔다 — 한 번도 울리지 않았다.
+  // 그래서 회차마다 알림 시각을 따로 잰다. 알림을 앞당기는 날수만큼 뒤의 회차까지는
+  // 알림이 이미 왔을 수 있으니 거기서부터 하루씩 되짚는다.
+  const lead = r.kind === 'rel' ? Math.ceil(r.minutes / 1440) : r.offsetDays;
+  let key = addDays(toKey(new Date(now)), lead);
+  // 최대 400일까지만 — 그보다 오래 지난 알림은 어차피 의미가 없다.
+  for (let i = 0; i <= lead + 400 && key >= t.start; i++, key = addDays(key, -1)) {
+    if (!occursOn(t, key) || t.doneDates.includes(key)) continue;
+    const at = remindAt(r, key, t.startTime);
+    if (at <= now) return { date: key, at };
+  }
+  return null;
+}
+
+/** 이 태스크의 알림 예정 시각(epoch ms) — remindOccurrence 의 at. 없으면 null */
+export function remindTime(t, now = Date.now()) {
+  return remindOccurrence(t, now)?.at ?? null;
+}
+
+/** 기준일의 알림 시각 — 그날에서 N일 앞당긴 날의 지정 시각, 또는 그날 시작 시각 N분 전 */
+function remindAt(r, key, startTime) {
   if (r.kind === 'rel') {
-    // '몇 분 전'은 시작 시각이 있어야 기준점이 생긴다. 종일 일정에는 뜻이 없다.
-    if (!t.startTime) return null;
-    const when = fromKeyTime(base, t.startTime);
+    const when = fromKeyTime(key, startTime);
     when.setMinutes(when.getMinutes() - r.minutes);
     return when.getTime();
   }
 
-  const [y, mo, d] = base.split('-').map(Number);
+  const [y, mo, d] = key.split('-').map(Number);
   const when = new Date(y, mo - 1, d, r.hour, r.minute, 0, 0);
   when.setDate(when.getDate() - r.offsetDays);
   return when.getTime();
@@ -1402,7 +1412,7 @@ export function dueReminders(now = Date.now()) {
   return state.tasks.filter((t) => {
     if (!t.remind) return false;
     if (!t.repeat && t.done) return false;
-    const at = remindTime(t);
+    const at = remindTime(t, now);
     if (at === null || at > now) return false;
     // 이미 '이번 회차' 알림을 보냈으면 건너뛴다.
     // 반복 일정은 at 이 회차마다 앞으로 밀리므로 자연히 다시 대상이 된다.

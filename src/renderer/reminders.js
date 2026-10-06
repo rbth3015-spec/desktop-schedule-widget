@@ -24,7 +24,8 @@ export function startReminders(store) {
     if (!due.length) return;
 
     for (const task of due) {
-      const at = store.remindTime(task);
+      // 반복 일정은 회차마다 울린다 — 어느 회차의 알림인지(date)도 함께 받는다
+      const { at, date } = store.remindOccurrence(task, now) || { at: null, date: task.start };
 
       // 컴퓨터가 꺼져 있던 동안 지나간 알림까지 한꺼번에 띄우면 알림 폭탄이 된다.
       // 오래된 건 기록만 남기고 알림은 생략한다.
@@ -34,7 +35,7 @@ export function startReminders(store) {
         try {
           await window.api.reminder.notify({
             title: task.title || '일정 알림',
-            body: describe(task),
+            body: describe(task, date),
             taskId: task.id,
           });
         } catch {
@@ -59,12 +60,16 @@ export function startReminders(store) {
   };
 }
 
-/** 알림 본문 — 언제 일인지 한 줄로 */
-function describe(task) {
-  if (!task.start) return '날짜가 지정되지 않은 일정입니다.';
-  const d = fromKey(task.start);
+/**
+ * 알림 본문 — 언제 일인지 한 줄로.
+ * date 는 알리는 날짜다 — 반복 일정은 울리는 그 회차, 한 번짜리는 시작일.
+ * 반복 일정의 start 는 첫 회차라, 그걸 쓰면 매주 같은 옛 날짜가 찍힌다.
+ */
+function describe(task, date) {
+  if (!date) return '날짜가 지정되지 않은 일정입니다.';
+  const d = fromKey(date);
   const when = `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAY_LABELS[d.getDay()]})`;
-  const span = task.end && task.end > task.start ? ` ~ ${spanLabel(task.end)}` : '';
+  const span = task.end && task.end > date ? ` ~ ${spanLabel(task.end)}` : '';
   // 시각이 있으면 알림 본문에서 가장 쓸모 있는 정보다 — 날짜 바로 뒤에 붙인다
   const time = task.startTime ? ` ${formatTimeKo(task.startTime)}` : '';
   const note = task.notes ? `\n${task.notes.slice(0, 120)}` : '';
