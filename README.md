@@ -9,7 +9,7 @@
 
 Electron + 순수 ES 모듈. **빌드 스텝이 없다** — 코드를 고치고 앱을 다시 켜면 그대로 반영된다.
 
-> **1.7.0 (2026-09-30)** — 하루 · 할 일 · 계획 · 브리핑 · 검색 · 트레이가 서로를 아는 **한 비서**로.
+> **1.8.0 (2026-10-06)** — 안드로이드 앱과 일정 · 할 일을 주고받는 **휴대폰 동기화**(구글 계정 또는 폴더 — [docs/SYNC.md](docs/SYNC.md)).
 > 설치 파일은 [최신 릴리스](https://github.com/rbth3015-spec/desktop-schedule-widget/releases/latest)에 있다.
 > 일정은 `%APPDATA%\schedule-widget` 에만 있고 날마다 `backups\` 에 한 벌씩 남는다 —
 > 다른 PC 로 옮길 때는 설정 › **내보내기 `.json`** 으로 꺼내 새 PC 에서 **가져오기 › 덮어쓰기**.
