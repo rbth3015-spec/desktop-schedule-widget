@@ -21,3 +21,6 @@ window-state.json
 
 # 배포 산출물
 dist/
+
+# 구글 연결 정보(데스크톱 OAuth 클라이언트) — 공개 저장소에 올리지 않는다. 형식은 google-client.example.json
+src/main/google-client.json

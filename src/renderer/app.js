@@ -14,6 +14,7 @@ import { showContextMenu } from './lib/menu.js';
 import { startReminders, timeAgo } from './reminders.js';
 import { toBackupJSON, parseBackup, toICS, fileStamp } from './lib/exchange.js';
 import { parseQuickInput, resolveRange } from './todo/parse.js';
+import { wireSync } from './sync/sync.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -53,6 +54,7 @@ let todo = null;
 let dashboard = null;
 let launcher = null;
 let reminders = null;
+let sync = null;   // 휴대폰 동기화 — { refresh }
 
 /** 작은 요소 하나 */
 function el(tag, cls, text) {
@@ -84,6 +86,7 @@ async function boot() {
   wireTabs();
   wireWeather();
   wireInbox();
+  wirePhoneSync();
   wireMenuActions();
   wireShortcuts();
 
@@ -631,6 +634,62 @@ function wireInbox() {
   window.api.inbox?.onItems?.(takeInbox);
   // 이제 받을 준비가 됐다 — 앱이 꺼져 있는 동안 쌓인 것이 여기서 들어온다
   window.api.inbox?.ready?.();
+}
+
+// ---------------------------------------------------------------- 휴대폰 동기화
+//
+// 구글로 연결하거나(드라이브 숨김 앱 폴더) 폰 앱과 같은 폴더를 고르면 양방향 동기화한다(docs/SYNC.md).
+// 받은 변경은 되돌리기 이력을 비우므로 토스트에 되돌리기 단추를 달지 않는다.
+
+function wirePhoneSync() {
+  sync = wireSync({
+    store,
+    notify: (n) => showToast(`다른 기기에서 ${n}건을 받았습니다`),
+  });
+  sync.refresh().catch(() => {});
+}
+
+/** 설정 줄의 한 줄 상태 — '구글 · me@gmail.com · 다른 기기 1대 · 3분 전' · '일정동기화 · …' */
+function syncNote(st) {
+  if (!st?.enabled) {
+    return st?.googleAvailable ? '구글 계정이나 폴더로 폰 앱과 이어집니다' : '폰 앱과 같은 폴더를 고르면 켜집니다';
+  }
+  if (st.lastError) return st.lastError;
+  const where = st.kind === 'google'
+    ? `구글${st.account ? ` · ${st.account}` : ''}`
+    : String(st.folder || '').split(/[\\/]/).filter(Boolean).pop() || st.folder;
+  const n = st.peers?.length || 0;
+  const latest = st.peers?.[0]?.savedAt;
+  return [where, n ? `다른 기기 ${n}대` : '아직 다른 기기 없음', latest ? timeAgo(latest) : null]
+    .filter(Boolean).join(' · ');
+}
+
+async function connectGoogleSync() {
+  showToast('브라우저에서 구글 로그인을 마쳐 주세요');
+  const r = await window.api.sync?.connectGoogle();
+  if (!r?.ok) {
+    showToast(r?.error || '구글에 연결하지 못했습니다');
+    return;
+  }
+  await sync?.refresh();
+  showToast(`구글로 연결했습니다${r.status?.account ? ` — ${r.status.account}` : ''}. 폰 앱에서도 같은 계정으로 연결하세요`);
+}
+
+async function pickSyncFolder() {
+  const r = await window.api.sync?.pickFolder();
+  if (!r || r.canceled) return;
+  if (!r.ok) {
+    showToast(r.error || '폴더를 고르지 못했습니다');
+    return;
+  }
+  await sync?.refresh();
+  showToast('동기화를 켰습니다 — 폰 앱에서도 같은 폴더를 고르세요');
+}
+
+async function disableSync() {
+  await window.api.sync?.disable();
+  await sync?.refresh();
+  showToast('동기화를 껐습니다');
 }
 
 // ---------------------------------------------------------------- 날씨
@@ -1253,6 +1312,27 @@ function renderSettings() {
   ]);
   weatherRow.row.hidden = s.weather === false;
 
+  // 휴대폰 동기화 — 상태는 메인에게 물어 채운다(구글 계정 · 폴더 · 다른 기기 · 오류)
+  const syncRow = setRow('휴대폰 동기화', '', [opt('폴더 고르기', false, pickSyncFolder)]);
+  window.api.sync?.status().then((st) => {
+    let opts;
+    if (!st?.enabled) {
+      opts = [
+        ...(st?.googleAvailable ? [opt('구글로 연결', false, connectGoogleSync)] : []),
+        opt('폴더 고르기', false, pickSyncFolder),
+      ];
+    } else if (st.kind === 'google') {
+      opts = [opt('끊기', false, disableSync)];
+    } else {
+      opts = [
+        opt('바꾸기', false, pickSyncFolder),
+        opt('열기', false, () => window.api.sync.openFolder()),
+        opt('끄기', false, disableSync),
+      ];
+    }
+    syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), opts).row);
+  }).catch(() => {});
+
   const body = el('div', 'set-body');
   body.append(
     setGroup('보임', [
@@ -1306,6 +1386,7 @@ function renderSettings() {
       setRow('받은함', '', [
         opt('열기', false, () => window.api.inbox?.open()),
       ]),
+      syncRow,
       setRow('내보내기', '', [
         opt('.json', false, exportBackup),
         opt('.ics', false, exportICS),

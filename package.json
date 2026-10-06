@@ -8,8 +8,10 @@
     "dev": "node tools/dev-server.js",
     "screens": "node tools/screens.js",
     "icon": "electron tools/make-icon.js",
+    "predist": "node tools/check-google-client.js",
     "dist": "electron-builder --win",
-    "pack": "electron-builder --win --dir"
+    "pack": "electron-builder --win --dir",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs"
   },
   "author": {
     "name": "rbth3015-spec"

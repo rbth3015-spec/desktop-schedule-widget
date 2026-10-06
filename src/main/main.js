@@ -14,6 +14,7 @@ const {
   shell,
   dialog,
   Notification,
+  safeStorage,
 } = electron;
 
 // screen 모듈은 app 'ready' 이후에만 접근 가능하므로 호출 시점에 가져온다.
@@ -37,6 +38,21 @@ const runner = require('./runner');
 const holidays = require('./holidays');
 const weather = require('./weather');
 const inbox = require('./inbox');
+const { createSyncHost } = require('./sync');
+const { createGoogleAuth, loadClient } = require('./google-auth');
+
+// 휴대폰 동기화 — 기기마다 파일 한 장을 고른 폴더나 구글 드라이브 숨김 앱 폴더에 쓴다(src/main/sync.js).
+// 구글 연결 정보(src/main/google-client.json)는 저장소에 올리지 않는다 — 없으면 '구글로 연결' 이 숨는다.
+// 토큰은 운영체제 암호화로 싼다. safeStorage 는 쓸 때 묻는다(준비 전에는 못 쓰는 환경이 있다).
+const sealed = () => safeStorage.isEncryptionAvailable();
+const googleAuth = createGoogleAuth({
+  userDataDir: app.getPath('userData'),
+  client: loadClient(process.env.SCHEDULE_GOOGLE_CLIENT || path.join(__dirname, 'google-client.json')),
+  openExternal: (url) => shell.openExternal(url),
+  protect: (s) => (sealed() ? safeStorage.encryptString(s) : Buffer.from(s, 'utf8')),
+  unprotect: (b) => (sealed() ? safeStorage.decryptString(b) : Buffer.from(b).toString('utf8')),
+});
+const syncHost = createSyncHost({ userDataDir: app.getPath('userData'), appVersion: app.getVersion(), google: googleAuth });
 
 // ---------------------------------------------------------------- 상수
 
@@ -74,6 +90,7 @@ let isQuitting = false;          // 트레이 '종료' 를 눌렀을 때만 true
 let alwaysOnTop = false;         // 항상 위 상태(메인이 진실의 원천)
 let clickThrough = false;        // 클릭 통과(잠금) 상태
 let rendererReady = false;       // 렌더러가 받은함을 받을 준비가 됐는가
+let syncReady = false;           // 렌더러가 다른 기기 파일을 받을 준비가 됐는가
 let registeredAccelerator = null; // 실제로 등록에 성공한 전역 단축키
 
 // ---------------------------------------------------------------- 창
@@ -667,6 +684,36 @@ function registerIpc() {
     return dir;
   });
 
+  // 휴대폰 동기화 — 폴더 고르기와 파일 읽기/쓰기만 여기서 한다. 합치기는 렌더러가 한다.
+  ipcMain.handle('sync:status', () => syncHost.status());
+  ipcMain.handle('sync:pickFolder', async () => {
+    const w = win && !win.isDestroyed() ? win : undefined;
+    const result = await dialog.showOpenDialog(w, {
+      title: '동기화 폴더 고르기 — 폰 앱에서도 같은 폴더를 고릅니다',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
+    return syncHost.setFolder(result.filePaths[0]);
+  });
+  // 구글로 연결 — 기본 브라우저로 로그인하고, 끝나면 위젯을 다시 앞으로
+  ipcMain.handle('sync:connectGoogle', async () => {
+    const r = await syncHost.connectGoogle();
+    if (r.ok) showWidget();
+    return r;
+  });
+  ipcMain.handle('sync:disable', () => syncHost.disable());
+  ipcMain.handle('sync:openFolder', () => {
+    const dir = syncHost.status().folder;
+    if (dir) shell.openPath(dir);
+    return dir;
+  });
+  ipcMain.handle('sync:loadState', () => syncHost.loadState());
+  ipcMain.handle('sync:publish', (_e, payload) => syncHost.publish(payload));
+  ipcMain.on('sync:ready', () => {
+    syncReady = true;
+    syncHost.flush();
+  });
+
   ipcMain.handle('data:openBackups', () => {
     const dir = storage.backupDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* 무시 */ }
@@ -868,6 +915,13 @@ if (!gotLock) {
     // 명령줄로 들어온 일정 — 받은함에 한 줄 쓰고 같은 길로 들여보낸다
     takeArgv(process.argv);
 
+    // 동기화 폴더를 지켜본다. 렌더러가 준비되기 전에 바뀐 파일은 sync:ready 때 한꺼번에 넘어간다.
+    syncHost.start((list) => {
+      if (!syncReady || !win || win.isDestroyed()) return false;
+      win.webContents.send('sync:remote', list);
+      return true;
+    });
+
     app.on('activate', () => showWidget()); // macOS 도크 클릭 대응
   });
 
@@ -897,6 +951,7 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     inbox.stop();
+    syncHost.stop();
     globalShortcut.unregisterAll();
     if (tray && !tray.isDestroyed()) {
       tray.destroy();
