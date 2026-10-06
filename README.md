@@ -526,6 +526,10 @@ npm run dist    # dist/ScheduleWidget-Setup-<version>.exe
 NSIS 설치 관리자를 만든다. 설치 위치를 고를 수 있고, 관리자 권한 없이 사용자 단위로 설치되며,
 제거해도 사용자 일정 데이터는 남긴다.
 
+> **구글 연결 정보를 넣고 만든다.** 휴대폰 동기화의 '구글로 연결'은 `src/main/google-client.json` 이 있어야 켜진다.
+> 이 파일은 저장소에 없으니(따로 받는다) 빌드 전에 그 자리에 둔다. 없거나 예시 그대로면 `npm run dist` 가 멈춘다 —
+> 구글 연결 없이 만들려면 `$env:SCHEDULE_NO_GOOGLE=1; npm run dist`(PowerShell).
+
 > **코드 서명은 하지 않는다.** 인증서가 없으면 설치 시 Windows SmartScreen 경고가 뜬다.
 > 개인 배포·포트폴리오용으로는 그대로 써도 되고, 실제 판매 시에는 인증서가 필요하다.
 
