@@ -638,7 +638,7 @@ function wireInbox() {
 
 // ---------------------------------------------------------------- 휴대폰 동기화
 //
-// 폰 앱과 같은 폴더(OneDrive 등)를 고르면 그 폴더의 파일로 양방향 동기화한다(docs/SYNC.md).
+// 구글로 연결하거나(드라이브 숨김 앱 폴더) 폰 앱과 같은 폴더를 고르면 양방향 동기화한다(docs/SYNC.md).
 // 받은 변경은 되돌리기 이력을 비우므로 토스트에 되돌리기 단추를 달지 않는다.
 
 function wirePhoneSync() {
@@ -649,15 +649,30 @@ function wirePhoneSync() {
   sync.refresh().catch(() => {});
 }
 
-/** 설정 줄의 한 줄 상태 — '일정동기화 · 다른 기기 1대 · 3분 전' */
+/** 설정 줄의 한 줄 상태 — '구글 · me@gmail.com · 다른 기기 1대 · 3분 전' · '일정동기화 · …' */
 function syncNote(st) {
-  if (!st?.enabled) return '폰 앱과 같은 폴더를 고르면 켜집니다';
+  if (!st?.enabled) {
+    return st?.googleAvailable ? '구글 계정이나 폴더로 폰 앱과 이어집니다' : '폰 앱과 같은 폴더를 고르면 켜집니다';
+  }
   if (st.lastError) return st.lastError;
-  const folder = String(st.folder || '').split(/[\\/]/).filter(Boolean).pop() || st.folder;
+  const where = st.kind === 'google'
+    ? `구글${st.account ? ` · ${st.account}` : ''}`
+    : String(st.folder || '').split(/[\\/]/).filter(Boolean).pop() || st.folder;
   const n = st.peers?.length || 0;
   const latest = st.peers?.[0]?.savedAt;
-  return [folder, n ? `다른 기기 ${n}대` : '아직 다른 기기 없음', latest ? timeAgo(latest) : null]
+  return [where, n ? `다른 기기 ${n}대` : '아직 다른 기기 없음', latest ? timeAgo(latest) : null]
     .filter(Boolean).join(' · ');
+}
+
+async function connectGoogleSync() {
+  showToast('브라우저에서 구글 로그인을 마쳐 주세요');
+  const r = await window.api.sync?.connectGoogle();
+  if (!r?.ok) {
+    showToast(r?.error || '구글에 연결하지 못했습니다');
+    return;
+  }
+  await sync?.refresh();
+  showToast(`구글로 연결했습니다${r.status?.account ? ` — ${r.status.account}` : ''}. 폰 앱에서도 같은 계정으로 연결하세요`);
 }
 
 async function pickSyncFolder() {
@@ -1297,20 +1312,25 @@ function renderSettings() {
   ]);
   weatherRow.row.hidden = s.weather === false;
 
-  // 휴대폰 동기화 — 상태는 메인에게 물어 채운다(폴더 · 다른 기기 · 오류)
+  // 휴대폰 동기화 — 상태는 메인에게 물어 채운다(구글 계정 · 폴더 · 다른 기기 · 오류)
   const syncRow = setRow('휴대폰 동기화', '', [opt('폴더 고르기', false, pickSyncFolder)]);
   window.api.sync?.status().then((st) => {
+    let opts;
     if (!st?.enabled) {
-      syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), [
+      opts = [
+        ...(st?.googleAvailable ? [opt('구글로 연결', false, connectGoogleSync)] : []),
         opt('폴더 고르기', false, pickSyncFolder),
-      ]).row);
-      return;
+      ];
+    } else if (st.kind === 'google') {
+      opts = [opt('끊기', false, disableSync)];
+    } else {
+      opts = [
+        opt('바꾸기', false, pickSyncFolder),
+        opt('열기', false, () => window.api.sync.openFolder()),
+        opt('끄기', false, disableSync),
+      ];
     }
-    syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), [
-      opt('바꾸기', false, pickSyncFolder),
-      opt('열기', false, () => window.api.sync.openFolder()),
-      opt('끄기', false, disableSync),
-    ]).row);
+    syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), opts).row);
   }).catch(() => {});
 
   const body = el('div', 'set-body');

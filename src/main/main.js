@@ -14,6 +14,7 @@ const {
   shell,
   dialog,
   Notification,
+  safeStorage,
 } = electron;
 
 // screen 모듈은 app 'ready' 이후에만 접근 가능하므로 호출 시점에 가져온다.
@@ -38,9 +39,20 @@ const holidays = require('./holidays');
 const weather = require('./weather');
 const inbox = require('./inbox');
 const { createSyncHost } = require('./sync');
+const { createGoogleAuth, loadClient } = require('./google-auth');
 
-// 휴대폰 동기화 — 고른 폴더에 기기마다 파일 한 장(src/main/sync.js). 사용자 데이터 폴더가 정해진 뒤에 만든다.
-const syncHost = createSyncHost({ userDataDir: app.getPath('userData'), appVersion: app.getVersion() });
+// 휴대폰 동기화 — 기기마다 파일 한 장을 고른 폴더나 구글 드라이브 숨김 앱 폴더에 쓴다(src/main/sync.js).
+// 구글 연결 정보(src/main/google-client.json)는 저장소에 올리지 않는다 — 없으면 '구글로 연결' 이 숨는다.
+// 토큰은 운영체제 암호화로 싼다. safeStorage 는 쓸 때 묻는다(준비 전에는 못 쓰는 환경이 있다).
+const sealed = () => safeStorage.isEncryptionAvailable();
+const googleAuth = createGoogleAuth({
+  userDataDir: app.getPath('userData'),
+  client: loadClient(process.env.SCHEDULE_GOOGLE_CLIENT || path.join(__dirname, 'google-client.json')),
+  openExternal: (url) => shell.openExternal(url),
+  protect: (s) => (sealed() ? safeStorage.encryptString(s) : Buffer.from(s, 'utf8')),
+  unprotect: (b) => (sealed() ? safeStorage.decryptString(b) : Buffer.from(b).toString('utf8')),
+});
+const syncHost = createSyncHost({ userDataDir: app.getPath('userData'), appVersion: app.getVersion(), google: googleAuth });
 
 // ---------------------------------------------------------------- 상수
 
@@ -682,6 +694,12 @@ function registerIpc() {
     });
     if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
     return syncHost.setFolder(result.filePaths[0]);
+  });
+  // 구글로 연결 — 기본 브라우저로 로그인하고, 끝나면 위젯을 다시 앞으로
+  ipcMain.handle('sync:connectGoogle', async () => {
+    const r = await syncHost.connectGoogle();
+    if (r.ok) showWidget();
+    return r;
   });
   ipcMain.handle('sync:disable', () => syncHost.disable());
   ipcMain.handle('sync:openFolder', () => {

@@ -102,11 +102,13 @@ const api = {
   },
 
   // ------------------------------------------------------------ 휴대폰 동기화
-  // 메인은 고른 폴더의 파일만 읽고 쓴다. 합치기는 렌더러(src/renderer/sync)가 한다.
+  // 메인은 파일(고른 폴더 · 구글 드라이브 숨김 앱 폴더)만 읽고 쓴다. 합치기는 렌더러(src/renderer/sync)가 한다.
   sync: {
     status: () => ipcRenderer.invoke('sync:status'),
     /** 폴더 고르기 창 → {ok, status} | {ok:false, error} | {ok:false, canceled:true} */
     pickFolder: () => ipcRenderer.invoke('sync:pickFolder'),
+    /** 기본 브라우저로 구글 로그인 → {ok, status} | {ok:false, error} */
+    connectGoogle: () => ipcRenderer.invoke('sync:connectGoogle'),
     disable: () => ipcRenderer.invoke('sync:disable'),
     openFolder: () => ipcRenderer.invoke('sync:openFolder'),
     /** 지난번 레플리카 {snapshot, known} 또는 null */
