@@ -17,7 +17,7 @@ const { createSyncHost } = require('../src/main/sync.js');
 
 let server;
 let base;
-const google = { files: new Map(), nextId: 1, revoked: [], tokenCalls: 0, refreshOk: true };
+const google = { files: new Map(), nextId: 1, tokenCalls: 0, refreshOk: true, requests: 0 };
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -34,6 +34,7 @@ function json(res, status, obj) {
 
 before(async () => {
   server = http.createServer(async (req, res) => {
+    google.requests += 1;
     const url = new URL(req.url, 'http://x');
     const body = await readBody(req);
     if (url.pathname === '/token') {
@@ -51,10 +52,6 @@ before(async () => {
           : json(res, 400, { error: 'invalid_grant' });
       }
       return json(res, 400, { error: 'unsupported_grant_type' });
-    }
-    if (url.pathname === '/revoke') {
-      google.revoked.push(new URLSearchParams(body).get('token'));
-      return json(res, 200, {});
     }
     // 아래는 드라이브 — 토큰이 있어야 한다
     if (!/^Bearer at[12]$/.test(req.headers.authorization || '')) return json(res, 401, { error: 'unauthorized' });
@@ -102,8 +99,8 @@ let root;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-google-'));
   google.files.clear();
-  google.revoked.length = 0;
   google.refreshOk = true;
+  google.requests = 0;
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -121,7 +118,7 @@ const browser = ({ code = 'good-code', badState = false } = {}) => (authUrl) => 
 function auth({ open = browser(), now = () => Date.now(), client = { clientId: 'cid', clientSecret: 'sec' } } = {}) {
   return createGoogleAuth({
     userDataDir: path.join(root, 'userData'), client, openExternal: open, now,
-    tokenUrl: `${base}/token`, revokeUrl: `${base}/revoke`, apiBase: base,
+    tokenUrl: `${base}/token`, apiBase: base,
   });
 }
 
@@ -150,11 +147,13 @@ test('로그인: 연결 정보가 없는 빌드는 로그인할 수 없다', asy
   await assert.rejects(a.login(), /연결 정보가 없습니다/);
 });
 
-test('끊기: 구글 쪽 권한을 회수하고 토큰을 지운다', async () => {
+test('끊기: 이 PC 의 토큰만 지운다 — 구글 쪽 권한은 회수하지 않는다', async () => {
   const a = auth();
   await a.login();
+  const before = google.requests;
   await a.logout();
-  assert.deepEqual(google.revoked, ['rt1']);
+  // 권한은 클라우드 프로젝트 하나에 묶여 폰 앱도 같이 쓴다 — 회수하면 폰 토큰까지 죽는다(2026-10-06 실측)
+  assert.equal(google.requests, before, '끊기는 구글에 아무 요청도 보내지 않는다');
   assert.equal(a.connected(), false);
   await assert.rejects(a.token(), NeedsLogin);
 });
@@ -223,10 +222,11 @@ test('호스트: 구글로 연결하면 내 파일을 드라이브에 쓰고, �
   // 다시 켜도 구글 길이 남는다
   assert.equal(createSyncHost({ userDataDir, google: auth(), driveBase: base }).status().kind, 'google');
 
-  // 끄면 연결도 끊는다
+  // 끄면 이 PC 만 끊는다 — 같은 계정의 폰은 계속 동기화한다
+  const before = google.requests;
   const off = await h.disable();
   assert.equal(off.enabled, false);
-  assert.deepEqual(google.revoked, ['rt1']);
+  assert.equal(google.requests, before);
   h.stop();
 });
 

@@ -47,7 +47,6 @@ function createGoogleAuth({
   now = () => Date.now(),
   authUrl = 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl = 'https://oauth2.googleapis.com/token',
-  revokeUrl = 'https://oauth2.googleapis.com/revoke',
   apiBase = 'https://www.googleapis.com',
 }) {
   const file = path.join(userDataDir, 'google-auth.bin');
@@ -168,14 +167,14 @@ function createGoogleAuth({
     return access.token;
   }
 
-  /** 연결을 끊는다 — 구글 쪽 권한도 회수하고(실패해도) 저장한 토큰을 지운다 */
+  /**
+   * 이 PC 의 연결만 끊는다 — 저장한 토큰을 지운다. 구글 쪽 권한은 회수하지 않는다:
+   * 권한은 클라우드 프로젝트 하나에 묶여 폰 앱도 같이 쓰므로, 회수하면 폰 동기화까지 끊긴다(2026-10-06 실측).
+   * 모든 기기에서 거두려면 구글 계정 › 보안 › 타사 앱에서 지운다.
+   */
   async function logout() {
-    const s = stored();
     access = null;
     try { fs.unlinkSync(file); } catch { /* 이미 없으면 그만 */ }
-    if (s?.refreshToken) {
-      await postForm(revokeUrl, { token: s.refreshToken }).catch(() => {});
-    }
   }
 
   return {
