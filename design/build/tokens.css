@@ -1,0 +1,88 @@
+/* 자동 생성 — design/tokens.json 에서 `npm run tokens` 로 만든다. 손으로 고치지 않는다. */
+
+:root,
+:root[data-theme="light"] {
+  --paper: #f5f2ec;
+  --paper-2: #efebe3;
+  --paper-3: #e6e1d6;
+  --ink: #22201d;
+  --ink-soft: #5d5951;
+  --ink-faint: #98928a;
+  --rule: color-mix(in srgb, #22201d 15%, transparent);
+  --rule-soft: color-mix(in srgb, #22201d 8%, transparent);
+  --edge: color-mix(in srgb, #22201d 22%, transparent);
+  --border-strong: color-mix(in srgb, #22201d 30%, transparent);
+  --gold: #b68235;
+  --gold-deep: #7d5411;
+  --gold-ghost: color-mix(in srgb, #b68235 14%, transparent);
+  --seal: #8d3a2c;
+  --accent-soft: color-mix(in srgb, #8d3a2c 10%, transparent);
+  --accent-wash: color-mix(in srgb, #8d3a2c 4%, transparent);
+  --success: #5c6b4a;
+  --on-color: #f4ede1;
+  --cover: #3a332b;
+  --cover-ink: #d6c4a0;
+  --cover-ink-hi: #e8dcc2;
+  --ribbon-lo: #752f24;
+  --ribbon-hi: #8d3a2c;
+  --dock: #f0ece4;
+  --desk: #4a443c;
+
+  --blue: #4a5f7a;
+  --moss: #5c6b4a;
+  --citron: #9a7a2e;
+  --vermilion: #9c4a33;
+  --plum: #6d4a5e;
+  --charcoal: #4f4b45;
+
+  --serif: "Noto Serif KR", "Cormorant Garamond", serif;
+  --sans: "Noto Sans KR", system-ui, sans-serif;
+  --num: "Cormorant Garamond", "Noto Serif KR", serif;
+  --fs: 13px;
+  --radius-chip: 1px;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-cover: 5px;
+}
+
+:root[data-theme="dark"] {
+  --paper: #22201d;
+  --paper-2: #2a2723;
+  --paper-3: #33302a;
+  --ink: #ece5d7;
+  --ink-soft: #a9a294;
+  --ink-faint: #6f6a60;
+  --rule: color-mix(in srgb, #ece5d7 15%, transparent);
+  --rule-soft: color-mix(in srgb, #ece5d7 8%, transparent);
+  --edge: color-mix(in srgb, #ece5d7 22%, transparent);
+  --border-strong: color-mix(in srgb, #ece5d7 30%, transparent);
+  --gold: #c9a05a;
+  --gold-deep: #dcbc80;
+  --gold-ghost: color-mix(in srgb, #c9a05a 16%, transparent);
+  --seal: #c0705c;
+  --accent-soft: color-mix(in srgb, #c0705c 16%, transparent);
+  --accent-wash: color-mix(in srgb, #c0705c 8%, transparent);
+  --success: #8ea173;
+  --on-color: #f4ede1;
+  --cover: #17150f;
+  --cover-ink: #d6c4a0;
+  --cover-ink-hi: #e8dcc2;
+  --ribbon-lo: #752f24;
+  --ribbon-hi: #8d3a2c;
+  --dock: #2a2723;
+  --desk: #4a443c;
+}
+
+.num { font-family: var(--num); font-feature-settings: 'tnum'; }
+
+.shadow-cover { box-shadow: 0 30px 70px rgba(0,0,0,.5), inset 0 0 0 1px rgba(214,196,160,.18); }
+.shadow-modal { box-shadow: 0 20px 48px rgba(0,0,0,.34); }
+.shadow-peek { box-shadow: 0 18px 42px rgba(0,0,0,.32); }
+.shadow-tab { box-shadow: 0 2px 5px rgba(0,0,0,.28); }
+
+@keyframes leafIn { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
+@keyframes pageIn { from { opacity: 0; transform: translateX(10px) } to { opacity: 1; transform: none } }
+@keyframes scrimIn { from { opacity: 0 } to { opacity: 1 } }
+
+*:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+::selection { background: var(--gold-ghost); }

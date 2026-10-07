@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 자동 생성 — design/tokens.json 에서 `npm run tokens` 로 만든다. 손으로 고치지 않는다. -->
+<resources>
+    <!-- 모서리 -->
+    <dimen name="sa_radius_chip">1dp</dimen>
+    <dimen name="sa_radius_control">2dp</dimen>
+    <dimen name="sa_radius_pane">3dp</dimen>
+    <dimen name="sa_radius_cover">5dp</dimen>
+    <!-- 선 -->
+    <dimen name="sa_border_hairline">1dp</dimen>
+    <dimen name="sa_border_accent">2dp</dimen>
+    <dimen name="sa_border_item">3dp</dimen>
+    <!-- 글자 -->
+    <dimen name="sa_text_title">20sp</dimen>  <!-- 화면 제목 · 날짜 머리(9월 30일) -->
+    <dimen name="sa_text_body">13sp</dimen>  <!-- 본문 기본 -->
+    <dimen name="sa_text_cover_title">13sp</dimen>  <!-- 표지 제목 '일정관리 비서' -->
+    <dimen name="sa_text_aide">12.5sp</dimen>  <!-- 비서의 한 줄 -->
+    <dimen name="sa_text_label">12sp</dimen>  <!-- 요일 · 보조 머리 -->
+    <dimen name="sa_text_tab">11sp</dimen>  <!-- 책갈피 탭 · 달력 요일 머리 -->
+    <dimen name="sa_text_chip">10.5sp</dimen>  <!-- 시각 칩(14:00) -->
+    <dimen name="sa_text_badge">9.5sp</dimen>  <!-- '오늘' 같은 작은 표 -->
+    <!-- 그 밖 -->
+    <dimen name="sa_focus_width">2dp</dimen>
+    <dimen name="sa_focus_offset">2dp</dimen>
+    <dimen name="sa_today_mark_width">17dp</dimen>
+    <dimen name="sa_today_mark_height">1dp</dimen>
+</resources>

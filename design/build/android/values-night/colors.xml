@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 자동 생성 — design/tokens.json 에서 `npm run tokens` 로 만든다. 손으로 고치지 않는다. -->
+<resources>
+    <color name="sa_paper">#FF22201D</color>  <!-- 바탕 — 종이 -->
+    <color name="sa_paper_2">#FF2A2723</color>  <!-- 칸 · 비활성 탭 -->
+    <color name="sa_paper_3">#FF33302A</color>  <!-- 누름 · hover · 설정 탭 -->
+    <color name="sa_ink">#FFECE5D7</color>  <!-- 본문 글자 -->
+    <color name="sa_ink_soft">#FFA9A294</color>  <!-- 보조 글자 · 토요일 -->
+    <color name="sa_ink_faint">#FF6F6A60</color>  <!-- 흐린 글자 · 지난 것 -->
+    <color name="sa_rule">#26ECE5D7</color>  <!-- 괘선 — 면은 색이 아니라 1px 선으로 나눈다 -->
+    <color name="sa_rule_soft">#14ECE5D7</color>  <!-- 옅은 괘선 · 줄 사이 -->
+    <color name="sa_edge">#38ECE5D7</color>  <!-- 입력칸 테두리 -->
+    <color name="sa_border_strong">#4DECE5D7</color>  <!-- 강한 테두리 -->
+    <color name="sa_gold">#FFC9A05A</color>  <!-- 강조 · 포커스 · 진행 막대 -->
+    <color name="sa_gold_deep">#FFDCBC80</color>  <!-- 금박 글자(다가올 시각) — 다크에서는 gold 보다 밝다 -->
+    <color name="sa_gold_ghost">#29C9A05A</color>  <!-- 선택 영역 -->
+    <color name="sa_seal">#FFC0705C</color>  <!-- 인주 — 오늘 · 일요일 · 삭제 -->
+    <color name="sa_accent_soft">#29C0705C</color>  <!-- 인주 옅게 -->
+    <color name="sa_accent_wash">#14C0705C</color>  <!-- 인주 아주 옅게 -->
+    <color name="sa_success">#FF8EA173</color>  <!-- 루틴 ↻ · 성공 -->
+    <color name="sa_on_color">#FFF4EDE1</color>  <!-- 항목 색 위 글자 -->
+    <color name="sa_cover">#FF17150F</color>  <!-- 표지 — 폰에서는 위 머리 막대 -->
+    <color name="sa_cover_ink">#FFD6C4A0</color>  <!-- 표지 위 글자 · 아이콘 -->
+    <color name="sa_cover_ink_hi">#FFE8DCC2</color>  <!-- 표지 위 글자 hover -->
+    <color name="sa_ribbon_lo">#FF752F24</color>  <!-- 리본 책갈피 아래 -->
+    <color name="sa_ribbon_hi">#FF8D3A2C</color>  <!-- 리본 책갈피 위 -->
+    <color name="sa_dock">#FF2A2723</color>  <!-- 아래 리본(D-Day) -->
+    <color name="sa_desk">#FF4A443C</color>  <!-- 바깥 바탕(PC 위젯은 투명) -->
+</resources>

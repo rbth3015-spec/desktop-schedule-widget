@@ -548,6 +548,17 @@ npm run screens
 창은 화면 밖(-4000)에 띄우므로 작업 중에 눈에 띄지 않는다.
 화면이 바뀌면 이 명령만 다시 돌리면 된다 — 손으로 찍는 것과 달리 결과가 재현된다.
 
+### 디자인 토큰 — 폰 앱과 같은 모양
+
+```bash
+npm run tokens
+```
+
+색 · 글꼴 · 크기 · 모서리 · 그림자 · 움직임 값은 `design/tokens.json` 하나가 원본이다. 이 명령이 PC 위젯 CSS 와
+안드로이드 파일(`colors.xml` 라이트 · 다크, `dimens.xml`, Compose `DesignTokens.kt`)을 `design/build/` 에 만든다.
+`npm test` 가 tokens.json · PC 위젯 CSS · `design/build/` 셋이 같은지 재서, 한쪽만 바뀐 채로 머지되지 않는다.
+쓰는 법은 [design/README.md](design/README.md).
+
 ### 브라우저 미리보기
 
 UI 만 빠르게 확인할 때는 Electron 없이 브라우저로 띄울 수 있다.
