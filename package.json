@@ -7,6 +7,7 @@
     "start": "electron .",
     "dev": "node tools/dev-server.js",
     "screens": "node tools/screens.js",
+    "tokens": "node tools/build-tokens.js",
     "icon": "electron tools/make-icon.js",
     "predist": "node tools/check-google-client.js",
     "dist": "electron-builder --win",

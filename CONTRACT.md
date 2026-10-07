@@ -298,6 +298,9 @@ onRemote(cb: (list: {deviceId, file, snapshot}[]) => void): void
   (`:root[data-blur="off"]` 에서 0 이 됩니다). 자체 블러를 새로 추가하지 마세요 — dwm.exe GPU
   부하 때문에 블러 레이어는 셸의 `.widget` 하나로 제한합니다.
 - 라이트/다크 모두 변수로 처리됩니다. 하드코딩 색상 금지.
+- **색 · 글꼴 · 크기 · 모서리 · 그림자 값의 원본은 `design/tokens.json`** 입니다(폰 앱과 함께 씁니다).
+  값을 바꾸면 PC CSS(`styles/tokens.css` · `base.css`)와 `npm run tokens` 를 같이 — `npm test` 가 셋이 같은지 잽니다
+  (`design/README.md`).
 
 ## 언어
 
