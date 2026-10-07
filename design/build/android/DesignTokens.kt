@@ -1,6 +1,6 @@
 // 자동 생성 — design/tokens.json 에서 `npm run tokens` 로 만든다. 손으로 고치지 않는다.
 // 1 CSS px = 1 dp(크기) · 1 sp(글자). 값의 뜻과 쓰는 법은 design/README.md.
-package com.dongik.schedule.design
+package com.bogeun.schedule.design
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp

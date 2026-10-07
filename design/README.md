@@ -23,8 +23,8 @@ design/tokens.json ──npm run tokens──▶ design/build/tokens.css        
 
 - `design/build/android/values/*.xml`, `values-night/colors.xml` 을 앱의 `res/` 같은 자리에 복사한다.
   이름은 모두 `sa_` 로 시작한다(`@color/sa_paper`, `@dimen/sa_radius_control`).
-- `design/build/android/DesignTokens.kt` 를 앱 소스에 복사한다. 패키지 이름은 `tokens.json` 의 `meta.androidPackage` 를
-  앱에 맞게 고치고 다시 만든다.
+- `design/build/android/DesignTokens.kt` 를 앱 소스에 그대로 복사한다. 패키지 이름은 `tokens.json` 의 `meta.androidPackage` —
+  폰 앱(`com.bogeun.schedule`)에 맞춘 `com.bogeun.schedule.design` 이다. 앱 패키지가 바뀌면 이 값을 고치고 다시 만든다.
 - 단위: **1 CSS px = 1 dp(크기) · 1 sp(글자)**.
 - 머티리얼 동적 색(배경화면 색)은 끄고, 기본 글꼴 · 모서리 · 물결(ripple)에 맡기지 않는다.
 
