@@ -650,11 +650,9 @@ function wirePhoneSync() {
   sync.refresh().catch(() => {});
 }
 
-/** 설정 줄의 한 줄 상태 — '구글 · me@gmail.com · 다른 기기 1대 · 3분 전' · '일정동기화 · …' */
+/** 설정 줄의 한 줄 상태 — '구글 · me@gmail.com · 다른 기기 1대 · 3분 전' · '일정동기화 · …'. 꺼져 있으면 칩만 둔다 */
 function syncNote(st) {
-  if (!st?.enabled) {
-    return st?.googleAvailable ? '구글 계정이나 폴더로 폰 앱과 이어집니다' : '폰 앱과 같은 폴더를 고르면 켜집니다';
-  }
+  if (!st?.enabled) return '';
   if (st.lastError) return st.lastError;
   const where = st.kind === 'google'
     ? `구글${st.account ? ` · ${st.account}` : ''}`
@@ -690,7 +688,7 @@ async function pickSyncFolder() {
 async function disableSync() {
   await window.api.sync?.disable();
   await sync?.refresh();
-  showToast('동기화를 껐습니다');
+  showToast('동기화를 끊었습니다');
 }
 
 // ---------------------------------------------------------------- 날씨
@@ -1328,7 +1326,7 @@ function renderSettings() {
       opts = [
         opt('바꾸기', false, pickSyncFolder),
         opt('열기', false, () => window.api.sync.openFolder()),
-        opt('끄기', false, disableSync),
+        opt('끊기', false, disableSync),
       ];
     }
     syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), opts).row);
