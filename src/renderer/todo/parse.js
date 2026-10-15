@@ -6,7 +6,7 @@
 //
 // 순수 함수만 둔다 — DOM 도 store 도 건드리지 않는다.
 
-import { todayKey, fromKey, addDays } from '../lib/date.js';
+import { todayKey, fromKey, addDays, toKey } from '../lib/date.js';
 
 /** 한글/영문 색 이름 → store.COLORS 키 */
 // ============================================================ 빠른 입력 파서
