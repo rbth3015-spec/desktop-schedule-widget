@@ -1874,10 +1874,13 @@ export function monthReport(ym) {
     .slice(0, 3);
 
   // 가장 바쁜 주 — 그 달 안의 주(수요일이 든 달로 센다. 계획 화면과 같은 셈법)
+  // 수요일이 다른 달인 경계 주(예: 10/1–3 이 든 9/27 주)는 그 달의 주가 아니라 세지 않는다 —
+  // 세면 '다섯째 주'처럼 그 달에 없는 이름이나, 다음 달의 '첫째 주'가 나온다.
   const weeks = new Map();
   for (const t of month) {
-    const sun = weekGrid(t.start)[0];
-    weeks.set(sun, (weeks.get(sun) || 0) + 1);
+    const keys = weekGrid(t.start);
+    if (keys[3].slice(0, 7) !== ym) continue;
+    weeks.set(keys[0], (weeks.get(keys[0]) || 0) + 1);
   }
   let busiest = null;
   const order = [...weeks.keys()].sort();
