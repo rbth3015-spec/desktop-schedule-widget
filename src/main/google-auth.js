@@ -4,7 +4,9 @@
 // 구글이 http://127.0.0.1:<임시 포트> 로 돌려보낸다. 그 포트는 **로그인하는 동안만** 이 컴퓨터 안에서
 // 열렸다 닫힌다(밖에서 들어올 수 없는 주소).
 //
-// 권한은 drive.appdata 하나 — 이 앱이 만든 숨김 폴더만 보고, 사용자의 다른 드라이브 파일은 못 본다.
+// 권한은 drive.appdata — 이 앱이 만든 숨김 폴더만 보고, 사용자의 다른 드라이브 파일은 못 본다.
+// Claude 연동 시트(src/main/claude-bridge.js)를 켜면 drive.file 을 더한다 — 이 앱이 만든 파일만 다룬다.
+// 로그인 하나를 두 기능이 같이 쓴다. 권한을 더할 때는 앞서 받은 권한을 새 토큰에 그대로 싣는다.
 // 갱신 토큰은 운영체제 암호화(Electron safeStorage, Windows 는 DPAPI)로 싸서 사용자 데이터 폴더에 둔다.
 //
 // Electron 을 부르지 않는다 — 브라우저 열기 · 암호화는 main.js 가 넘겨준다(node 로 시험한다).
@@ -15,6 +17,8 @@ const http = require('http');
 const crypto = require('crypto');
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+/** Claude 연동 시트 — 이 앱이 만든 파일(시트 한 장)만 */
+const FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 class NeedsLogin extends Error {
@@ -85,9 +89,17 @@ function createGoogleAuth({
     return (await res.json())?.user?.emailAddress || null;
   }
 
-  /** 브라우저로 로그인 → {email}. 취소하거나 5분이 지나면 오류 */
-  async function login({ timeoutMs = LOGIN_TIMEOUT_MS } = {}) {
+  /**
+   * 브라우저로 로그인 → {email}. 취소하거나 5분이 지나면 오류. 받은 권한은 hasScope() 로 본다.
+   * @param {object} [o]
+   * @param {string[]} [o.scopes]       drive.appdata 에 더할 권한
+   * @param {string|null} [o.loginHint] 구글 화면에서 이 계정을 먼저 고른다
+   * @param {string|null} [o.expectEmail] 이 계정이 아니면 받지 않는다 — 있던 토큰을 그대로 둔다.
+   *   두 기능이 로그인 하나를 같이 쓰므로, 다른 계정으로 바뀌면 동기화가 다른 드라이브를 보게 된다.
+   */
+  async function login({ timeoutMs = LOGIN_TIMEOUT_MS, scopes = [], loginHint = null, expectEmail = null } = {}) {
     if (!client) throw new Error('이 빌드에는 구글 연결 정보가 없습니다.');
+    const want = [...new Set([SCOPE, ...scopes])];
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
     const state = crypto.randomBytes(16).toString('hex');
@@ -119,12 +131,15 @@ function createGoogleAuth({
           client_id: client.clientId,
           redirect_uri: redirect,
           response_type: 'code',
-          scope: SCOPE,
+          scope: want.join(' '),
           code_challenge: challenge,
           code_challenge_method: 'S256',
           state,
           access_type: 'offline',
           prompt: 'consent',
+          // 앞서 허락한 권한도 새 토큰에 싣는다 — 시트 권한을 더하다가 동기화 권한이 빠지지 않게
+          include_granted_scopes: 'true',
+          ...(loginHint ? { login_hint: loginHint } : {}),
         })}`);
       });
 
@@ -139,9 +154,15 @@ function createGoogleAuth({
       if (!ok || !json.access_token || !json.refresh_token) {
         throw new Error(`구글 로그인을 마치지 못했습니다 (${json.error || '토큰 없음'}).`);
       }
-      access = { token: json.access_token, expiresAt: now() + (Number(json.expires_in) || 3600) * 1000 };
       const account = await email(json.access_token);
-      store({ refreshToken: json.refresh_token, email: account });
+      if (expectEmail && !account) throw new Error('구글 계정을 확인하지 못했습니다. 다시 시도해 주세요.');
+      if (expectEmail && account !== expectEmail) {
+        throw new Error(`같은 구글 계정(${expectEmail})으로 로그인해 주세요 — 휴대폰 동기화가 이 계정을 씁니다.`);
+      }
+      // 구글 화면에서 권한 체크를 풀 수 있다 — 실제로 받은 것을 적어 둔다(예전 토큰은 drive.appdata 하나)
+      const granted = String(json.scope || SCOPE).split(/\s+/).filter(Boolean);
+      access = { token: json.access_token, expiresAt: now() + (Number(json.expires_in) || 3600) * 1000 };
+      store({ refreshToken: json.refresh_token, email: account, scopes: granted });
       return { email: account };
     } finally {
       server.close();
@@ -177,11 +198,19 @@ function createGoogleAuth({
     try { fs.unlinkSync(file); } catch { /* 이미 없으면 그만 */ }
   }
 
+  /** 저장한 로그인이 이 권한을 받았는가 — scopes 가 없는 예전 토큰은 drive.appdata 하나 */
+  function hasScope(scope) {
+    const s = stored();
+    if (!s?.refreshToken) return false;
+    return (Array.isArray(s.scopes) ? s.scopes : [SCOPE]).includes(scope);
+  }
+
   return {
     available: !!client,
     login,
     token,
     logout,
+    hasScope,
     account: () => stored()?.email || null,
     connected: () => !!stored()?.refreshToken,
   };
@@ -197,4 +226,4 @@ function loadClient(file) {
   }
 }
 
-module.exports = { createGoogleAuth, loadClient, NeedsLogin, SCOPE };
+module.exports = { createGoogleAuth, loadClient, NeedsLogin, SCOPE, FILE_SCOPE };

@@ -83,6 +83,49 @@
     return { days, missing: [] };
   }
 
+  // Claude 연동 시트 — 구글도 시트도 없으니 메인의 상태만 흉내 낸다.
+  // 콘솔에서: __devBridge.inbox([{ key: 'dev:1', kind: 'todo', text: '단어 30개 #공부', date: '2026-10-24' }])
+  //           __devBridge.fail(2) → '오류 2건' · __devBridge.problem('구글 시트 API 가 꺼져 있습니다 — …')
+  //           __devBridge.state.last → 마지막으로 받은 내보내기 재료
+  const bridge = { enabled: false, granted: false, lastOkAt: 0, failures: 0, problem: null, want: null, inbox: null, last: null };
+  window.__devBridge = {
+    state: bridge,
+    inbox: (requests) => (bridge.inbox ? bridge.inbox(requests) : null),
+    fail: (n = 1) => { bridge.failures = n; },
+    problem: (text) => { bridge.problem = text || null; },
+  };
+  const devBridge = {
+    status: async () => ({
+      available: true,
+      enabled: bridge.enabled,
+      connected: true,
+      needsScope: !bridge.granted,
+      url: bridge.enabled ? 'https://docs.google.com/spreadsheets/d/dev/edit' : null,
+      title: '일정관리 비서 · Claude 연동',
+      account: 'dev@example.com',
+      lastOkAt: bridge.lastOkAt,
+      failures: bridge.failures,
+      lastError: bridge.problem || (bridge.failures ? '구글에 닿지 못했습니다 — 인터넷 연결을 확인해 주세요' : null),
+      problem: bridge.problem,
+    }),
+    enable: async () => {
+      Object.assign(bridge, { enabled: true, granted: true, lastOkAt: Date.now(), failures: 0, problem: null });
+      bridge.want?.();
+      return { ok: true };
+    },
+    disable: async () => { bridge.enabled = false; return {}; },
+    open: async () => { console.log('[dev] open sheet'); return { ok: true }; },
+    copyLink: async () => { console.log('[dev] copy sheet link'); return { ok: true }; },
+    ready: () => { if (bridge.enabled) bridge.want?.(); },
+    push: async (data) => {
+      bridge.last = data;
+      console.log('[dev] bridge export', data.events.length, data.todos.length, data.journal.length);
+      return { ok: true, enabled: bridge.enabled };
+    },
+    onWant: (cb) => { bridge.want = cb; },
+    onInbox: (cb) => { bridge.inbox = cb; },
+  };
+
   window.api = {
     loadData: async () => {
       const raw = localStorage.getItem(KEY);
@@ -164,6 +207,8 @@
     },
 
     holidays: { get: async (years) => sampleHolidays(years) },
+
+    bridge: devBridge,
 
     openExternal: async (url) => {
       console.log('[dev] openExternal', url);

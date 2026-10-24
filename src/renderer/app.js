@@ -16,6 +16,7 @@ import { toBackupJSON, parseBackup, toICS, fileStamp } from './lib/exchange.js';
 import { gmailComposeUrl } from './lib/mail.js';
 import { parseQuickInput, resolveRange } from './todo/parse.js';
 import { wireSync } from './sync/sync.js';
+import { wireClaudeBridge } from './claude-bridge.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -88,6 +89,7 @@ async function boot() {
   wireWeather();
   wireInbox();
   wirePhoneSync();
+  wireBridge();
   wireMenuActions();
   wireShortcuts();
 
@@ -689,6 +691,64 @@ async function disableSync() {
   await window.api.sync?.disable();
   await sync?.refresh();
   showToast('동기화를 끊었습니다');
+}
+
+// ---------------------------------------------------------------- Claude 연동 시트
+//
+// claude.ai 의 Claude 가 구글 시트 한 장으로 일정을 읽고 할 일 · 일정을 넣는다(docs/BRIDGE.md).
+// 시트를 읽고 쓰는 일과 주기는 메인이, store 를 읽어 넘기고 받은 것을 액션으로 만드는 일은 claude-bridge.js 가 한다.
+// 들어온 것은 받은함처럼 토스트로 알린다. 연결 오류는 띄우지 않는다 — 설정 줄에만 있다.
+
+function wireBridge() {
+  wireClaudeBridge({
+    store,
+    notify: (added, actions) => {
+      const parts = [];
+      if (added.events) parts.push(`일정 ${added.events}건`);
+      if (added.todos) parts.push(`할 일 ${added.todos}개`);
+      const josa = parts[parts.length - 1].endsWith('개') ? '를' : '을';
+      // 되돌리기는 한 번에 한 액션만 되돌린다 — 여러 날에 나눠 넣었으면 단추를 달지 않는다
+      showToast(`Claude 연동 시트에서 ${parts.join(' · ')}${josa} 받았습니다`, { undo: actions === 1 });
+    },
+  });
+}
+
+/** 설정 줄의 한 줄 상태 — '마지막 연동 3분 전 · 오류 1건'. 꺼져 있으면 켤 때 무엇이 더해지는지 */
+function bridgeNote(st) {
+  if (!st.enabled) {
+    if (!st.needsScope) return '';
+    return st.connected
+      ? '켜면 구글 로그인을 한 번 더 합니다 — 이 앱이 만든 파일만 다루는 권한이 더해집니다'
+      : '켜면 구글 로그인을 합니다 — 드라이브에서 이 앱이 만든 파일만 다룹니다';
+  }
+  if (st.problem) return st.problem;
+  const when = st.lastOkAt
+    ? `마지막 연동 ${timeAgo(st.lastOkAt)}`
+    : (st.failures ? '아직 연동하지 못했습니다' : '처음 연동하는 중');
+  return st.failures ? `${when} · 오류 ${st.failures}건` : when;
+}
+
+async function enableBridge() {
+  const before = await window.api.bridge?.status().catch(() => null);
+  if (before?.needsScope || before?.needsLogin) showToast('브라우저에서 구글 로그인을 마쳐 주세요');
+  const r = await window.api.bridge?.enable();
+  if (!r?.ok) {
+    showToast(r?.error || 'Claude 연동 시트를 켜지 못했습니다');
+    return;
+  }
+  showToast(before?.enabled ? '시트와 다시 맞췄습니다' : 'Claude 연동 시트를 켰습니다');
+}
+
+async function disableBridge() {
+  const st = await window.api.bridge?.status().catch(() => null);
+  if (!st?.enabled) return;
+  await window.api.bridge?.disable();
+  showToast('Claude 연동 시트를 껐습니다');
+}
+
+async function copyBridgeLink() {
+  const r = await window.api.bridge?.copyLink();
+  showToast(r?.ok ? '시트 링크를 복사했습니다' : '복사할 시트 링크가 없습니다');
 }
 
 // ---------------------------------------------------------------- 날씨
@@ -1332,6 +1392,28 @@ function renderSettings() {
     syncRow.row.replaceWith(setRow('휴대폰 동기화', syncNote(st), opts).row);
   }).catch(() => {});
 
+  // Claude 연동 시트 — 휴대폰 동기화 바로 아래. 구글 연결 정보가 없는 빌드에는 줄이 없다.
+  // 켜져 있으면 그 아래에 시트 링크 줄(열기 · 복사) — Claude 에게 넘길 주소다.
+  const bridgeRow = el('div');
+  const linkRow = el('div');
+  bridgeRow.hidden = true;
+  linkRow.hidden = true;
+  window.api.bridge?.status().then((st) => {
+    if (!st?.available) return;
+    const row = setRow('Claude 연동 시트', bridgeNote(st), [
+      opt('켬', st.enabled, enableBridge),
+      opt('끔', !st.enabled, disableBridge),
+    ]).row;
+    if (st.lastError) row.title = st.lastError;
+    bridgeRow.replaceWith(row);
+    if (st.enabled && st.url) {
+      linkRow.replaceWith(setRow('시트 링크', `내 드라이브 · ${st.title}`, [
+        opt('열기', false, () => window.api.bridge.open()),
+        opt('복사', false, copyBridgeLink),
+      ]).row);
+    }
+  }).catch(() => {});
+
   const body = el('div', 'set-body');
   body.append(
     setGroup('보임', [
@@ -1386,6 +1468,8 @@ function renderSettings() {
         opt('열기', false, () => window.api.inbox?.open()),
       ]),
       syncRow,
+      bridgeRow,
+      linkRow,
       setRow('내보내기', '', [
         opt('.json', false, exportBackup),
         opt('.ics', false, exportICS),

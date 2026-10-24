@@ -127,6 +127,40 @@ const api = {
     },
   },
 
+  // ------------------------------------------------------------ Claude 연동 시트
+  // 시트 읽고 쓰기 · 주기는 메인(src/main/claude-bridge.js). 렌더러는 store 를 읽어 넘기고, 받은 요청을 액션으로 만든다.
+  bridge: {
+    status: () => ipcRenderer.invoke('bridge:status'),
+    /** 켠다 — 권한이 모자라면 브라우저로 로그인 → {ok, status} | {ok:false, error} */
+    enable: () => ipcRenderer.invoke('bridge:enable'),
+    disable: () => ipcRenderer.invoke('bridge:disable'),
+    /** 시트를 기본 브라우저로 연다 · 시트 링크를 클립보드에 → {ok} */
+    open: () => ipcRenderer.invoke('bridge:open'),
+    copyLink: () => ipcRenderer.invoke('bridge:copyLink'),
+    /** 받을 준비가 됐다 — 켜져 있으면 메인이 곧바로 한 번 연동한다 */
+    ready: () => ipcRenderer.send('bridge:ready'),
+    /** 내보내기 재료 → {ok, enabled} */
+    push: (data) => ipcRenderer.invoke('bridge:export', data),
+    /** 메인이 내보내기 재료를 달라고 한다 */
+    onWant: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('bridge:want', () => cb());
+    },
+    /** 받은편지함 요청 → 콜백이 돌려준 결과를 메인에 답한다(실패하면 null — 다음 주기에 다시 온다) */
+    onInbox: (cb) => {
+      if (typeof cb !== 'function') return;
+      ipcRenderer.on('bridge:inbox', async (_event, msg) => {
+        let results = null;
+        try {
+          results = await cb(Array.isArray(msg?.requests) ? msg.requests : []);
+        } catch {
+          results = null;
+        }
+        ipcRenderer.send('bridge:applied', { token: msg?.token, results });
+      });
+    },
+  },
+
   // ------------------------------------------------------------ 날씨
   // 도시 이름만 넘긴다. 좌표표와 네트워크는 메인이 갖고 있다.
   weather: {

@@ -15,6 +15,7 @@ const {
   dialog,
   Notification,
   safeStorage,
+  clipboard,
 } = electron;
 
 // screen 모듈은 app 'ready' 이후에만 접근 가능하므로 호출 시점에 가져온다.
@@ -40,6 +41,7 @@ const weather = require('./weather');
 const inbox = require('./inbox');
 const { createSyncHost } = require('./sync');
 const { createGoogleAuth, loadClient } = require('./google-auth');
+const { createClaudeBridge } = require('./claude-bridge');
 
 // 휴대폰 동기화 — 기기마다 파일 한 장을 고른 폴더나 구글 드라이브 숨김 앱 폴더에 쓴다(src/main/sync.js).
 // 구글 연결 정보(src/main/google-client.json)는 저장소에 올리지 않는다 — 없으면 '구글로 연결' 이 숨는다.
@@ -52,7 +54,27 @@ const googleAuth = createGoogleAuth({
   protect: (s) => (sealed() ? safeStorage.encryptString(s) : Buffer.from(s, 'utf8')),
   unprotect: (b) => (sealed() ? safeStorage.decryptString(b) : Buffer.from(b).toString('utf8')),
 });
-const syncHost = createSyncHost({ userDataDir: app.getPath('userData'), appVersion: app.getVersion(), google: googleAuth });
+
+// Claude 연동 시트 — 사용자 드라이브의 시트 한 장으로 claude.ai 의 Claude 와 주고받는다(src/main/claude-bridge.js).
+// 구글 로그인은 휴대폰 동기화와 같이 쓴다.
+const bridge = createClaudeBridge({
+  userDataDir: app.getPath('userData'),
+  google: googleAuth,
+  appVersion: app.getVersion(),
+  syncUsesGoogle: () => syncHost.status().kind === 'google',
+});
+
+// 동기화가 보는 로그인 — 시트가 같은 로그인을 쓰는 동안에는 동기화를 끊어도 로그인을 남기고,
+// 다시 연결할 때는 같은 계정이어야 한다(다른 계정이면 시트가 다른 드라이브를 보게 된다).
+const syncHost = createSyncHost({
+  userDataDir: app.getPath('userData'),
+  appVersion: app.getVersion(),
+  google: {
+    ...googleAuth,
+    login: (opts = {}) => googleAuth.login({ ...opts, expectEmail: bridge.enabled() ? googleAuth.account() : null }),
+    logout: () => (bridge.enabled() ? Promise.resolve() : googleAuth.logout()),
+  },
+});
 
 // ---------------------------------------------------------------- 상수
 
@@ -91,6 +113,7 @@ let alwaysOnTop = false;         // 항상 위 상태(메인이 진실의 원천
 let clickThrough = false;        // 클릭 통과(잠금) 상태
 let rendererReady = false;       // 렌더러가 받은함을 받을 준비가 됐는가
 let syncReady = false;           // 렌더러가 다른 기기 파일을 받을 준비가 됐는가
+let bridgeReady = false;         // 렌더러가 Claude 연동 시트의 요청을 받을 준비가 됐는가
 let registeredAccelerator = null; // 실제로 등록에 성공한 전역 단축키
 
 // ---------------------------------------------------------------- 창
@@ -136,6 +159,7 @@ function createWindow() {
 
   // 창을 새로 만들면 렌더러는 처음부터 다시 뜬다 — 준비 표시도 되돌린다
   rendererReady = false;
+  bridgeReady = false;
 
   win.setMenuBarVisibility(false);
   // 명시적으로 한 번 더 — 일부 환경에서 transparent 창이 고정 크기로 잡히는 것 방지
@@ -714,6 +738,37 @@ function registerIpc() {
     syncHost.flush();
   });
 
+  // Claude 연동 시트 — 시트 읽고 쓰기는 여기(메인), 일정 해석과 store 액션은 렌더러가 한다
+  ipcMain.handle('bridge:status', () => bridge.status());
+  // 켜기 — 권한이 모자라면 기본 브라우저로 로그인하고, 끝나면 위젯을 다시 앞으로
+  ipcMain.handle('bridge:enable', async () => {
+    const r = await bridge.enable();
+    if (r.ok) showWidget();
+    return r;
+  });
+  ipcMain.handle('bridge:disable', () => bridge.disable());
+  // 우리가 만든 시트 주소만 연다 · 복사한다
+  const sheetLink = () => {
+    const url = bridge.url();
+    return url && url.startsWith('https://docs.google.com/') ? url : null;
+  };
+  ipcMain.handle('bridge:open', () => {
+    const url = sheetLink();
+    if (url) shell.openExternal(url);
+    return { ok: !!url };
+  });
+  ipcMain.handle('bridge:copyLink', () => {
+    const url = sheetLink();
+    if (url) clipboard.writeText(url);
+    return { ok: !!url };
+  });
+  ipcMain.handle('bridge:export', (_e, data) => bridge.takeExport(data));
+  ipcMain.on('bridge:applied', (_e, msg) => bridge.applied(msg?.token, msg?.results));
+  ipcMain.on('bridge:ready', () => {
+    bridgeReady = true;
+    bridge.ready();
+  });
+
   ipcMain.handle('data:openBackups', () => {
     const dir = storage.backupDir();
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* 무시 */ }
@@ -922,6 +977,13 @@ if (!gotLock) {
       return true;
     });
 
+    // Claude 연동 시트 — 켜져 있으면 렌더러가 준비된 때(bridge:ready)와 5분마다 시트와 맞춘다
+    bridge.start((channel, payload) => {
+      if (!bridgeReady || !win || win.isDestroyed()) return false;
+      win.webContents.send(channel, payload);
+      return true;
+    });
+
     app.on('activate', () => showWidget()); // macOS 도크 클릭 대응
   });
 
@@ -952,6 +1014,7 @@ if (!gotLock) {
   app.on('will-quit', () => {
     inbox.stop();
     syncHost.stop();
+    bridge.stop();
     globalShortcut.unregisterAll();
     if (tray && !tray.isDestroyed()) {
       tray.destroy();
