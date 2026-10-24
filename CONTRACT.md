@@ -282,6 +282,34 @@ onRemote(cb: (list: {deviceId, file, snapshot}[]) => void): void
 - 파일 이름의 기기ID 는 메인 설정(`sync.json`)이 정한다. 렌더러가 보낸 스냅샷의 기기ID 를 믿지 않는다.
 - 다른 기기 파일은 바뀐 것(mtime · 크기)만 넘긴다. 깨진 JSON(쓰는 중)은 표시하지 않고 다음 훑기에 다시 읽는다.
 
+## Claude 연동 시트 (docs/BRIDGE.md)
+
+| 소유 | 파일 |
+|---|---|
+| 연동 시트 | `src/main/claude-bridge.js`, `src/renderer/claude-bridge.js`, `tests/claude-bridge*.test.mjs` |
+
+메인은 시트 REST · 주기 · 받은편지함 해석, 렌더러는 store 를 읽어 내보낼 재료를 넘기고(반복 회차 펼치기는 렌더러만 한다)
+받은 요청을 store 액션(`addTasks` · `addTodos`)으로 만든다. 구글 로그인은 휴대폰 동기화의 `google-auth.js` 를 같이 쓴다(`drive.file` 을 더한다).
+동기화 파일 계약(docs/SYNC.md)과 `sync/crdt.js` 는 건드리지 않는다.
+
+추가된 IPC — `window.api.bridge`:
+
+```ts
+status(): Promise<{available, enabled, connected, needsScope, needsLogin, url, title, account,
+                   lastOkAt, failures, lastError, problem}>   // problem — 사용자가 손써야 풀리는 것
+enable(): Promise<{ok:true, status} | {ok:false, error:string}>  // 권한이 모자라면 브라우저로 로그인(5분 안)
+disable(): Promise<status>
+open(): Promise<{ok}>              // 시트를 기본 브라우저로 — 메인이 만든 docs.google.com 주소만
+copyLink(): Promise<{ok}>          // 시트 주소를 클립보드에
+ready(): void                      // 켜져 있으면 메인이 곧바로 한 번 연동한다
+push(data): Promise<{ok, enabled}> // 내보낼 재료 — enabled:false 면 렌더러는 다시 달랄 때까지 보내지 않는다
+onWant(cb: () => void): void       // 메인이 재료를 달라고 한다(켜질 때 · 5분마다)
+onInbox(cb: (requests) => results | Promise<results>): void   // 받은 요청 → [{key, ok, id?, error?}]
+```
+
+- 받은 요청의 일정 id(`taskId`)는 메인이 요청마다 정한다 — 답이 늦어 같은 요청을 두 번 받아도 하나만 생긴다.
+- 렌더러는 디스크에 저장(`flushSave`)한 뒤에 답한다. 메인은 그 답을 받고서야 처리한 요청ID 로 적는다.
+
 ## 디자인 시스템 (딥리서치 반영)
 
 글래스모피즘 + 벤토 그리드. 새로 추가된 CSS 변수:
