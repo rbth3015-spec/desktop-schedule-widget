@@ -250,6 +250,7 @@ const g = {
   next: 1,
   disabled: false,                         // 클라우드 프로젝트에서 시트 API 를 안 켰다
   network: false,                          // 인터넷이 끊겼다
+  hold: null,                              // 다음 '시트 만들기' 하나를 붙잡아 둔다 — holdNextCreate()
   authUrls: [],
 };
 
@@ -436,6 +437,7 @@ beforeEach(() => {
   g.next = 1;
   g.disabled = false;
   g.network = false;
+  g.hold = null;
   g.tokenScope = `${SCOPE} ${FILE_SCOPE}`;
   g.email = 'me@example.com';
   g.authUrls = [];
@@ -458,7 +460,24 @@ const auth = () => createGoogleAuth({
 });
 
 /** 인터넷이 끊긴 것처럼 — 시트 · 드라이브 호출만 */
-const fetchImpl = (url, init) => (g.network ? Promise.reject(new TypeError('fetch failed')) : fetch(url, init));
+const fetchImpl = async (url, init) => {
+  if (g.network) throw new TypeError('fetch failed');
+  if (g.hold && init?.method === 'POST' && new URL(url).pathname === '/v4/spreadsheets') {
+    const { reached, opened } = g.hold;
+    g.hold = null;
+    reached();
+    await opened;
+  }
+  return fetch(url, init);
+};
+
+/** 다음 '시트 만들기' 요청 하나를 놓아줄 때까지 붙잡는다 — 겹친 호출을 재현한다 */
+function holdNextCreate() {
+  let release;
+  const opened = new Promise((r) => { release = r; });
+  const hit = new Promise((reached) => { g.hold = { reached, opened }; });
+  return { hit, release };
+}
 
 /** 위젯이 내보내는 재료(렌더러의 collectExport 모양) */
 function sample(events = 2) {
@@ -750,6 +769,28 @@ test('켤 때 잠깐 인터넷이 끊겨 시트를 못 만들어도 켠 채로 �
   await b.tick();
   assert.equal(g.files.size, 1);
   assert.equal(b.status().failures, 0);
+  b.stop();
+});
+
+test('켠 채로 기다리던 주기가 시트를 만드는 사이 켬을 다시 눌러도 시트는 한 장', async () => {
+  g.disabled = true;
+  const { b } = bridgeWith();
+  assert.equal((await b.enable()).ok, true);   // 시트 API 가 꺼져 있다 — 켠 채로 기다린다
+  g.disabled = false;                           // 주인이 API 를 켰다
+
+  // 5분 주기가 시트를 만드는 중에(요청을 붙잡아 둔다) 사람이 켬을 다시 눌렀다
+  const held = holdNextCreate();
+  const ticking = b.tick();
+  await held.hit;
+  const again = b.enable();
+  await new Promise((r) => setTimeout(r, 50));
+  held.release();
+  assert.equal((await again).ok, true);
+  await ticking;
+  assert.equal(g.files.size, 1, '같은 이름의 시트가 두 장 생기지 않는다');
+  const st = b.status();
+  assert.deepEqual([st.problem, st.failures], [null, 0]);
+  assert.equal(st.url, `https://docs.google.com/spreadsheets/d/${only().id}/edit`);
   b.stop();
 });
 

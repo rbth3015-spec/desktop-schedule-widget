@@ -270,3 +270,56 @@ test('호스트: 연결이 돌아오면 지난 오류를 걷고, 그동안 못 �
   assert.equal(JSON.parse(mine.content).savedAt, 2, '못 쓴 채 남았던 발행이 올라갔다');
   h.stop();
 });
+
+test('호스트: 밀린 파일을 다시 쓰는 사이 새로 발행해도 내 파일 쓰기는 한 줄로 — 나중 것이 남는다', async () => {
+  const userDataDir = path.join(root, 'userData');
+  let t = 1_000_000;
+  const a = auth({ now: () => t });
+  // 내 파일 쓰기(업로드)를 센다 — hold 가 있으면 다음 하나를 놓아줄 때까지 붙잡는다
+  let inFlight = 0;
+  let most = 0;
+  let hold = null;
+  const fetchImpl = async (url, init) => {
+    if (!String(url).includes('/upload/')) return fetch(url, init);
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    try {
+      if (hold) {
+        const { reached, opened } = hold;
+        hold = null;
+        reached();
+        await opened;
+      }
+      return await fetch(url, init);
+    } finally {
+      inFlight -= 1;
+    }
+  };
+  const h = createSyncHost({ userDataDir, google: a, driveBase: base, fetchImpl });
+  const { deviceId } = (await h.connectGoogle()).status;
+  const snap = (savedAt) => ({ schema: 'schedule-sync', version: 1, device: { id: deviceId, name: 'MY-PC', app: 'w' }, savedAt, clock: null, records: {} });
+  const mine = () => JSON.parse([...google.files.values()].find((f) => f.name === `sync-${deviceId}.json`).content).savedAt;
+  assert.equal((await h.publish({ snapshot: snap(1), known: [] })).ok, true);
+
+  // 로그인이 한동안 무효였다 — 그동안의 발행(2)은 레플리카에만 남았다
+  google.refreshOk = false;
+  t += 3600 * 1000;
+  assert.equal((await h.publish({ snapshot: snap(2), known: [] })).ok, false);
+  google.refreshOk = true;
+
+  // 연결이 돌아온 훑기가 밀린 2 를 쓰는 사이(붙잡아 둔다) 사람이 또 고쳐 3 을 발행했다
+  let release;
+  const opened = new Promise((r) => { release = r; });
+  const hit = new Promise((reached) => { hold = { reached, opened }; });
+  const sweeping = h.sweep();
+  await hit;
+  const third = h.publish({ snapshot: snap(3), known: [] });
+  await new Promise((r) => setTimeout(r, 50));
+  release();
+  assert.equal((await third).ok, true);
+  await sweeping;
+  assert.equal(most, 1, '내 파일 쓰기는 겹치지 않는다');
+  assert.equal(mine(), 3, '먼저 보낸 2 가 나중에 닿아 3 을 덮지 않는다');
+  assert.equal(h.status().lastError, null);
+  h.stop();
+});
