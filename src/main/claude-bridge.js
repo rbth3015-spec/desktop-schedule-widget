@@ -546,7 +546,10 @@ function createClaudeBridge({
 
   const sheetUrl = (rest = '') => `${sheetsBase}/v4/spreadsheets/${encodeURIComponent(config.spreadsheetId)}${rest}`;
 
-  /** 오류 → 설정 줄에 쓸 말. action — 사용자가 손써야 풀린다 · login — 켬을 누르면 로그인부터 · reshape — 탭을 다시 찾는다 */
+  /**
+   * 오류 → 설정 줄에 쓸 말. action — 사용자가 손써야 풀린다 · login — 켬을 누르면 로그인부터 · reshape — 탭을 다시 찾는다 ·
+   * wait — 위젯 밖의 일이라 기다리면 풀린다(켤 때 이것이면 켠 채로 두고 5분마다 다시 만들어 본다)
+   */
   function describe(err) {
     if (err?.name === 'NeedsLogin') {
       return { text: '구글 로그인이 풀렸습니다 — 켬을 다시 누르면 로그인합니다', action: true, login: true };
@@ -555,16 +558,23 @@ function createClaudeBridge({
     const s = err?.status;
     const d = String(err?.detail || '');
     if (s === 403 && /SERVICE_DISABLED|accessNotConfigured|has not been used|is disabled/i.test(d)) {
-      return { text: '구글 시트 API 가 꺼져 있습니다 — 클라우드 프로젝트에서 켜 주세요', action: true };
+      // 켤 수 있는 사람은 클라우드 프로젝트의 주인이다 — 어느 프로젝트인지 구글이 알려 준 번호를 그대로 쓴다
+      const project = /projects?[/ ](\d{6,})/i.exec(d)?.[1];
+      return {
+        text: `구글 시트 API 가 꺼져 있습니다 — 클라우드 프로젝트${project ? ` ${project}` : ''} 주인이 켜면 5분 안에 이어집니다`,
+        action: true,
+        wait: true,
+      };
     }
     if (s === 403 && /insufficient|SCOPE/i.test(d)) {
       return { text: '시트를 다룰 권한이 없습니다 — 켬을 다시 누르면 로그인합니다', action: true, login: true };
     }
     if (s === 404) return { text: '시트를 찾을 수 없습니다 — 끄고 다시 켜면 새로 만듭니다', action: true };
     if (s === 400) return { text: '시트 모양이 바뀌었습니다 — 다음 주기에 다시 맞춥니다', reshape: true };
-    if (s === 429) return { text: '구글이 잠시 쉬어 가라고 합니다' };
+    if (s === 429) return { text: '구글이 잠시 쉬어 가라고 합니다', wait: true };
+    if (s >= 500) return { text: `구글 시트 오류 ${s}`, wait: true };
     if (s) return { text: `구글 시트 오류 ${s}` };
-    return { text: '구글에 닿지 못했습니다 — 인터넷 연결을 확인해 주세요' };
+    return { text: '구글에 닿지 못했습니다 — 인터넷 연결을 확인해 주세요', wait: true };
   }
 
   function succeed() {
@@ -764,11 +774,14 @@ function createClaudeBridge({
     return run;
   }
 
-  /** 켜질 때 · 5분마다: 내보내기 + 받은편지함 */
+  /** 켜질 때 · 5분마다: 내보내기 + 받은편지함. 켤 때 시트를 못 만들었으면(시트 API 가 꺼져 있었다 등) 그것부터 */
   async function tickJob() {
-    if (!config.enabled || !config.spreadsheetId || !google) return;
+    if (!config.enabled || !google) return;
     try {
-      if (!checked) {
+      if (!config.spreadsheetId) {
+        await create();
+        checked = true;
+      } else if (!checked) {
         if (!(await exists())) throw Object.assign(new Error('없는 시트'), { status: 404 });
         checked = true;
       }
@@ -830,6 +843,7 @@ function createClaudeBridge({
    */
   async function enable() {
     if (!google?.available) return { ok: false, error: '이 빌드에는 구글 연결 정보가 없습니다.' };
+    let pending = null;   // 시트를 아직 못 만든 까닭 — 켠 채로 두고 주기가 다시 해 본다
     try {
       let login = !google.connected() || !google.hasScope(FILE_SCOPE);
       if (!login) {
@@ -856,8 +870,18 @@ function createClaudeBridge({
       if (config.spreadsheetId && config.account && config.account !== google.account()) {
         saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
       }
-      if (!config.spreadsheetId || !(await exists())) await create();
-      checked = true;
+      if (config.spreadsheetId && !(await exists())) saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
+      if (!config.spreadsheetId) {
+        try {
+          await create();
+        } catch (err) {
+          // 시트 API 가 꺼져 있거나 잠깐 닿지 않는다 — 위젯 밖의 일이다. 켠 채로 두고 5분마다 다시 만들어 본다
+          // (주인이 API 를 켜면 사람이 다시 누르지 않아도 이어진다)
+          if (!describe(err).wait) throw err;
+          pending = err;
+        }
+      }
+      checked = !pending;
       saveConfig({ ...config, enabled: true });
     } catch (err) {
       return { ok: false, error: describe(err).text };
@@ -868,7 +892,8 @@ function createClaudeBridge({
     needsLogin = false;
     tabs = null;
     restartTimer();
-    await enqueue(tickJob);
+    if (pending) fail(pending);
+    else await enqueue(tickJob);
     return { ok: true, status: status() };
   }
 

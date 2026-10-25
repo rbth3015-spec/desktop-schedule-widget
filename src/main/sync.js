@@ -71,7 +71,12 @@ function createSyncHost({
   let debounce = null;
   let watchEnabled = true;
   let sweeping = null;
-  let lastError = null;
+  // 오류는 어디서 났는지 따로 들고 있다가 그쪽이 다시 되면 걷는다.
+  // 하나로 두었을 때는 연결이 돌아와도 '구글 연결이 끊겼습니다' 가 다음 발행까지 남아,
+  // 멀쩡한 연결을 사람이 '끊기' 로 끊게 만들었다(2026-10-25).
+  let listError = null;      // 다른 기기 파일을 훑다 난 것 — 다음 훑기가 되면 걷힌다
+  let publishError = null;   // 내 파일을 쓰다 난 것 — 다음 발행이 되면 걷힌다
+  let unpublished = false;   // 레플리카는 저장했는데 동기화 길에는 못 쓴 것이 있다 — 연결이 돌아오면 다시 쓴다
   let lastPublishAt = 0;
   /** 이미 넘긴 파일 — 파일 이름 → sig */
   const seen = new Map();
@@ -118,14 +123,16 @@ function createSyncHost({
       app: `widget/${appVersion}`,
       peers: [...peers.values()].sort((a, b) => b.savedAt - a.savedAt),
       lastPublishAt,
-      lastError,
+      lastError: publishError || listError,
     };
   }
 
   function reset() {
     seen.clear();
     peers.clear();
-    lastError = null;
+    listError = null;
+    publishError = null;
+    unpublished = false;
   }
 
   /** @returns {{ok:true, status} | {ok:false, error:string}} */
@@ -166,7 +173,7 @@ function createSyncHost({
     try {
       saveConfig({ ...config, kind: null, folder: null });
     } catch (err) {
-      lastError = `설정을 저장하지 못했습니다 — ${err.message}`;
+      publishError = `설정을 저장하지 못했습니다 — ${err.message}`;
     }
     if (wasGoogle && google) await google.logout().catch(() => {});
     return status();
@@ -199,17 +206,33 @@ function createSyncHost({
     try {
       writeTextAtomic(statePath, JSON.stringify({ snapshot, known: Array.isArray(known) ? known.map(String) : [] }));
     } catch (err) {
-      lastError = `레플리카를 저장하지 못했습니다 — ${err.message}`;
-      return { ok: false, error: lastError };
+      publishError = `레플리카를 저장하지 못했습니다 — ${err.message}`;
+      return { ok: false, error: publishError };
     }
     try {
       await transport.write(ownName(), JSON.stringify(snapshot));
       lastPublishAt = Date.now();
-      lastError = null;
+      publishError = null;
+      unpublished = false;
       return { ok: true };
     } catch (err) {
-      lastError = describeError(err);
-      return { ok: false, error: lastError };
+      publishError = describeError(err);
+      unpublished = true;
+      return { ok: false, error: publishError };
+    }
+  }
+
+  /** 못 쓰고 남은 내 파일을 다시 쓴다 — 레플리카(sync-state.json)가 마지막으로 발행하려던 그 내용이다 */
+  async function republish() {
+    const saved = loadState();
+    if (!saved) return;
+    try {
+      await transport.write(ownName(), JSON.stringify(saved.snapshot));
+      lastPublishAt = Date.now();
+      publishError = null;
+      unpublished = false;
+    } catch (err) {
+      publishError = describeError(err);
     }
   }
 
@@ -220,9 +243,12 @@ function createSyncHost({
     try {
       list = await transport.list();
     } catch (err) {
-      lastError = describeError(err);
+      listError = describeError(err);
       return [];
     }
+    // 다시 닿았다 — 지난 실패 문구를 걷고, 그동안 못 쓴 내 파일이 있으면 지금 쓴다
+    listError = null;
+    if (unpublished) await republish();
     const out = [];
     for (const item of list.sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const m = FILE_RE.exec(item.name);

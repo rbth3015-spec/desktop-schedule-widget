@@ -243,3 +243,30 @@ test('호스트: 구글 연결이 끊기면 상태에 다시 연결하라는 문
   assert.match(h.status().lastError, /다시 연결/);
   h.stop();
 });
+
+test('호스트: 연결이 돌아오면 지난 오류를 걷고, 그동안 못 쓴 내 파일을 다시 쓴다', async () => {
+  const userDataDir = path.join(root, 'userData');
+  let t = 1_000_000;
+  const a = auth({ now: () => t });
+  const h = createSyncHost({ userDataDir, google: a, driveBase: base });
+  const { deviceId } = (await h.connectGoogle()).status;
+  const snap = (savedAt) => ({ schema: 'schedule-sync', version: 1, device: { id: deviceId, name: 'MY-PC', app: 'w' }, savedAt, clock: null, records: {} });
+  assert.equal((await h.publish({ snapshot: snap(1), known: [] })).ok, true);
+
+  // 갱신 토큰이 한동안 무효였다('테스트 중' 프로젝트의 7일 만료 같은 것) — 그동안의 발행 · 훑기는 실패한다
+  google.refreshOk = false;
+  t += 3600 * 1000;
+  assert.equal((await h.publish({ snapshot: snap(2), known: [] })).ok, false);
+  h.start(() => true, { watch: false });
+  await h.sweep();
+  assert.match(h.status().lastError, /다시 연결/);
+
+  // 로그인이 되살아났다(2026-10-25: Claude 연동 시트를 켜며 다시 로그인) — 다음 훑기에 문구가 걷히고 밀린 파일이 올라간다.
+  // 예전에는 다음 발행 때까지 '끊겼습니다' 가 남아, 멀쩡한 연결을 사람이 '끊기' 로 끊었다.
+  google.refreshOk = true;
+  await h.sweep();
+  assert.equal(h.status().lastError, null);
+  const mine = [...google.files.values()].find((f) => f.name === `sync-${deviceId}.json`);
+  assert.equal(JSON.parse(mine.content).savedAt, 2, '못 쓴 채 남았던 발행이 올라갔다');
+  h.stop();
+});
