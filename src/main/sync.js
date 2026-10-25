@@ -77,6 +77,7 @@ function createSyncHost({
   let listError = null;      // 다른 기기 파일을 훑다 난 것 — 다음 훑기가 되면 걷힌다
   let publishError = null;   // 내 파일을 쓰다 난 것 — 다음 발행이 되면 걷힌다
   let unpublished = false;   // 레플리카는 저장했는데 동기화 길에는 못 쓴 것이 있다 — 연결이 돌아오면 다시 쓴다
+  let writing = Promise.resolve();   // 내 파일 쓰기 — 한 줄로 세운다(writeOwn)
   let lastPublishAt = 0;
   /** 이미 넘긴 파일 — 파일 이름 → sig */
   const seen = new Map();
@@ -195,6 +196,17 @@ function createSyncHost({
   }
 
   /**
+   * 내 파일을 동기화 길에 쓴다 — 앞선 쓰기가 끝난 뒤에. 훑기의 다시 쓰기(republish)와 발행이 겹치면
+   * 드라이브는 먼저 보낸 옛 내용이 나중에 닿아 새 내용을 덮을 수 있고, 아직 없는 파일은 두 장이 생길 수 있다.
+   */
+  function writeOwn(text) {
+    const t = transport;
+    const run = writing.then(() => t.write(ownName(), text));
+    writing = run.catch(() => {});
+    return run;
+  }
+
+  /**
    * 내 상태를 쓴다 — 사용자 데이터 폴더(레플리카 원본)와 동기화 길(남들이 읽는 것) 둘 다.
    * 파일 이름은 설정의 기기ID 로 정한다(렌더러가 보낸 값을 믿지 않는다).
    */
@@ -210,7 +222,7 @@ function createSyncHost({
       return { ok: false, error: publishError };
     }
     try {
-      await transport.write(ownName(), JSON.stringify(snapshot));
+      await writeOwn(JSON.stringify(snapshot));
       lastPublishAt = Date.now();
       publishError = null;
       unpublished = false;
@@ -227,7 +239,7 @@ function createSyncHost({
     const saved = loadState();
     if (!saved) return;
     try {
-      await transport.write(ownName(), JSON.stringify(saved.snapshot));
+      await writeOwn(JSON.stringify(saved.snapshot));
       lastPublishAt = Date.now();
       publishError = null;
       unpublished = false;

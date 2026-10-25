@@ -767,7 +767,7 @@ function createClaudeBridge({
     }
   }
 
-  /** 줄을 세운다 — 내보내기와 받은편지함이 한 시트를 동시에 건드리지 않게 */
+  /** 줄을 세운다 — 시트 만들기 · 내보내기 · 받은편지함이 한 시트를 동시에 건드리지 않게 */
   function enqueue(job) {
     const run = queue.then(job);
     queue = run.catch(() => {});
@@ -866,12 +866,15 @@ function createClaudeBridge({
           return { ok: false, error: '구글 화면에서 드라이브 파일 권한에 체크해야 시트를 만들 수 있습니다.' };
         }
       }
-      // 다른 계정으로 바뀌었으면 예전 시트는 그 계정의 것이다 — 이 계정에 새로 만든다
-      if (config.spreadsheetId && config.account && config.account !== google.account()) {
-        saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
-      }
-      if (config.spreadsheetId && !(await exists())) saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
-      if (!config.spreadsheetId) {
+      // 어느 시트를 쓸지 정하고 없으면 만드는 일도 줄을 선다 — 켠 채로 기다리던 주기가 막 시트를 만들고 있었으면
+      // 그 시트를 쓴다(따로 만들면 같은 이름의 시트가 두 장 생긴다)
+      await enqueue(async () => {
+        // 다른 계정으로 바뀌었으면 예전 시트는 그 계정의 것이다 — 이 계정에 새로 만든다
+        if (config.spreadsheetId && config.account && config.account !== google.account()) {
+          saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
+        }
+        if (config.spreadsheetId && !(await exists())) saveConfig({ ...config, spreadsheetId: null, url: null, sheets: null });
+        if (config.spreadsheetId) return;
         try {
           await create();
         } catch (err) {
@@ -880,7 +883,7 @@ function createClaudeBridge({
           if (!describe(err).wait) throw err;
           pending = err;
         }
-      }
+      });
       checked = !pending;
       saveConfig({ ...config, enabled: true });
     } catch (err) {
