@@ -365,7 +365,7 @@ before(async () => {
     }
 
     if (url.pathname.startsWith('/v4/') && g.disabled) {
-      return json(res, 403, { error: { code: 403, message: 'Google Sheets API has not been used in project 123 before or it is disabled.', status: 'PERMISSION_DENIED', details: [{ reason: 'SERVICE_DISABLED' }] } });
+      return json(res, 403, { error: { code: 403, message: 'Google Sheets API has not been used in project 264435505233 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=264435505233 then retry.', status: 'PERMISSION_DENIED', details: [{ reason: 'SERVICE_DISABLED', metadata: { consumer: 'projects/264435505233' } }] } });
     }
     try {
       if (url.pathname === '/v4/spreadsheets' && req.method === 'POST') {
@@ -709,13 +709,47 @@ test('로그인이 풀리면 횟수 대신 할 일을 말하고, 켬을 다시 �
   b.stop();
 });
 
-test('시트 API 가 꺼져 있으면 켤 때 그 이유를 말한다', async () => {
+test('시트 API 가 꺼져 있으면 켬은 켜진 채로 두고 프로젝트 번호를 말한다 — 주인이 켜면 다음 주기에 저절로 만든다', async () => {
   g.disabled = true;
-  const { b } = bridgeWith();
+  const { b, renderer } = bridgeWith();
   const r = await b.enable();
-  assert.equal(r.ok, false);
-  assert.match(r.error, /시트 API 가 꺼져/);
-  assert.equal(b.status().enabled, false);
+  assert.equal(r.ok, true, '사람이 할 일(로그인)은 끝났다 — 켠 채로 둔다');
+  assert.equal(r.status.enabled, true);
+  assert.match(r.status.problem, /시트 API 가 꺼져 있습니다 — 클라우드 프로젝트 264435505233 주인이 켜면/);
+  assert.equal(r.status.url, null, '시트가 없으니 링크도 없다');
+  assert.equal(g.files.size, 0);
+
+  // 아직 꺼져 있으면 주기는 다시 해 보고 그대로 기다린다
+  await b.tick();
+  assert.equal(g.files.size, 0);
+  assert.match(b.status().problem, /시트 API/);
+  assert.equal(renderer.wants, 0);
+
+  // 주인이 API 를 켰다 — 사람이 다시 누르지 않아도 다음 주기에 시트를 만들고 내보낸다
+  g.disabled = false;
+  await b.tick();
+  const st = b.status();
+  assert.deepEqual([st.problem, st.failures], [null, 0]);
+  assert.equal(st.url, `https://docs.google.com/spreadsheets/d/${only().id}/edit`);
+  assert.deepEqual(grid('Claude가 넣을 것'), [[INBOX_GUIDE], [...INBOX_HEAD]]);
+  assert.match(grid('일정')[0][0], /^마지막 내보낸 시각/);
+  assert.equal(g.authUrls.length, 1, '로그인은 처음 한 번뿐');
+  b.stop();
+});
+
+test('켤 때 잠깐 인터넷이 끊겨 시트를 못 만들어도 켠 채로 두고 다음 주기에 만든다', async () => {
+  const { b } = bridgeWith();
+  const google = auth();
+  await google.login({ scopes: [FILE_SCOPE] });   // 로그인은 미리 돼 있다
+  g.network = true;
+  const r = await b.enable();
+  assert.equal(r.ok, true);
+  assert.equal(r.status.enabled, true);
+  assert.match(r.status.lastError, /닿지 못했습니다/);
+  g.network = false;
+  await b.tick();
+  assert.equal(g.files.size, 1);
+  assert.equal(b.status().failures, 0);
   b.stop();
 });
 

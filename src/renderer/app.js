@@ -736,7 +736,9 @@ async function enableBridge() {
     showToast(r?.error || 'Claude 연동 시트를 켜지 못했습니다');
     return;
   }
-  showToast(before?.enabled ? '시트와 다시 맞췄습니다' : 'Claude 연동 시트를 켰습니다');
+  // 켜졌지만 시트를 아직 못 만들었다(시트 API 가 꺼져 있다 등) — 그 까닭이 설정 줄에도 남는다
+  if (r.status?.problem) showToast(r.status.problem);
+  else showToast(before?.enabled ? '시트와 다시 맞췄습니다' : 'Claude 연동 시트를 켰습니다');
 }
 
 async function disableBridge() {
